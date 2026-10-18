@@ -1,0 +1,7 @@
+[versions]
+junit = "4.13.2"
+alloy = "6.2.0"
+
+[libraries]
+junit = { module = "junit:junit", version.ref = "junit" }
+alloy-lsp = { module = "org.alloytools:org.alloytools.alloy.lsp", version.ref = "alloy" }

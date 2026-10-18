@@ -1,0 +1,11 @@
+<idea-plugin>
+    <id>com.serranofp.alloy-ide</id>
+    <name>Alloy 6</name>
+    <vendor url="https://serranofp.com">Alejandro Serrano Mena</vendor>
+    <description><![CDATA[
+        Support for <a href="https://alloytools.org">Alloy</a> 6.
+        ]]></description>
+    <depends>com.intellij.modules.lsp</depends>
+    <extensions defaultExtensionNs="com.intellij">
+    </extensions>
+</idea-plugin>
