@@ -2,8 +2,9 @@ package com.serranofp.alloy.lsp
 
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.extensions.ExtensionPointName
+import com.intellij.openapi.extensions.PluginAware
+import com.intellij.openapi.extensions.PluginDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.VirtualFile
@@ -28,7 +29,15 @@ import com.serranofp.alloy.settings.AlloySolvers
 import org.eclipse.lsp4j.services.LanguageServer
 import java.nio.file.Path
 
-class AlloyLspIntegrationProvider : LspIntegrationProvider {
+class AlloyLspIntegrationProvider : LspIntegrationProvider, PluginAware {
+    /** Set by the platform when it creates the extension; the public way to find the plugin's files. */
+    lateinit var plugin: PluginDescriptor
+        private set
+
+    override fun setPluginDescriptor(pluginDescriptor: PluginDescriptor) {
+        plugin = pluginDescriptor
+    }
+
     override fun fileOpened(
         project: Project,
         file: VirtualFile,
@@ -75,10 +84,13 @@ class AlloyLspClientDescriptor(project: Project) : ProjectWideLspClientDescripto
     companion object {
         const val PLUGIN_ID = "com.serranofp.alloy-ide"
 
+        private val INTEGRATION_PROVIDERS =
+            ExtensionPointName<LspIntegrationProvider>("com.intellij.platform.lsp.integrationProvider")
+
         fun serverLib(): Path {
-            val plugin = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))
+            val provider = INTEGRATION_PROVIDERS.findExtension(AlloyLspIntegrationProvider::class.java)
                 ?: throw ExecutionException("Plugin $PLUGIN_ID is not loaded")
-            return plugin.pluginPath.resolve("lib").resolve("server")
+            return provider.plugin.pluginPath.resolve("lib").resolve("server")
         }
     }
 }

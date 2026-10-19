@@ -3,7 +3,18 @@
     <name>Alloy 6</name>
     <vendor url="https://serranofp.com">Alejandro Serrano Mena</vendor>
     <description><![CDATA[
-        Support for <a href="https://alloytools.org">Alloy</a> 6.
+        Support for <a href="https://alloytools.org">Alloy</a> 6 models (<code>.als</code> files), backed by the
+        Alloy 6.2.0 analyzer and language server.
+        <ul>
+          <li>Syntax highlighting, brace matching, commenting, folding and keyword completion</li>
+          <li>Diagnostics, hover, go to declaration, find usages, rename, structure view and Go to Symbol</li>
+          <li>Run <code>run</code> and <code>check</code> commands from the gutter or run configurations, with
+              results in the Run console and instances, counterexamples and unsat cores one click away</li>
+          <li>Analyzer settings under <em>Languages &amp; Frameworks | Alloy</em>, separate from the Alloy desktop
+              application</li>
+        </ul>
+        <p>Known limitations: only the pure-Java SAT4J solvers and solvers whose executable is on the
+        <code>PATH</code> are available, and instances open in the Alloy visualizer in a separate window.</p>
         ]]></description>
     <depends>com.intellij.modules.lsp</depends>
     <extensions defaultExtensionNs="com.intellij">

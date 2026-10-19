@@ -1,3 +1,5 @@
+import org.jetbrains.changelog.Changelog
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
@@ -39,6 +41,14 @@ intellijPlatform {
     pluginConfiguration {
         ideaVersion {
             sinceBuild = "262"
+        }
+        changeNotes = provider {
+            changelog.renderItem(changelog.getOrNull(version.toString()) ?: changelog.getUnreleased(), Changelog.OutputType.HTML)
+        }
+    }
+    pluginVerification {
+        ides {
+            create(IntelliJPlatformType.IntellijIdea, "2026.2.3")
         }
     }
 }

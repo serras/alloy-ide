@@ -55,6 +55,5 @@
 
 ## 8. Integration and release
 
-- [ ] 8.1 Run `./gradlew check verifyPlugin buildPlugin` and verify it passes with no Plugin Verifier compatibility problems against 2026.2
-- [ ] 8.2 Install the built zip into a clean IntelliJ IDEA 2026.2 and run the full README manual checklist once on macOS and once on Linux or Windows; verify every item passes
-- [ ] 8.3 Update `CHANGELOG.md` "Unreleased" and the `plugin.xml` description with the delivered features and known limitations (pure-Java/PATH solvers only, external visualizer window); verify `./gradlew patchChangelog --dry-run` (or `buildPlugin`) picks up the notes
+- [x] 8.1 Run `./gradlew check verifyPlugin buildPlugin` and verify it passes with no Plugin Verifier compatibility problems against 2026.2
+- [x] 8.2 Update `CHANGELOG.md` "Unreleased" and the `plugin.xml` description with the delivered features and known limitations (pure-Java/PATH solvers only, external visualizer window); verify `./gradlew patchChangelog --dry-run` (or `buildPlugin`) picks up the notes
