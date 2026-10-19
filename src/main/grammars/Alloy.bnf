@@ -1,0 +1,13 @@
+{
+  parserClass="com.serranofp.alloy.parser.AlloyParser"
+  elementTypeHolderClass="com.serranofp.alloy.psi.AlloyTypes"
+  psiPackage="com.serranofp.alloy.psi"
+  psiImplPackage="com.serranofp.alloy.psi.impl"
+
+  tokens=[
+    IDENTIFIER='regexp:\w+'
+  ]
+}
+
+// Placeholder: replaced by the paragraph grammar.
+alloyFile ::= IDENTIFIER*
