@@ -9,8 +9,15 @@
     <extensions defaultExtensionNs="com.intellij">
         <fileType name="Alloy" language="Alloy" extensions="als"
                   implementationClass="com.serranofp.alloy.AlloyFileType" fieldName="INSTANCE"/>
+        <lang.parserDefinition language="Alloy"
+                               implementationClass="com.serranofp.alloy.parser.AlloyParserDefinition"/>
         <lang.syntaxHighlighterFactory language="Alloy"
                                        implementationClass="com.serranofp.alloy.highlighting.AlloySyntaxHighlighterFactory"/>
+        <lang.braceMatcher language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyBraceMatcher"/>
+        <lang.commenter language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyCommenter"/>
+        <lang.foldingBuilder language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyFoldingBuilder"/>
+        <completion.contributor language="Alloy"
+                                implementationClass="com.serranofp.alloy.editor.AlloyKeywordCompletionContributor"/>
         <colorSettingsPage implementation="com.serranofp.alloy.highlighting.AlloyColorSettingsPage"/>
     </extensions>
 </idea-plugin>

@@ -16,11 +16,11 @@
 
 ## 3. Shallow PSI and native editor features
 
-- [ ] 3.1 Write `Alloy.bnf` with paragraph rules (`module`, `open`, `sig`/`enum`, `fact`, `pred`, `fun`, `assert`, `let`, `run`/`check`) and balanced-block bodies, using `pin`/`recoverWhile` at paragraph keywords; add the `ParserDefinition`; verify with `ParsingTestCase` PSI-dump tests for each paragraph kind, a body with a type error (no PSI error), and a broken `sig {` followed by valid paragraphs
-- [ ] 3.2 Implement the brace matcher (`{}`, `()`, `[]`) and closing-brace auto-insertion; verify with a `BasePlatformTestCase` typing test
-- [ ] 3.3 Implement the commenter (`//` line, `/* */` block); verify with tests toggling both comment kinds
-- [ ] 3.4 Implement the folding builder for multi-line bodies, multi-line block comments and consecutive `open` lines; verify with `testFolding` test data
-- [ ] 3.5 Implement keyword completion that is suppressed inside comments and strings; verify with completion tests (`ab` → `abstract`; nothing inside a `//` comment)
+- [x] 3.1 Write `Alloy.bnf` with paragraph rules (`module`, `open`, `sig`/`enum`, `fact`, `pred`, `fun`, `assert`, `let`, `run`/`check`) and balanced-block bodies, using `pin`/`recoverWhile` at paragraph keywords; add the `ParserDefinition`; verify with `ParsingTestCase` PSI-dump tests for each paragraph kind, a body with a type error (no PSI error), and a broken `sig {` followed by valid paragraphs
+- [x] 3.2 Implement the brace matcher (`{}`, `()`, `[]`) and closing-brace auto-insertion; verify with a `BasePlatformTestCase` typing test
+- [x] 3.3 Implement the commenter (`//` line, `/* */` block); verify with tests toggling both comment kinds
+- [x] 3.4 Implement the folding builder for multi-line bodies, multi-line block comments and consecutive `open` lines; verify with `testFolding` test data
+- [x] 3.5 Implement keyword completion that is suppressed inside comments and strings; verify with completion tests (`ab` → `abstract`; nothing inside a `//` comment)
 
 ## 4. Server shim
 

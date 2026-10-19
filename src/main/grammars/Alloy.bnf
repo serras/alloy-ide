@@ -3,6 +3,9 @@
   elementTypeHolderClass="com.serranofp.alloy.psi.AlloyTypes"
   elementTypeClass="com.serranofp.alloy.psi.AlloyElementType"
   tokenTypeClass="com.serranofp.alloy.psi.AlloyTokenType"
+  parserUtilClass="com.serranofp.alloy.parser.AlloyParserUtil"
+  psiClassPrefix="Alloy"
+  psiImplClassSuffix="Impl"
   psiPackage="com.serranofp.alloy.psi"
   psiImplPackage="com.serranofp.alloy.psi.impl"
 
@@ -120,5 +123,59 @@
   ]
 }
 
-// Placeholder: replaced by the paragraph grammar.
-alloyFile ::= IDENTIFIER*
+// Shallow grammar: the top-level paragraphs of upstream Alloy.cup (Spec ::= ...), with every body,
+// parameter list and expression kept as balanced groups of tokens. Semantic checking is left to the
+// language server.
+
+alloyFile ::= paragraph*
+
+private paragraph ::= !<<eof>> paragraph_inner {pin=1 recoverWhile=paragraph_recover}
+private paragraph_inner ::= moduleDecl | openDecl | enumDecl | sigDecl | factDecl | assertDecl
+                          | predDecl | funDecl | macroDecl | commandDecl
+private paragraph_recover ::= !paragraph_start
+private paragraph_start ::= PRIVATE? (MODULE | OPEN | ENUM | FACT | ASSERT | PRED | FUN | LET | RUN | CHECK)
+                          | sig_qualifier* SIG
+
+// Keywords that only start paragraphs and never occur inside an expression,
+// so an unclosed group stops before them instead of swallowing the rest of the file
+private paragraph_keyword ::= MODULE | OPEN | ENUM | SIG | ABSTRACT | FACT | ASSERT | PRED | FUN | RUN | CHECK
+
+moduleDecl ::= MODULE qualifiedName bracket_group? {pin=1}
+
+openDecl ::= PRIVATE? OPEN qualifiedName bracket_group? (AS qualifiedName)? {pin=2}
+
+enumDecl ::= PRIVATE? ENUM qualifiedName block {pin=2}
+
+sigDecl ::= sig_qualifier* SIG qualifiedName (COMMA qualifiedName)* sig_extension? block block? {pin=2}
+private sig_qualifier ::= ABSTRACT | LONE | ONE | SOME | PRIVATE | VAR
+private sig_extension ::= (EXTENDS | IN | EQUALS) sig_ref (PLUS sig_ref)*
+private sig_ref ::= qualifiedName | UNIV | SIGINT | STRING | NONE
+
+factDecl ::= FACT (qualifiedName | STRING_LITERAL)? block {pin=1}
+
+assertDecl ::= ASSERT (qualifiedName | STRING_LITERAL)? block {pin=1}
+
+predDecl ::= PRIVATE? PRED (sig_ref DOT)? qualifiedName parameters? block {pin=2}
+
+funDecl ::= PRIVATE? FUN (sig_ref DOT)? qualifiedName parameters? COLON return_type block {pin=2}
+private return_type ::= (bracket_group | paren_group | !(LBRACE | RBRACE | RBRACKET | RPAREN | paragraph_keyword) <<anyToken>>)+
+
+macroDecl ::= PRIVATE? LET qualifiedName parameters? (block | EQUALS macro_body) {pin=2}
+private macro_body ::= (block | bracket_group | paren_group | !(RBRACE | RBRACKET | RPAREN | paragraph_start) <<anyToken>>)+
+
+// A chain `run a => check b` is a single command, as in upstream
+commandDecl ::= command_keyword command_body ((IMPLIES_ARROW | IMPLIES) command_keyword command_body)* {pin=1}
+private command_keyword ::= RUN | CHECK
+private command_body ::= qualifiedName? (block | qualifiedName)? scope? (EXPECT NUMBER)?
+private scope ::= FOR scope_item+ {pin=1}
+private scope_item ::= NUMBER | BUT | EXACTLY | COMMA | DOT | COLON | SIGINT | INT | SEQ | STRING | STEPS | UNIV | NONE | qualifiedName
+
+qualifiedName ::= (THIS | SEQ) SLASH IDENTIFIER (SLASH IDENTIFIER)* | IDENTIFIER (SLASH IDENTIFIER)*
+
+private parameters ::= bracket_group | paren_group
+
+block ::= LBRACE balanced_item* RBRACE {pin=1}
+private bracket_group ::= LBRACKET balanced_item* RBRACKET {pin=1}
+private paren_group ::= LPAREN balanced_item* RPAREN {pin=1}
+private balanced_item ::= block | bracket_group | paren_group
+                        | !(RBRACE | RBRACKET | RPAREN | paragraph_keyword) <<anyToken>>

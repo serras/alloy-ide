@@ -1,1 +1,1 @@
-AlloyTokenType.LINE_COMMENT ('// no final newline')
+LINE_COMMENT ('// no final newline')

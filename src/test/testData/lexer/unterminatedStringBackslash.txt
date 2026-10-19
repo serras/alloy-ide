@@ -1,5 +1,5 @@
-AlloyTokenType.fact ('fact')
+fact ('fact')
 WHITE_SPACE (' ')
-AlloyTokenType.{ ('{')
+{ ('{')
 WHITE_SPACE (' ')
-AlloyTokenType.STRING_LITERAL ('"ends in backslash\')
+STRING_LITERAL ('"ends in backslash\')
