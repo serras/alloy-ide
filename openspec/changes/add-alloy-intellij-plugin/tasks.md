@@ -37,13 +37,13 @@
 
 ## 6. Command execution
 
-- [ ] 6.1 Implement the "Alloy command" run configuration type, its settings editor (file + command) and persistence; verify with a test that a configuration survives `writeExternal`/`readExternal` and that a missing file fails `checkConfiguration`
-- [ ] 6.2 Implement the `RunLineMarkerContributor` on `run`/`check` keyword leaves and a `LazyRunConfigurationProducer`; verify with tests that markers appear only on command lines and that the producer creates and recognizes a configuration for a given command
-- [ ] 6.3 Implement the project-level active-run service and `AlloyRunProcessHandler` (busy rejection, routing of output to the active run, dropping messages when idle); verify with unit tests that a second launch is refused with "An Alloy analysis is already running" and that messages with no active run are ignored
-- [ ] 6.4 Implement console rendering of `showExecutionOutput` (bold, warning style, `lineBreak`, `replaceLast` via `\r`, hyperlinks sending `OpenModel`, termination on `RunCompleted`); verify with unit tests feeding recorded message sequences and checking console text, content types and termination
-- [ ] 6.5 Implement launch: `ListAlloyCommands` round trip with a timeout, selection by label then ordinal, `ExecuteAlloyCommand` with the server's arguments, "command not found" and "language server unavailable" failures; verify with tests against a fake custom server proxy for found/not-found/timeout/server-down cases
-- [ ] 6.6 Implement Stop (`StopExecution` + terminate on "Stopped" or after a timeout); verify with a unit test using the fake server proxy
-- [ ] 6.7 Verify execution end to end in `runIde` and add it to the README checklist: gutter run of `run`/`check`, unsaved scope change used, progress updates in place, instance and counterexample links open the visualizer, the core link highlights core locations, Stop works during a long analysis, a model with errors reports them; document the run feature in the README "Features" section
+- [x] 6.1 Implement the "Alloy command" run configuration type, its settings editor (file + command) and persistence; verify with a test that a configuration survives `writeExternal`/`readExternal` and that a missing file fails `checkConfiguration`
+- [x] 6.2 Implement the `RunLineMarkerContributor` on `run`/`check` keyword leaves and a `LazyRunConfigurationProducer`; verify with tests that markers appear only on command lines and that the producer creates and recognizes a configuration for a given command
+- [x] 6.3 Implement the project-level active-run service and `AlloyRunProcessHandler` (busy rejection, routing of output to the active run, dropping messages when idle); verify with unit tests that a second launch is refused with "An Alloy analysis is already running" and that messages with no active run are ignored
+- [x] 6.4 Implement console rendering of `showExecutionOutput` (bold, warning style, `lineBreak`, `replaceLast` via `\r`, hyperlinks sending `OpenModel`, termination on `RunCompleted`); verify with unit tests feeding recorded message sequences and checking console text, content types and termination
+- [x] 6.5 Implement launch: `ListAlloyCommands` round trip with a timeout, selection by label then ordinal, `ExecuteAlloyCommand` with the server's arguments, "command not found" and "language server unavailable" failures; verify with tests against a fake custom server proxy for found/not-found/timeout/server-down cases
+- [x] 6.6 Implement Stop (`StopExecution` + terminate on "Stopped" or after a timeout); verify with a unit test using the fake server proxy
+- [x] 6.7 Verify execution end to end in `runIde` and add it to the README checklist: gutter run of `run`/`check`, unsaved scope change used, progress updates in place, instance and counterexample links open the visualizer, the core link highlights core locations, Stop works during a long analysis, a model with errors reports them; document the run feature in the README "Features" section
 
 ## 7. Analyzer settings
 

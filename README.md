@@ -6,6 +6,7 @@
 
 - **File type**: `.als` files are recognized as Alloy models and shown with the Alloy icon. Alloy models embedded in Markdown (`.md`) files are not supported.
 - **Syntax highlighting**: keywords, temporal operators (including the prime `'`), operators, identifiers, numbers, strings, comments (line, block and documentation), braces, parentheses, brackets, commas and dots, and invalid characters. Every category can be customized in *Settings | Editor | Color Scheme | Alloy*.
+- **Running commands**: every `run` and `check` command has a run icon in the gutter that creates an *Alloy command* run configuration. The Run console streams the analyzer output, and its links open instances and counterexamples in the Alloy visualizer or highlight an unsat core in the editor. *Stop* aborts the analysis. Only one analysis runs at a time in each project.
 
 ## Development
 
@@ -26,6 +27,20 @@ Some behavior depends on a live language server and the IDE UI, so it is checked
 - [ ] *Go to Symbol* finds `p`, and selecting it opens `a.als` at the declaration.
 - [ ] Killing the server process (`kill <pid>`) shows the server as failed in the language services widget, with its stderr available and a restart action that brings it back.
 - [ ] Closing the project terminates the server process.
+
+### Manual checklist: command execution
+
+Use a model with `sig Node { succ: lone Node }`, `pred show { some succ }`, `run show for 3`, `check noCycles { no n: Node | n in n.^succ } for 3` and a slow command such as `run big { #Node = 30 } for 30 but 7 Int`.
+
+- [ ] Only the `run` and `check` lines have a run icon. Clicking the icon of `run show` and choosing *Run* creates a temporary *Alloy command* configuration and runs it; the same works for `check noCycles`.
+- [ ] Changing `for 3` to `for 4` without saving and running again makes the analyzer report the new scope.
+- [ ] The progress line "Writing the XML file..." is replaced in place by the result rather than kept as an extra line.
+- [ ] The "Instance" link of `run show` and the "Counterexample" link of `check noCycles` open the Alloy visualizer window.
+- [ ] With *Unsat core minimization* enabled, a valid check shows a core link that highlights the core locations in the editor as "part of unsat core" warnings.
+- [ ] *Stop* during `run big` ends the run with "Stopped".
+- [ ] Starting a second command while `run big` is running is refused with "An Alloy analysis is already running".
+- [ ] A saved configuration whose command was renamed fails with "Command ... was not found in ..."; one whose file was deleted reports the missing file and does not start.
+- [ ] Running a command in a file with a type error reports that the file has errors, and the error appears in the editor.
 
 ## Attribution
 

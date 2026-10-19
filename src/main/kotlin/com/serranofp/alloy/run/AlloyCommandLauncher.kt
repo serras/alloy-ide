@@ -1,0 +1,68 @@
+package com.serranofp.alloy.run
+
+import com.serranofp.alloy.lsp.CommandsListResultItem
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+
+/**
+ * Starts a command on the server: lists the commands of the file, picks [command] by label (or position),
+ * and executes it with the server's own `[uri, index, line, character]`, so that its positions never have
+ * to be reproduced from the native PSI.
+ */
+class AlloyCommandLauncher(
+    private val service: AlloyRunService,
+    private val listTimeoutMillis: Long = LIST_TIMEOUT_MILLIS,
+) {
+    /** Runs on a background thread; every failure ends [handler] with a message in its console. */
+    fun launch(
+        handler: AlloyRunProcessHandler,
+        connection: AlloyServerConnection?,
+        uri: String?,
+        fileName: String,
+        command: AlloyCommandRef,
+    ) {
+        if (connection == null || uri == null) {
+            handler.fail(AlloyRunService.SERVER_UNAVAILABLE_MESSAGE)
+            return
+        }
+        handler.connection = connection
+
+        val commands = try {
+            service.requestCommands(connection, uri).get(listTimeoutMillis, TimeUnit.MILLISECONDS).commands
+        } catch (_: TimeoutException) {
+            handler.fail("The Alloy language server did not list the commands of $fileName in time")
+            return
+        } catch (e: ExecutionException) {
+            handler.fail("Could not list the commands of $fileName: ${e.cause?.message ?: e.message}")
+            return
+        }
+        if (handler.isFinished()) return
+
+        if (commands.isEmpty()) {
+            // The server lists no commands when the module does not parse or type-check
+            handler.fail("$fileName has errors, see the problems reported in the editor")
+            return
+        }
+        val item = select(commands, command)
+        val arguments = item?.command?.arguments
+        if (arguments == null) {
+            handler.fail("Command ${command.displayName} was not found in $fileName")
+            return
+        }
+        connection.execute(arguments)
+    }
+
+    companion object {
+        const val LIST_TIMEOUT_MILLIS = 10_000L
+
+        fun select(commands: List<CommandsListResultItem>, command: AlloyCommandRef): CommandsListResultItem? =
+            if (command.label != null) {
+                commands.firstOrNull { item ->
+                    AlloyCommands.labelOfServerTitle(item.title)?.let { AlloyCommands.sameLabel(it, command.label) } == true
+                }
+            } else {
+                commands.getOrNull(command.index)
+            }
+    }
+}

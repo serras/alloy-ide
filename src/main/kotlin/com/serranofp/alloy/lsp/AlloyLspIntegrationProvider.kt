@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.Lsp4jClient
+import com.intellij.platform.lsp.api.LspServerListener
 import com.intellij.platform.lsp.api.LspServerNotificationsHandler
 import com.intellij.platform.lsp.api.LspIntegrationProvider
 import com.intellij.platform.lsp.api.ProjectWideLspClientDescriptor
@@ -21,6 +22,7 @@ import com.intellij.platform.lsp.api.customization.LspDocumentLinkDisabled
 import com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
 import com.intellij.platform.lsp.api.customization.LspFormattingDisabled
 import com.serranofp.alloy.AlloyFileType
+import com.serranofp.alloy.run.AlloyRunService
 import org.eclipse.lsp4j.services.LanguageServer
 import java.nio.file.Path
 
@@ -59,6 +61,13 @@ class AlloyLspClientDescriptor(project: Project) : ProjectWideLspClientDescripto
         AlloyLsp4jClient(handler) { AlloyServerNotifications.publisher(project) }
 
     override val lspCustomization: LspCustomization = AlloyLspCustomization
+
+    /** A run in progress can never complete once its server is gone. */
+    override val lspServerListener: LspServerListener = object : LspServerListener {
+        override fun serverStopped(shutdownNormally: Boolean) {
+            AlloyRunService.getInstance(project).serverStopped()
+        }
+    }
 
     companion object {
         const val PLUGIN_ID = "com.serranofp.alloy-ide"

@@ -19,6 +19,9 @@
         <completion.contributor language="Alloy"
                                 implementationClass="com.serranofp.alloy.editor.AlloyKeywordCompletionContributor"/>
         <platform.lsp.integrationProvider implementation="com.serranofp.alloy.lsp.AlloyLspIntegrationProvider"/>
+        <configurationType implementation="com.serranofp.alloy.run.AlloyCommandConfigurationType"/>
+        <runConfigurationProducer implementation="com.serranofp.alloy.run.AlloyCommandRunConfigurationProducer"/>
+        <runLineMarkerContributor language="Alloy" implementationClass="com.serranofp.alloy.run.AlloyRunLineMarkerContributor"/>
         <colorSettingsPage implementation="com.serranofp.alloy.highlighting.AlloyColorSettingsPage"/>
     </extensions>
 </idea-plugin>
