@@ -1,0 +1,8 @@
+AlloyTokenType.sig ('sig')
+WHITE_SPACE (' ')
+AlloyTokenType.IDENTIFIER ('A')
+WHITE_SPACE (' ')
+AlloyTokenType.{ ('{')
+AlloyTokenType.} ('}')
+WHITE_SPACE (' ')
+AlloyTokenType.DOC_COMMENT ('/** never closed\nsig B {}')

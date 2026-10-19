@@ -9,10 +9,10 @@
 
 ## 2. Language, file type and lexer
 
-- [ ] 2.1 Register the Alloy `Language`, `.als` `LanguageFileType` and file icon in `plugin.xml`; verify with a `BasePlatformTestCase` that a `model.als` file has the Alloy file type and a `.md` file does not
-- [ ] 2.2 Port upstream `Alloy.lex` (tag `v6.2.0`, `org.alloytools.alloy.core/parser/`) to `Alloy.flex` for IntelliJ's `FlexLexer`, keeping its license header, covering keywords, temporal operators, prime, identifiers, numbers, strings, `//`/`--`/`/* */`/`/** */` comments and a `BAD_CHARACTER` fallback; verify with `LexerTestCase` golden tests for every token class, including invalid characters and unterminated comments/strings
-- [ ] 2.3 Implement the syntax highlighter and `ColorSettingsPage` with the categories listed in the spec and a demo snippet; verify with a test that each category's attribute key is reachable from the demo text and manually in `runIde` that changing "Temporal operator" recolors an open file
-- [ ] 2.4 Add README attribution for the ported grammar, plus a "Features" section listing file type and highlighting; verify the README renders with the new sections
+- [x] 2.1 Register the Alloy `Language`, `.als` `LanguageFileType` and file icon in `plugin.xml`; verify with a `BasePlatformTestCase` that a `model.als` file has the Alloy file type and a `.md` file does not
+- [x] 2.2 Port upstream `Alloy.lex` (tag `v6.2.0`, `org.alloytools.alloy.core/parser/`) to `Alloy.flex` for IntelliJ's `FlexLexer`, keeping its license header, covering keywords, temporal operators, prime, identifiers, numbers, strings, `//`/`--`/`/* */`/`/** */` comments and a `BAD_CHARACTER` fallback; verify with `LexerTestCase` golden tests for every token class, including invalid characters and unterminated comments/strings
+- [x] 2.3 Implement the syntax highlighter and `ColorSettingsPage` with the categories listed in the spec and a demo snippet; verify with a test that each category's attribute key is reachable from the demo text and manually in `runIde` that changing "Temporal operator" recolors an open file
+- [x] 2.4 Add README attribution for the ported grammar, plus a "Features" section listing file type and highlighting; verify the README renders with the new sections
 
 ## 3. Shallow PSI and native editor features
 

@@ -7,5 +7,10 @@
         ]]></description>
     <depends>com.intellij.modules.lsp</depends>
     <extensions defaultExtensionNs="com.intellij">
+        <fileType name="Alloy" language="Alloy" extensions="als"
+                  implementationClass="com.serranofp.alloy.AlloyFileType" fieldName="INSTANCE"/>
+        <lang.syntaxHighlighterFactory language="Alloy"
+                                       implementationClass="com.serranofp.alloy.highlighting.AlloySyntaxHighlighterFactory"/>
+        <colorSettingsPage implementation="com.serranofp.alloy.highlighting.AlloyColorSettingsPage"/>
     </extensions>
 </idea-plugin>
