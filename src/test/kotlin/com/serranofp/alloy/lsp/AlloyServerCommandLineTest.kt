@@ -8,6 +8,8 @@ import com.intellij.platform.lsp.api.customization.LspDocumentLinkDisabled
 import com.intellij.platform.lsp.api.customization.LspFormattingDisabled
 import com.intellij.platform.lsp.api.customization.LspCustomization
 import java.nio.file.Path
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
 
 class AlloyServerCommandLineTest : BasePlatformTestCase() {
     private val javaHome = Path.of("/ide/jbr")
@@ -48,6 +50,13 @@ class AlloyServerCommandLineTest : BasePlatformTestCase() {
         assertEquals(AlloyLspClientDescriptor.serverLib().resolve("*").toString(), classpath)
         assertTrue(classpath, Path.of(classpath).parent.endsWith(Path.of("alloy-ide", "lib", "server")))
         assertEquals(project.basePath, commandLine.workDirectory?.path)
+    }
+
+    fun testSandboxShipsServerJars() {
+        // Every sandbox task copies the server, so this also guards the runIde sandbox
+        val jars = AlloyLspClientDescriptor.serverLib().listDirectoryEntries("*.jar").map { it.name }
+        assertTrue(jars.toString(), jars.any { it.startsWith("server-shim-") })
+        assertTrue(jars.toString(), jars.any { it.startsWith("org.alloytools.alloy.lsp-") })
     }
 
     fun testDescriptorHandlesAlloyFilesOnly() {

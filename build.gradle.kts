@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -83,7 +84,9 @@ tasks.compileJava {
     dependsOn(tasks.generateLexer, tasks.generateParser)
 }
 
-tasks.prepareSandbox {
+// Every sandbox, not just prepareSandbox (used by buildPlugin): runIde and the other run tasks
+// prepare their own (prepareSandbox_runIde, ...)
+tasks.withType<PrepareSandboxTask>().configureEach {
     from(alloyServer) {
         into(pluginName.map { "$it/lib/server" })
     }
