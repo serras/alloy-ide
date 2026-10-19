@@ -7,6 +7,7 @@
 - **File type**: `.als` files are recognized as Alloy models and shown with the Alloy icon. Alloy models embedded in Markdown (`.md`) files are not supported.
 - **Syntax highlighting**: keywords, temporal operators (including the prime `'`), operators, identifiers, numbers, strings, comments (line, block and documentation), braces, parentheses, brackets, commas and dots, and invalid characters. Every category can be customized in *Settings | Editor | Color Scheme | Alloy*.
 - **Running commands**: every `run` and `check` command has a run icon in the gutter that creates an *Alloy command* run configuration. The Run console streams the analyzer output, and its links open instances and counterexamples in the Alloy visualizer or highlight an unsat core in the editor. *Stop* aborts the analysis. Only one analysis runs at a time in each project.
+- **Analyzer settings**: *Settings | Languages & Frameworks | Alloy* sets the solver, skolem depth, overflow prevention, unsat core minimization and granularity, non-fatal warnings, recording of the Kodkod input/output and partial instance inference for every project. The solver list only shows the solvers that can run on this machine: the pure-Java SAT4J variants, and solvers whose executable is on the `PATH`. These settings are independent of the Alloy desktop application's preferences. Applying a change restarts the language server.
 
 ## Development
 
@@ -41,6 +42,16 @@ Use a model with `sig Node { succ: lone Node }`, `pred show { some succ }`, `run
 - [ ] Starting a second command while `run big` is running is refused with "An Alloy analysis is already running".
 - [ ] A saved configuration whose command was renamed fails with "Command ... was not found in ..."; one whose file was deleted reports the missing file and does not start.
 - [ ] Running a command in a file with a type error reports that the file has errors, and the error appears in the editor.
+
+### Manual checklist: analyzer settings
+
+- [ ] *Settings | Languages & Frameworks | Alloy* shows the eight options with their defaults (solver sat4j, skolem depth 1, prevent overflows on, core minimization Fast, core granularity Top-level, the rest off), and the skolem depth only offers 0 to 4.
+- [ ] With skolem depth 3 set in the Alloy desktop application and the IDE settings left at their defaults, a run in the IDE prints `SkolemDepth=1`.
+- [ ] After changing the IDE settings and running commands, the desktop application still shows its own values (skolem depth 3).
+- [ ] Changing the skolem depth to 2 and applying restarts the server: diagnostics reappear in open files, and the next run prints `SkolemDepth=2`.
+- [ ] Clicking *OK* without changes does not restart the server.
+- [ ] Applying a change while `run big` is running ends that run with "The analysis was interrupted by a settings change".
+- [ ] A saved solver that is no longer available is shown as "(unavailable)", and the next run prints a warning and uses sat4j.
 
 ## Attribution
 

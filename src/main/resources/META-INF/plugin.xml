@@ -22,6 +22,8 @@
         <configurationType implementation="com.serranofp.alloy.run.AlloyCommandConfigurationType"/>
         <runConfigurationProducer implementation="com.serranofp.alloy.run.AlloyCommandRunConfigurationProducer"/>
         <runLineMarkerContributor language="Alloy" implementationClass="com.serranofp.alloy.run.AlloyRunLineMarkerContributor"/>
+        <applicationConfigurable parentId="language" id="com.serranofp.alloy.settings" displayName="Alloy"
+                                 instance="com.serranofp.alloy.settings.AlloySettingsConfigurable"/>
         <colorSettingsPage implementation="com.serranofp.alloy.highlighting.AlloyColorSettingsPage"/>
     </extensions>
 </idea-plugin>

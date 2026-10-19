@@ -47,11 +47,11 @@
 
 ## 7. Analyzer settings
 
-- [ ] 7.1 Implement the application-level `AlloySettings` state (eight options, upstream defaults, `alloy.xml`) and its mapping to `alloy.ide.pref.*` values; verify with tests for defaults, a serialization round trip, and the generated property map (including the SAT4J fallback for an unavailable solver)
-- [ ] 7.2 Implement solver discovery (background `list-solvers` call, session cache, loading state); verify with a unit test that parses shim output and falls back to SAT4J-only on failure
-- [ ] 7.3 Implement the `Configurable` under Languages & Frameworks with restricted choices and an "(unavailable)" marker for a missing saved solver; verify with a test that `isModified`/`apply`/`reset` round-trip every option
-- [ ] 7.4 On apply with changes, terminate the active run with an "interrupted by a settings change" message and restart each project's server; on apply without changes do nothing; print the solver-fallback warning at the next run start; verify with tests using the active-run service, and manually in `runIde` that the server restarts and diagnostics reappear
-- [ ] 7.5 Verify isolation manually and record it in the README checklist: with skolem depth 3 set in the Alloy desktop app, the IDE runs with depth 1; after changing IDE settings and running, the desktop app's preferences are unchanged; document the settings page in the README "Features" section
+- [x] 7.1 Implement the application-level `AlloySettings` state (eight options, upstream defaults, `alloy.xml`) and its mapping to `alloy.ide.pref.*` values; verify with tests for defaults, a serialization round trip, and the generated property map (including the SAT4J fallback for an unavailable solver)
+- [x] 7.2 Implement solver discovery (background `list-solvers` call, session cache, loading state); verify with a unit test that parses shim output and falls back to SAT4J-only on failure
+- [x] 7.3 Implement the `Configurable` under Languages & Frameworks with restricted choices and an "(unavailable)" marker for a missing saved solver; verify with a test that `isModified`/`apply`/`reset` round-trip every option
+- [x] 7.4 On apply with changes, terminate the active run with an "interrupted by a settings change" message and restart each project's server; on apply without changes do nothing; print the solver-fallback warning at the next run start; verify with tests using the active-run service, and manually in `runIde` that the server restarts and diagnostics reappear
+- [x] 7.5 Verify isolation manually and record it in the README checklist: with skolem depth 3 set in the Alloy desktop app, the IDE runs with depth 1; after changing IDE settings and running, the desktop app's preferences are unchanged; document the settings page in the README "Features" section
 
 ## 8. Integration and release
 

@@ -23,6 +23,8 @@ import com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
 import com.intellij.platform.lsp.api.customization.LspFormattingDisabled
 import com.serranofp.alloy.AlloyFileType
 import com.serranofp.alloy.run.AlloyRunService
+import com.serranofp.alloy.settings.AlloySettings
+import com.serranofp.alloy.settings.AlloySolvers
 import org.eclipse.lsp4j.services.LanguageServer
 import java.nio.file.Path
 
@@ -52,8 +54,9 @@ class AlloyLspClientDescriptor(project: Project) : ProjectWideLspClientDescripto
             isMac = SystemInfo.isMac,
         ).withWorkDirectory(project.basePath)
 
-    /** Analyzer options for the server; until they are configurable the server uses the upstream defaults. */
-    internal fun analyzerPreferences(): Map<String, String> = emptyMap()
+    /** Analyzer options for the server; called off the EDT, so solver discovery may be waited for. */
+    internal fun analyzerPreferences(): Map<String, String> =
+        AlloySettings.getInstance().analyzerPreferences { AlloySolvers.getInstance().ids() }
 
     override val lsp4jServerClass: Class<out LanguageServer> = AlloyLanguageServerApi::class.java
 

@@ -32,8 +32,20 @@ class AlloyCommandLauncherTest : BasePlatformTestCase() {
         }
     }
 
-    private fun launch(connection: AlloyServerConnection?, command: AlloyCommandRef, timeout: Long = 2_000) =
-        AlloyCommandLauncher(service, timeout).launch(run, connection, uri, "model.als", command)
+    private fun launch(
+        connection: AlloyServerConnection?,
+        command: AlloyCommandRef,
+        timeout: Long = 2_000,
+        solverWarning: String? = null,
+    ) = AlloyCommandLauncher(service, timeout) { solverWarning }.launch(run, connection, uri, "model.als", command)
+
+    fun testSolverFallbackWarningAtRunStart() {
+        val connection = FakeServerConnection(service, listed)
+        launch(connection, AlloyCommandRef("show", 0), solverWarning = "The solver minisat is not available, using sat4j instead\n")
+        assertEquals("The solver minisat is not available, using sat4j instead\n", sink.text)
+        assertSame(com.intellij.execution.ui.ConsoleViewContentType.LOG_WARNING_OUTPUT, sink.segments.single().type)
+        assertEquals(1, connection.executed.size)
+    }
 
     fun testExecutesTheCommandFoundByLabel() {
         val connection = FakeServerConnection(service, listed)

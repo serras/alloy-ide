@@ -61,6 +61,10 @@ class AlloyRunProcessHandler(
         if (type == AlloyMessageType.RunCompleted) terminate(0)
     }
 
+    fun warn(message: String) {
+        sink.print(message, ConsoleViewContentType.LOG_WARNING_OUTPUT)
+    }
+
     /** Ends the run with an error that is shown in the console. */
     fun fail(message: String) {
         if (isFinished()) return

@@ -1,0 +1,116 @@
+package com.serranofp.alloy.settings
+
+import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+class AlloySettingsConfigurableTest : BasePlatformTestCase() {
+    private val settings = AlloySettings()
+    private var changes = 0
+
+    private fun configurable(solvers: List<AlloySolver>): AlloySettingsConfigurable {
+        val discovery = AlloySolvers().apply { discover = { solvers } }
+        return AlloySettingsConfigurable(settings, discovery) { changes++ }.also {
+            it.createComponent()
+            discovery.load().get(10, TimeUnit.SECONDS)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        }
+    }
+
+    private val present = listOf(AlloySolver("sat4j", "sat4j"), AlloySolver("sat4j.light", "sat4j.light"), AlloySolver("minisat", "MiniSat"))
+
+    fun testShowsSavedValues() {
+        val page = configurable(present)
+        assertEquals("sat4j", page.solver.selectedItem)
+        assertEquals(1, page.skolemDepth.selectedItem)
+        assertTrue(page.preventOverflows.isSelected)
+        assertEquals("Fast", page.coreMinimization.selectedItem)
+        assertEquals("Top-level", page.coreGranularity.selectedItem)
+        assertFalse(page.nonFatalWarnings.isSelected)
+        assertFalse(page.recordKodkod.isSelected)
+        assertFalse(page.inferPartialInstance.isSelected)
+        assertFalse(page.isModified)
+    }
+
+    fun testRestrictedChoices() {
+        val page = configurable(present)
+        assertEquals(listOf(0, 1, 2, 3, 4), (0 until page.skolemDepth.itemCount).map { page.skolemDepth.getItemAt(it) })
+        assertEquals(listOf("Slow", "Medium", "Fast"), (0 until page.coreMinimization.itemCount).map { page.coreMinimization.getItemAt(it) })
+        assertEquals(4, page.coreGranularity.itemCount)
+        assertEquals(listOf("sat4j", "sat4j.light", "minisat"), (0 until page.solver.itemCount).map { page.solver.getItemAt(it) })
+        assertEquals("MiniSat", page.solverLabel("minisat"))
+    }
+
+    fun testEveryOptionRoundTrips() {
+        val page = configurable(present)
+        val edits: List<Pair<String, () -> Unit>> = listOf(
+            "solver" to { page.solver.selectedItem = "minisat" },
+            "skolem depth" to { page.skolemDepth.selectedItem = 3 },
+            "prevent overflows" to { page.preventOverflows.isSelected = false },
+            "core minimization" to { page.coreMinimization.selectedItem = "Slow" },
+            "core granularity" to { page.coreGranularity.selectedItem = "Expand quantifiers" },
+            "non-fatal warnings" to { page.nonFatalWarnings.isSelected = true },
+            "record Kodkod" to { page.recordKodkod.isSelected = true },
+            "infer partial instance" to { page.inferPartialInstance.isSelected = true },
+        )
+        for ((option, edit) in edits) {
+            edit()
+            assertTrue("$option is not detected as modified", page.isModified)
+            page.reset()
+            assertFalse("reset does not restore $option", page.isModified)
+            edit()
+            page.apply()
+            assertFalse("apply does not save $option", page.isModified)
+        }
+        assertEquals(edits.size, changes)
+
+        val saved = settings.state
+        assertEquals("minisat", saved.solver)
+        assertEquals(3, saved.skolemDepth)
+        assertFalse(saved.preventOverflows)
+        assertEquals(0, saved.coreMinimization)
+        assertEquals(3, saved.coreGranularity)
+        assertTrue(saved.nonFatalWarnings)
+        assertTrue(saved.recordKodkod)
+        assertTrue(saved.inferPartialInstance)
+
+        // A fresh page shows what was saved
+        val reopened = configurable(present)
+        assertEquals("minisat", reopened.solver.selectedItem)
+        assertEquals(3, reopened.skolemDepth.selectedItem)
+        assertEquals("Expand quantifiers", reopened.coreGranularity.selectedItem)
+        assertFalse(reopened.isModified)
+    }
+
+    fun testApplyWithoutChangesDoesNothing() {
+        val page = configurable(present)
+        page.apply()
+        assertEquals(0, changes)
+    }
+
+    fun testMissingSavedSolverIsShownAsUnavailable() {
+        settings.state.solver = "glucose"
+        val page = configurable(listOf(AlloySolver("sat4j", "sat4j")))
+        assertEquals("glucose", page.solver.selectedItem)
+        assertEquals("glucose (unavailable)", page.solverLabel("glucose"))
+        assertEquals("sat4j", page.solverLabel("sat4j"))
+        assertFalse(page.isModified)
+    }
+
+    fun testLoadingState() {
+        val release = CountDownLatch(1)
+        val discovery = AlloySolvers().apply { discover = { release.await(); present } }
+        val page = AlloySettingsConfigurable(settings, discovery) { changes++ }
+        try {
+            page.createComponent()
+            assertEquals("sat4j (loading solvers...)", page.solverLabel("sat4j"))
+            assertFalse(page.isModified)
+        } finally {
+            release.countDown()
+        }
+        discovery.load().get(10, TimeUnit.SECONDS)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals("MiniSat", page.solverLabel("minisat"))
+    }
+}

@@ -1,6 +1,8 @@
 package com.serranofp.alloy.run
 
 import com.serranofp.alloy.lsp.CommandsListResultItem
+import com.serranofp.alloy.settings.AlloySettings
+import com.serranofp.alloy.settings.AlloySolvers
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -13,6 +15,10 @@ import java.util.concurrent.TimeoutException
 class AlloyCommandLauncher(
     private val service: AlloyRunService,
     private val listTimeoutMillis: Long = LIST_TIMEOUT_MILLIS,
+    /** Set while the saved solver is unavailable and the server runs with `sat4j` instead. */
+    private val solverWarning: () -> String? = {
+        AlloySettings.getInstance().solverFallbackWarning { AlloySolvers.getInstance().ids() }
+    },
 ) {
     /** Runs on a background thread; every failure ends [handler] with a message in its console. */
     fun launch(
@@ -22,6 +28,7 @@ class AlloyCommandLauncher(
         fileName: String,
         command: AlloyCommandRef,
     ) {
+        solverWarning()?.let(handler::warn)
         if (connection == null || uri == null) {
             handler.fail(AlloyRunService.SERVER_UNAVAILABLE_MESSAGE)
             return
