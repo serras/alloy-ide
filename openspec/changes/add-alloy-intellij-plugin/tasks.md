@@ -24,9 +24,9 @@
 
 ## 4. Server shim
 
-- [ ] 4.1 Implement the in-memory `PreferencesFactory` seeded from `alloy.ide.pref.*` system properties; verify with JUnit that a seeded value is returned by `A4Preferences.SkolemDepth.get()`, that `set()` calls do not touch the real user preference store, and that unseeded keys return upstream defaults
-- [ ] 4.2 Implement the `serve` entry point (install prefs, then `AlloyLanguageServer.main` over stdio) with nothing written to stdout before the LSP stream; verify with a JUnit test that starts it as a subprocess, sends `initialize`, and receives capabilities
-- [ ] 4.3 Implement `list-solvers` printing a JSON array of present solvers; verify with JUnit that the output parses and contains the SAT4J id
+- [x] 4.1 Implement the in-memory `PreferencesFactory` seeded from `alloy.ide.pref.*` system properties; verify with JUnit that a seeded value is returned by `A4Preferences.SkolemDepth.get()`, that `set()` calls do not touch the real user preference store, and that unseeded keys return upstream defaults
+- [x] 4.2 Implement the `serve` entry point (install prefs, then `AlloyLanguageServer.main` over stdio) with nothing written to stdout before the LSP stream; verify with a JUnit test that starts it as a subprocess, sends `initialize`, and receives capabilities
+- [x] 4.3 Implement `list-solvers` printing a JSON array of present solvers; verify with JUnit that the output parses and contains the SAT4J id
 
 ## 5. Language server integration
 
