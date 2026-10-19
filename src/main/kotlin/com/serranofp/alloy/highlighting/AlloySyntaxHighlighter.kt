@@ -40,23 +40,23 @@ class AlloySyntaxHighlighter : SyntaxHighlighterBase() {
     override fun getTokenHighlights(tokenType: IElementType?): Array<TextAttributesKey> =
         pack(attributesFor(tokenType))
 
-    private fun attributesFor(tokenType: IElementType?): TextAttributesKey? = when {
-        tokenType == null -> null
-        AlloyTokenSets.KEYWORDS.contains(tokenType) -> AlloyHighlighterColors.KEYWORD
-        AlloyTokenSets.TEMPORAL_OPERATORS.contains(tokenType) -> AlloyHighlighterColors.TEMPORAL_OPERATOR
-        AlloyTokenSets.OPERATORS.contains(tokenType) -> AlloyHighlighterColors.OPERATOR
-        AlloyTokenSets.BRACES.contains(tokenType) -> AlloyHighlighterColors.BRACES
-        AlloyTokenSets.PARENTHESES.contains(tokenType) -> AlloyHighlighterColors.PARENTHESES
-        AlloyTokenSets.BRACKETS.contains(tokenType) -> AlloyHighlighterColors.BRACKETS
-        tokenType == AlloyTypes.COMMA -> AlloyHighlighterColors.COMMA
-        tokenType == AlloyTypes.DOT -> AlloyHighlighterColors.DOT
-        tokenType == AlloyTypes.IDENTIFIER -> AlloyHighlighterColors.IDENTIFIER
-        tokenType == AlloyTypes.NUMBER -> AlloyHighlighterColors.NUMBER
-        tokenType == AlloyTypes.STRING_LITERAL -> AlloyHighlighterColors.STRING
-        tokenType == AlloyTypes.LINE_COMMENT -> AlloyHighlighterColors.LINE_COMMENT
-        tokenType == AlloyTypes.BLOCK_COMMENT -> AlloyHighlighterColors.BLOCK_COMMENT
-        tokenType == AlloyTypes.DOC_COMMENT -> AlloyHighlighterColors.DOC_COMMENT
-        tokenType == TokenType.BAD_CHARACTER -> AlloyHighlighterColors.BAD_CHARACTER
+    private fun attributesFor(tokenType: IElementType?): TextAttributesKey? = when (tokenType) {
+        null -> null
+        in AlloyTokenSets.KEYWORDS -> AlloyHighlighterColors.KEYWORD
+        in AlloyTokenSets.TEMPORAL_OPERATORS -> AlloyHighlighterColors.TEMPORAL_OPERATOR
+        in AlloyTokenSets.OPERATORS -> AlloyHighlighterColors.OPERATOR
+        in AlloyTokenSets.BRACES -> AlloyHighlighterColors.BRACES
+        in AlloyTokenSets.PARENTHESES -> AlloyHighlighterColors.PARENTHESES
+        in AlloyTokenSets.BRACKETS -> AlloyHighlighterColors.BRACKETS
+        AlloyTypes.COMMA -> AlloyHighlighterColors.COMMA
+        AlloyTypes.DOT -> AlloyHighlighterColors.DOT
+        AlloyTypes.IDENTIFIER -> AlloyHighlighterColors.IDENTIFIER
+        AlloyTypes.NUMBER -> AlloyHighlighterColors.NUMBER
+        AlloyTypes.STRING_LITERAL -> AlloyHighlighterColors.STRING
+        AlloyTypes.LINE_COMMENT -> AlloyHighlighterColors.LINE_COMMENT
+        AlloyTypes.BLOCK_COMMENT -> AlloyHighlighterColors.BLOCK_COMMENT
+        AlloyTypes.DOC_COMMENT -> AlloyHighlighterColors.DOC_COMMENT
+        TokenType.BAD_CHARACTER -> AlloyHighlighterColors.BAD_CHARACTER
         else -> null
     }
 }

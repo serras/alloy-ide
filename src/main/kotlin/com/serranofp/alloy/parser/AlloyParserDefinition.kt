@@ -21,7 +21,7 @@ class AlloyParserDefinition : ParserDefinition {
 
     override fun createParser(project: Project?): PsiParser = AlloyParser()
 
-    override fun getFileNodeType(): IFileElementType = FILE
+    override fun getFileNodeType(): IFileElementType = IFileElementType(AlloyLanguage)
 
     override fun getCommentTokens(): TokenSet = AlloyTokenSets.COMMENTS
 
@@ -30,9 +30,4 @@ class AlloyParserDefinition : ParserDefinition {
     override fun createElement(node: ASTNode): PsiElement = AlloyTypes.Factory.createElement(node)
 
     override fun createFile(viewProvider: FileViewProvider): PsiFile = AlloyFile(viewProvider)
-
-    companion object {
-        @JvmField
-        val FILE = IFileElementType(AlloyLanguage)
-    }
 }

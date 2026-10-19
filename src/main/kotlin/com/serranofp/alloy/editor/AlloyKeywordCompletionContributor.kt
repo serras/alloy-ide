@@ -30,11 +30,10 @@ class AlloyKeywordCompletionContributor : CompletionContributor() {
         }
     }
 
-    companion object {
-        /** Word keywords, taken from the token types (whose debug names are their spelling). */
-        val KEYWORDS: List<String> =
-            (AlloyTokenSets.KEYWORDS.types + AlloyTokenSets.TEMPORAL_OPERATORS.types)
-                .map { it.toString() }
-                .filter { it.first().isLetter() }
-    }
 }
+
+/** Word keywords, taken from the token types (whose debug names are their spelling). */
+private val KEYWORDS: List<String> =
+    (AlloyTokenSets.KEYWORDS.types + AlloyTokenSets.TEMPORAL_OPERATORS.types)
+        .map { it.toString() }
+        .filter { it.first().isLetter() }

@@ -30,7 +30,8 @@ class AlloyCommandConfigurationType : ConfigurationTypeBase(
     companion object {
         const val ID = "AlloyCommand"
 
-        fun getInstance(): AlloyCommandConfigurationType =
-            ConfigurationTypeUtil.findConfigurationType(AlloyCommandConfigurationType::class.java)
     }
 }
+
+fun getAlloyCommandConfigurationType(): AlloyCommandConfigurationType =
+    ConfigurationTypeUtil.findConfigurationType(AlloyCommandConfigurationType::class.java)

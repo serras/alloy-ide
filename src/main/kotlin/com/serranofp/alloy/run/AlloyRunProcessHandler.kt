@@ -53,7 +53,7 @@ class AlloyRunProcessHandler(
             val link = message.link
             if (link != null) {
                 if (prefix.isNotEmpty()) sink.print(prefix, ConsoleViewContentType.NORMAL_OUTPUT)
-                sink.printHyperlink(text, HyperlinkInfo { connection?.openModel(link) })
+                sink.printHyperlink(text) { connection?.openModel(link) }
             } else {
                 sink.print(prefix + text, contentType(message))
             }

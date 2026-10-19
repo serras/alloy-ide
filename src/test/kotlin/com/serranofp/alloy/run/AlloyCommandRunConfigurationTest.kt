@@ -7,7 +7,7 @@ import org.jdom.Element
 
 class AlloyCommandRunConfigurationTest : BasePlatformTestCase() {
     private fun newConfiguration(): AlloyCommandRunConfiguration =
-        AlloyCommandConfigurationType.getInstance().factory.createTemplateConfiguration(project) as AlloyCommandRunConfiguration
+        getAlloyCommandConfigurationType().factory.createTemplateConfiguration(project) as AlloyCommandRunConfiguration
 
     fun testSurvivesWriteAndReadExternal() {
         val original = newConfiguration().apply {

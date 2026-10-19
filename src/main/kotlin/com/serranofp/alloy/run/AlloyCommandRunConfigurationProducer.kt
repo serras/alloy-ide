@@ -10,7 +10,7 @@ import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyTypes
 
 class AlloyCommandRunConfigurationProducer : LazyRunConfigurationProducer<AlloyCommandRunConfiguration>() {
-    override fun getConfigurationFactory(): ConfigurationFactory = AlloyCommandConfigurationType.getInstance().factory
+    override fun getConfigurationFactory(): ConfigurationFactory = getAlloyCommandConfigurationType().factory
 
     override fun setupConfigurationFromContext(
         configuration: AlloyCommandRunConfiguration,

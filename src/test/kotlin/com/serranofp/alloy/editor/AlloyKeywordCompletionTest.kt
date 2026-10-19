@@ -4,8 +4,8 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class AlloyKeywordCompletionTest : BasePlatformTestCase() {
     fun testKeywordListIsComplete() {
-        assertContainsElements(AlloyKeywordCompletionContributor.KEYWORDS, "abstract", "sig", "Int", "always", "triggered", "steps")
-        assertDoesntContain(AlloyKeywordCompletionContributor.KEYWORDS, "'", ";")
+        assertContainsElements(KEYWORDS, "abstract", "sig", "Int", "always", "triggered", "steps")
+        assertDoesntContain(KEYWORDS, "'", ";")
     }
 
     fun testUniquePrefixCompletesKeyword() {
@@ -30,7 +30,7 @@ class AlloyKeywordCompletionTest : BasePlatformTestCase() {
         myFixture.configureByText("model.als", text)
         val before = myFixture.editor.document.text
         val items = myFixture.completeBasic()?.map { it.lookupString }.orEmpty()
-        assertEmpty(items.filter { it in AlloyKeywordCompletionContributor.KEYWORDS })
+        assertEmpty(items.filter { it in KEYWORDS })
         assertEquals("nothing was inserted", before, myFixture.editor.document.text)
     }
 }
