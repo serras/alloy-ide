@@ -18,6 +18,7 @@
         <lang.foldingBuilder language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyFoldingBuilder"/>
         <completion.contributor language="Alloy"
                                 implementationClass="com.serranofp.alloy.editor.AlloyKeywordCompletionContributor"/>
+        <platform.lsp.integrationProvider implementation="com.serranofp.alloy.lsp.AlloyLspIntegrationProvider"/>
         <colorSettingsPage implementation="com.serranofp.alloy.highlighting.AlloyColorSettingsPage"/>
     </extensions>
 </idea-plugin>

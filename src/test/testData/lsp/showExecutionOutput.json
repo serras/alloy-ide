@@ -1,0 +1,235 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "Starting the solver...\n\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "Executing \"Run show for 3\"\n",
+      "bold": true,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   Solver=sat4j Bitwidth=4 MaxSeq=3 SkolemDepth=1 Symmetry=20 Mode=batch\n   Generating CNF...\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   103 vars. 12 primary vars. 149 clauses. 29ms.\n   Solving...\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   Writing the XML file...",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 2,
+      "message": "   Instance found. Predicate is consistent. ",
+      "link": "XML: /tmp/alloy-tmp-user/tmp/526174/0.cnf.xml",
+      "bold": true,
+      "replaceLast": true,
+      "lineBreak": false
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 2,
+      "message": "4ms.\n\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 3,
+      "message": "",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "Starting the solver...\n\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "Executing \"Check noCycles for 3\"\n",
+      "bold": true,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   Solver=sat4j Bitwidth=4 MaxSeq=3 SkolemDepth=1 Symmetry=20 Mode=batch\n   Generating CNF...\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   212 vars. 15 primary vars. 322 clauses. 5ms.\n   Solving...\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   Writing the XML file...",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 2,
+      "message": "   Counterexample found. Assertion is invalid. ",
+      "link": "XML: /tmp/alloy-tmp-user/tmp/84888/1.cnf.xml",
+      "bold": true,
+      "replaceLast": true,
+      "lineBreak": false
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 2,
+      "message": "2ms.\n\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 3,
+      "message": "",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "Starting the solver...\n\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "Executing \"Run big for 30 but 7 int\"\n",
+      "bold": true,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   Solver=sat4j Bitwidth=7 MaxSeq=30 SkolemDepth=1 Symmetry=20 Mode=batch\n   Generating CNF...\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 1,
+      "message": "   153632 vars. 930 primary vars. 244106 clauses. 175ms.\n   Solving...\n",
+      "bold": false,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "alloy/showExecutionOutput",
+    "params": {
+      "messageType": 3,
+      "message": "Stopped",
+      "bold": true,
+      "replaceLast": false,
+      "lineBreak": true
+    }
+  }
+]
