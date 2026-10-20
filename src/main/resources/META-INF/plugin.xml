@@ -1,6 +1,6 @@
 <idea-plugin>
     <id>com.serranofp.alloy-ide</id>
-    <name>Alloy 6</name>
+    <name>Alloy Analyzer</name>
     <vendor url="https://serranofp.com">Alejandro Serrano Mena</vendor>
     <description><![CDATA[
         Support for <a href="https://alloytools.org">Alloy</a> 6 models (<code>.als</code> files), with the
