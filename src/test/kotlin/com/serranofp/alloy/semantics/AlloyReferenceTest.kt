@@ -23,7 +23,7 @@ class AlloyReferenceTest : BasePlatformTestCase() {
     /** Computes the model off the EDT, as highlighting does, so that resolution on the EDT can use it. */
     private fun analyze(file: PsiFile = myFixture.file): AlloyModelResult =
         ApplicationManager.getApplication().executeOnPooledThread<AlloyModelResult> {
-            ReadAction.compute<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(file as AlloyFile) }
+            ReadAction.computeBlocking<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(file as AlloyFile) }
         }.get(30, TimeUnit.SECONDS)
 
     /** The reference at the start of [marker], or at its `^`. */

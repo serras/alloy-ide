@@ -19,7 +19,7 @@ class AlloyModelServiceTest : BasePlatformTestCase() {
     private fun model(file: PsiFile): AlloyModelResult =
         ApplicationManager.getApplication()
             .executeOnPooledThread<Result<AlloyModelResult>> {
-                runCatching { ReadAction.compute<AlloyModelResult, Throwable> { service.model(file as AlloyFile) } }
+                runCatching { ReadAction.computeBlocking<AlloyModelResult, Throwable> { service.model(file as AlloyFile) } }
             }
             .get(30, TimeUnit.SECONDS)
             .getOrThrow()
@@ -133,7 +133,7 @@ class AlloyModelServiceTest : BasePlatformTestCase() {
 
     fun testNotOnTheEdt() {
         val file = myFixture.configureByText("model.als", "sig A {}") as AlloyFile
-        assertThrows(Throwable::class.java) { ReadAction.compute<AlloyModelResult, Throwable> { service.model(file) } }
+        assertThrows(Throwable::class.java) { ReadAction.computeBlocking<AlloyModelResult, Throwable> { service.model(file) } }
     }
 
     fun testOpenedPath() {

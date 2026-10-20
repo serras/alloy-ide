@@ -12,7 +12,6 @@ import com.intellij.navigation.ItemPresentation
 import com.intellij.pom.Navigatable
 import com.intellij.lang.PsiStructureViewFactory
 import com.intellij.openapi.editor.Editor
-import com.intellij.platform.backend.navigation.NavigationRequest
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil

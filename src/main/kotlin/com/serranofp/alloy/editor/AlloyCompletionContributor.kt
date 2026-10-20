@@ -125,7 +125,7 @@ class AlloyCompletionContributor : CompletionContributor() {
             val prefix = position.text.substring(0, parameters.offset - position.textRange.startOffset)
             val names = result.withPrefixMatcher(prefix)
             for (visible in AlloyScopes.visible(position, qualifier)) {
-                if (accepts(visible.declaration)) names.addElement(lookup(visible))
+                if (accepts(visible.declaration)) names.addElement(ModulePaths.lookup(visible))
             }
         }
     }
@@ -180,10 +180,8 @@ class AlloyCompletionContributor : CompletionContributor() {
                 .withAutoCompletionPolicy(AutoCompletionPolicy.NEVER_AUTOCOMPLETE),
             -1.0,
         )
-    }
 
-    companion object {
-        private fun lookup(visible: AlloyScopes.Visible): LookupElement {
+        fun lookup(visible: AlloyScopes.Visible): LookupElement {
             val declaration = visible.declaration
             var builder = LookupElementBuilder.create(declaration, declaration.name.orEmpty())
                 .withIcon(AlloyPresentation.icon(declaration))
