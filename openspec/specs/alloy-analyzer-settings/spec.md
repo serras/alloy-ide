@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets users configure the Alloy analyzer options from the IDE settings, keeps those options separate from the Alloy desktop application's preferences, lists only the solvers that can actually run, and applies changes to the running language server.
+Lets users configure the Alloy analyzer options from the IDE settings, keeps those options separate from the Alloy desktop application's preferences, lists only the solvers that can actually run, and applies changes from the next analysis on.
 
 ## Requirements
 
@@ -65,21 +65,6 @@ The solver selector SHALL list exactly the solvers that the bundled analyzer rep
 - **WHEN** the saved solver is no longer available
 - **THEN** the settings page shows that the saved solver is unavailable, and analyses fall back to SAT4J and include a warning about it in the tooltip of their result hint
 
-### Requirement: Applying changes restarts the server
-When the user applies changed analyzer settings, the plugin SHALL restart the language server of every open project that has one running, so that subsequent analyses use the new values.
-
-#### Scenario: Apply with changes
-- **WHEN** the user changes an option and clicks Apply or OK
-- **THEN** each running Alloy language server is restarted and open Alloy files get their diagnostics again
-
-#### Scenario: Apply without changes
-- **WHEN** the user clicks OK without changing any option
-- **THEN** no language server is restarted
-
-#### Scenario: Apply during an analysis
-- **WHEN** settings are applied while a command is executing
-- **THEN** that execution ends, its hint says that it was interrupted by a settings change, and the server restarts
-
 ### Requirement: Settings changes outdate results
 Applying changed analyzer settings SHALL mark every existing command result in every open project as outdated, in the same way as an edit of the file does.
 
@@ -90,3 +75,18 @@ Applying changed analyzer settings SHALL mark every existing command result in e
 #### Scenario: Apply without changes
 - **WHEN** the user clicks OK in the settings page without changing any option
 - **THEN** current results stay current
+
+### Requirement: Applying changes takes effect on the next analysis
+When the user applies changed analyzer settings, every analysis started afterwards SHALL use the new values, with nothing restarted. An analysis that is already running SHALL finish with the values it started with.
+
+#### Scenario: Apply with changes
+- **WHEN** the user changes the skolem depth to 2, clicks Apply, and runs a command
+- **THEN** the analyzer output of that run reports skolem depth 2
+
+#### Scenario: Diagnostics unaffected
+- **WHEN** the user applies changed settings while Alloy files are open
+- **THEN** their diagnostics stay in place and are not recomputed from scratch
+
+#### Scenario: Apply during an analysis
+- **WHEN** settings are applied while a command is executing
+- **THEN** that execution continues with its original settings, and its result is shown as outdated when it arrives

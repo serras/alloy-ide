@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Lets users execute Alloy `run` and `check` commands from the editor gutter, see each command's result as an inline hint with the analyzer output in its tooltip, follow progress in the status bar, stop analyses, and open the resulting instances, counterexamples and unsat cores.
+Lets users execute Alloy `run` and `check` commands from the editor gutter, with the bundled analyzer running inside the IDE. Each command's result appears as an inline hint with the analyzer output in its tooltip. Users can follow progress in the status bar, stop analyses, and open the resulting instances and counterexamples in the Alloy Instance tool window.
 
 ## Requirements
 
 ### Requirement: Run gutter markers
-The editor SHALL show a run gutter icon next to every top-level `run` and `check` command in an Alloy file, and clicking it SHALL execute that command directly. While the command is executing, its icon SHALL be a spinner.
+The editor SHALL show a run gutter icon next to every top-level `run` and `check` command in an Alloy file, and clicking it SHALL execute that command directly. While the command is executing, its icon SHALL be a spinner, and clicking the spinner SHALL open a menu with a Stop item that stops that analysis.
 
 #### Scenario: Markers on commands
 - **WHEN** a file contains `run show for 3` and `check noCycles for 5`
@@ -21,27 +21,16 @@ The editor SHALL show a run gutter icon next to every top-level `run` and `check
 - **WHEN** `check noCycles` is executing
 - **THEN** its gutter icon is a spinner, and it turns back into the run icon when the analysis ends
 
+#### Scenario: Stop menu on the spinner
+- **WHEN** the user clicks the spinner gutter icon of the running `check noCycles`
+- **THEN** a menu with a Stop item opens, and choosing Stop stops that analysis
+
 ### Requirement: Execution uses current editor contents
 Executing a command SHALL analyze the model as it currently appears in the editor, including unsaved changes.
 
 #### Scenario: Unsaved edit
 - **WHEN** the user changes a scope from `for 3` to `for 4` without saving and then runs the command
 - **THEN** the analysis uses scope 4
-
-### Requirement: Stopping an analysis
-The user SHALL be able to stop a running analysis by clicking its running hint or by cancelling its background progress indicator. The server is asked to abort the analysis, and the hint SHALL then say that the analysis was stopped.
-
-#### Scenario: Stopping a long analysis
-- **WHEN** the user clicks the running hint of a command that is being solved
-- **THEN** the analysis is aborted, the progress indicator disappears, and the hint says that the analysis was stopped
-
-#### Scenario: Cancelling the progress indicator
-- **WHEN** the user cancels the background progress indicator of a running command
-- **THEN** the analysis is aborted and the hint says that the analysis was stopped
-
-#### Scenario: Server does not confirm
-- **WHEN** the user stops an analysis and the server does not confirm within a few seconds
-- **THEN** the hint says that the analysis was stopped, and its tooltip says that the server did not confirm
 
 ### Requirement: One analysis at a time per project
 While a command is executing in a project, the plugin SHALL refuse to start another Alloy command in the same project and SHALL tell the user why, rather than starting it silently or queueing it.
@@ -51,40 +40,18 @@ While a command is executing in a project, the plugin SHALL refuse to start anot
 - **THEN** the second command does not start, its hint does not change, and the editor shows a message saying that an Alloy analysis is already running
 
 ### Requirement: Opening instances and counterexamples
-When an analysis produces an instance or counterexample, its result hint SHALL be clickable and clicking it SHALL open the instance or counterexample in the Alloy visualizer.
+When an analysis produces an instance or counterexample, its result hint SHALL be clickable, and clicking it SHALL show the instance or counterexample in the Alloy Instance tool window.
 
 #### Scenario: Opening an instance
 - **WHEN** `run show` found an instance and the user clicks its hint
-- **THEN** the Alloy visualizer window opens showing that instance
+- **THEN** the Alloy Instance tool window shows that instance, and its header names `run show`
 
 #### Scenario: Opening a counterexample
 - **WHEN** `check noCycles` found a counterexample and the user clicks its hint
-- **THEN** the Alloy visualizer window opens showing that counterexample
-
-### Requirement: Opening unsat cores
-When a check is valid or a run is unsatisfiable and an unsat core is available, its result hint SHALL be clickable and clicking it SHALL highlight the core in the editor. A result without a core is not clickable.
-
-#### Scenario: Showing a core
-- **WHEN** core minimization is enabled, a check finds no counterexample, and the user clicks its hint
-- **THEN** the model locations in the core are highlighted in the editor as warnings marked as (possibly) part of the unsat core
-
-#### Scenario: No core available
-- **WHEN** a check finds no counterexample and the analyzer reports that no unsat core is available
-- **THEN** the hint is not clickable, and its tooltip says that no core is available
-
-### Requirement: Execution requires a running server
-If the language server is not running when a command is started, the execution SHALL fail, and its hint SHALL say that the Alloy language server is unavailable.
-
-#### Scenario: Server down
-- **WHEN** the language server has failed and the user clicks a run gutter icon
-- **THEN** the hint of that command says that the Alloy language server is unavailable, and no analysis runs
-
-#### Scenario: Server stops during a run
-- **WHEN** the language server process ends while a command is running
-- **THEN** the hint of that command says that the Alloy language server is unavailable, and the progress indicator disappears
+- **THEN** the Alloy Instance tool window shows that counterexample, and its header names `check noCycles`
 
 ### Requirement: Inline command result
-After a command is started, the editor SHALL show its state as an inlay hint at the end of the line where the command starts. The hint SHALL name the outcome: running, instance found, no instance found, counterexample found, no counterexample found, stopped, or a failure. Only the most recent result of each command is shown. Commands that were never executed have no hint.
+After a command is started, the editor SHALL show its state as an inlay hint at the end of the line where the command starts. The hint SHALL name the outcome: running, instance found, no instance found, counterexample found, no counterexample found, stopped before completion, or a failure. Only the most recent result of each command is shown. Commands that were never executed have no hint.
 
 #### Scenario: Instance found
 - **WHEN** the user runs `run show for 3` and the analyzer finds an instance
@@ -101,6 +68,10 @@ After a command is started, the editor SHALL show its state as an inlay hint at 
 #### Scenario: Running
 - **WHEN** a command has been started and the analysis has not completed
 - **THEN** its hint says that it is running
+
+#### Scenario: Stopped
+- **WHEN** a command was stopped before the analysis completed
+- **THEN** its hint says "Stopped before completion"
 
 #### Scenario: Unexpected outcome
 - **WHEN** a command declares `expect 1` and the analyzer finds no instance
@@ -158,7 +129,7 @@ When an Alloy file is edited after one of its commands was executed, every resul
 
 #### Scenario: Outdated instance can still be opened
 - **WHEN** the user clicks the outdated hint of a command that found an instance
-- **THEN** the visualizer opens the instance that was found by that earlier analysis
+- **THEN** the Alloy Instance tool window shows the instance that was found by that earlier analysis, with its header marked as outdated
 
 ### Requirement: Analysis progress
 While a command is executing, the IDE SHALL show a cancellable background progress indicator naming the command and showing the analyzer's latest progress step. No tool window is opened.
@@ -172,12 +143,62 @@ While a command is executing, the IDE SHALL show a cancellable background progre
 - **THEN** no Run or other tool window is opened or brought to front
 
 ### Requirement: Failures reported inline
-When an execution cannot produce a result, the hint SHALL show a short failure state, and its tooltip SHALL explain the cause. This covers a model with errors, a command the analyzer does not list, and an analyzer that does not answer in time.
+When an execution cannot produce a result, the hint SHALL show a short failure state, and its tooltip SHALL explain the cause. Causes include:
+- a model with errors;
+- a command that the analyzer does not find in the model;
+- an analysis that runs out of memory or stack;
+- an unexpected analyzer error.
 
 #### Scenario: Model with errors
 - **WHEN** the user runs a command in a file that has a syntax or type error
 - **THEN** the hint says that the model has errors, the errors appear as editor diagnostics, and no analysis is started
 
 #### Scenario: Command unknown to the analyzer
-- **WHEN** a command shown with a gutter icon is not among the commands that the analyzer lists for the file
+- **WHEN** a command shown with a gutter icon is not among the commands that the analyzer finds in the file
 - **THEN** the hint shows a failure and its tooltip says that the command was not found
+
+#### Scenario: Analysis exhausts resources
+- **WHEN** an analysis runs out of memory or stack
+- **THEN** the analysis ends, the hint shows a failure, its tooltip says which resource was exhausted, and the IDE keeps running
+
+#### Scenario: Unexpected analyzer error
+- **WHEN** the analyzer throws an unexpected exception during an analysis
+- **THEN** the hint shows a failure and its tooltip contains the exception's message
+
+### Requirement: Stopping a running analysis
+The user SHALL be able to stop a running analysis from the Stop item of its spinner gutter icon, by clicking its running hint, or by cancelling its background progress indicator. The analysis is aborted inside the IDE, and the hint SHALL then say "Stopped before completion".
+
+#### Scenario: Stopping from the gutter
+- **WHEN** the user chooses Stop in the spinner menu of a command that is being solved
+- **THEN** the analysis is aborted, the progress indicator disappears, the gutter icon turns back into the run icon, and the hint says "Stopped before completion"
+
+#### Scenario: Stopping from the hint
+- **WHEN** the user clicks the running hint of a command that is being solved
+- **THEN** the analysis is aborted and the hint says "Stopped before completion"
+
+#### Scenario: Cancelling the progress indicator
+- **WHEN** the user cancels the background progress indicator of a running command
+- **THEN** the analysis is aborted and the hint says "Stopped before completion"
+
+#### Scenario: Stop during translation
+- **WHEN** the user stops an analysis while the analyzer is still translating the model and cannot be interrupted immediately
+- **THEN** the hint says that the analysis is stopping until the analyzer reaches its next interruption point, and then says "Stopped before completion"
+
+#### Scenario: Analysis output before stopping
+- **WHEN** the user hovers the hint of a stopped analysis
+- **THEN** the tooltip shows the analyzer output received before it was stopped
+
+### Requirement: Analysis runs inside the IDE
+Commands SHALL be analyzed by the Alloy analyzer bundled with the plugin, inside the IDE process, on a background thread. They SHALL NOT use a separate process or any Java installation other than the IDE's own runtime. External solver executables chosen in the settings are the exception.
+
+#### Scenario: No system Java needed
+- **WHEN** the user has no Java installation other than the IDE's own runtime and runs a command with SAT4J
+- **THEN** the analysis completes
+
+#### Scenario: Editor stays responsive
+- **WHEN** a long analysis is running
+- **THEN** the user can keep editing and navigating Alloy files without delays
+
+#### Scenario: Project closed during an analysis
+- **WHEN** the project is closed while one of its commands is executing
+- **THEN** the analysis is stopped, and any external solver process it started is terminated
