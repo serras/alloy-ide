@@ -19,6 +19,7 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.ui.breadcrumbs.BreadcrumbsProvider
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyAssertDecl
+import com.serranofp.alloy.psi.AlloyBinderDecl
 import com.serranofp.alloy.psi.AlloyBlock
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyEnumDecl
@@ -27,9 +28,11 @@ import com.serranofp.alloy.psi.AlloyFactDecl
 import com.serranofp.alloy.psi.AlloyFieldDecl
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloyFunDecl
+import com.serranofp.alloy.psi.AlloyLetDecl
 import com.serranofp.alloy.psi.AlloyMacroDecl
 import com.serranofp.alloy.psi.AlloyModuleDecl
 import com.serranofp.alloy.psi.AlloyNamedDeclaration
+import com.serranofp.alloy.psi.AlloyParamDecl
 import com.serranofp.alloy.psi.AlloyPredDecl
 import com.serranofp.alloy.psi.AlloySigDecl
 import com.serranofp.alloy.psi.AlloySigName
@@ -68,6 +71,23 @@ object AlloyPresentation {
         is AlloyAssertDecl -> AllIcons.Nodes.Test
         is AlloyMacroDecl -> AllIcons.Nodes.Lambda
         is AlloyCommandDecl -> AllIcons.RunConfigurations.TestState.Run
+        is AlloyParamDecl -> AllIcons.Nodes.Parameter
+        is AlloyBinderDecl, is AlloyLetDecl -> AllIcons.Nodes.Variable
+        else -> null
+    }
+
+    /** The kind of a declaration in words, as completion shows it, or null for an element that declares nothing. */
+    fun kind(element: PsiElement): String? = when (element) {
+        is AlloySigName -> "signature"
+        is AlloyFieldDecl -> "field"
+        is AlloyEnumDecl -> "enum"
+        is AlloyEnumMember -> "enum member"
+        is AlloyPredDecl -> "predicate"
+        is AlloyFunDecl -> "function"
+        is AlloyAssertDecl -> "assertion"
+        is AlloyMacroDecl -> "macro"
+        is AlloyParamDecl -> "parameter"
+        is AlloyBinderDecl, is AlloyLetDecl -> "binder"
         else -> null
     }
 

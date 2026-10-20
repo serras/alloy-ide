@@ -115,7 +115,8 @@ class AlloyModelService(private val project: Project) {
     }
 
     private fun openedFile(file: AlloyFile, name: String): AlloyFile? {
-        val virtualFile = file.virtualFile ?: return null
+        // Completion works on a copy of the file, which has no VirtualFile of its own
+        val virtualFile = file.originalFile.virtualFile ?: return null
         val directory = virtualFile.parent ?: return null
         val moduleName = file.children.filterIsInstance<AlloyModuleDecl>().firstOrNull()?.qualifiedName?.text.orEmpty()
         val path = openedPath(virtualFile.path, moduleName, name) ?: return null
@@ -196,6 +197,28 @@ class AlloyModelService(private val project: Project) {
             }
             return null
         }
+
+        /**
+         * The directory under which the module [moduleName] in [path] finds the modules it opens by a path-derived
+         * name: its own directory. Names there start with the directory part of [moduleName], which `openedPath`
+         * matches before it climbs: `app/main` in `/m/main.als` opens `app/sub/y` from `/m/sub/y.als`.
+         */
+        fun openerRoot(path: String): String = path.substringBeforeLast('/', "")
+
+        /**
+         * The name under which the module [moduleName] in [opener] opens [path], derived from where [path] is,
+         * or null if it is not under the [openerRoot] or that name would not lead back to it.
+         */
+        fun pathDerivedName(opener: String, moduleName: String, path: String): String? {
+            val root = openerRoot(opener) + "/"
+            if (!path.startsWith(root) || !path.endsWith(".als")) return null
+            val relative = path.removePrefix(root).removeSuffix(".als")
+            val name = moduleName.substringBeforeLast('/', "").let { if (it.isEmpty()) relative else "$it/$relative" }
+            if (!name.split('/').all { IDENTIFIER.matches(it) }) return null
+            return name.takeIf { openedPath(opener, moduleName, it) == path }
+        }
+
+        private val IDENTIFIER = Regex("[A-Za-z][A-Za-z0-9_'\"]*")
 
         private fun up(path: String, steps: Int): String {
             var result = path

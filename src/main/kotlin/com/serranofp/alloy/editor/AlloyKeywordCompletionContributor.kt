@@ -22,8 +22,10 @@ class AlloyKeywordCompletionContributor : CompletionContributor() {
             context: ProcessingContext,
             result: CompletionResultSet,
         ) {
-            val tokenType = parameters.position.node.elementType
-            if (AlloyTokenSets.COMMENTS.contains(tokenType) || AlloyTokenSets.STRINGS.contains(tokenType)) return
+            when (AlloyCompletionContext.of(parameters.position)) {
+                AlloyCompletionContext.None, AlloyCompletionContext.ModulePath, is AlloyCompletionContext.Qualified -> return
+                else -> {}
+            }
             for (keyword in KEYWORDS) {
                 result.addElement(LookupElementBuilder.create(keyword).bold())
             }

@@ -143,6 +143,27 @@ class AlloyModelServiceTest : BasePlatformTestCase() {
         assertEquals("/m/other.als", AlloyModelService.openedPath("/m/sub/x.als", "sub/x", "other"))
     }
 
+    fun testOpenerRoot() {
+        // The same for `module main` and `module app/main`, which opens its `app/...` names from there
+        assertEquals("/m", AlloyModelService.openerRoot("/m/main.als"))
+        assertEquals("/m/sub", AlloyModelService.openerRoot("/m/sub/x.als"))
+    }
+
+    fun testPathDerivedNames() {
+        fun derived(opener: String, moduleName: String, path: String): String? =
+            AlloyModelService.pathDerivedName(opener, moduleName, path)?.also {
+                assertEquals("$it leads back", path, AlloyModelService.openedPath(opener, moduleName, it))
+            }
+        assertEquals("sub/y", derived("/m/main.als", "main", "/m/sub/y.als"))
+        assertEquals("lib", derived("/m/main.als", "main", "/m/lib.als"))
+        assertEquals("sub/y", derived("/m/main.als", "", "/m/sub/y.als"))
+        assertEquals("app/sub/y", derived("/m/main.als", "app/main", "/m/sub/y.als"))
+        assertEquals("util/y", derived("/m/util/x.als", "util/x", "/m/util/y.als"))
+        assertNull(derived("/m/main.als", "main", "/other/y.als"))
+        assertNull(derived("/m/main.als", "main", "/m/sub/1y.als"))
+        assertNull(derived("/m/main.als", "main", "/m/my-dir/y.als"))
+    }
+
     override fun tearDown() {
         try {
             AlloyModelService.getInstance(project).parse = edu.mit.csail.sdg.parser.CompUtil::parseEverything_fromFile

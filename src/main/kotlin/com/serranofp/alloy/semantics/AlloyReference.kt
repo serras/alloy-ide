@@ -6,9 +6,11 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementResolveResult
+import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiReferenceBase
+import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.ResolveResult
 import com.intellij.psi.impl.source.resolve.ResolveCache
 import com.intellij.psi.util.PsiTreeUtil
@@ -112,7 +114,7 @@ class AlloyReference(element: PsiElement) : PsiReferenceBase.Poly<PsiElement>(el
  * Resolution by name, for a model that does not type-check (or is not computed yet), innermost scope first:
  * binders and parameters, the fields of the enclosing signature, the declarations of the module, those of
  * the modules it opens (by alias, or unqualified), and built-ins, which resolve to nothing. Every match of
- * the first scope with any is returned.
+ * the first scope with any is returned. [visible] lists what these scopes offer, for completion.
  */
 object AlloyScopes {
     fun resolve(reference: PsiElement, text: String): List<AlloyNamedDeclaration> {
@@ -120,32 +122,65 @@ object AlloyScopes {
         val qualifier = text.substringBeforeLast('/', "").ifEmpty { null }
         val name = text.substringAfterLast('/')
         if (qualifier == null) {
-            locals(reference, name).ifNotEmpty { return it }
-            enclosingFields(reference, name).ifNotEmpty { return it }
+            localScopes(reference).map { scope -> scope.filter { it.name == name } }.firstOrNull { it.isNotEmpty() }?.let { return it }
+            enclosingFields(reference).filter { it.name == name }.ifNotEmpty { return it }
         }
         if (qualifier == null || qualifier == "this") {
             topLevel(file, name).ifNotEmpty { return it }
             if (qualifier == "this") return emptyList()
         }
-        return opened(file, qualifier, name)
+        return openedModules(file, qualifier).flatMap { topLevel(it, name) }
     }
 
-    /** The binders and parameters in scope at [reference], innermost first. */
-    private fun locals(reference: PsiElement, name: String): List<AlloyNamedDeclaration> {
+    /** Where a visible declaration comes from, innermost first. */
+    enum class Layer { LOCAL, FIELD, TOP_LEVEL, OPENED }
+
+    /** A declaration visible at some position, from [module], or from the current file if it is null. */
+    data class Visible(val declaration: AlloyNamedDeclaration, val layer: Layer, val module: AlloyFile?)
+
+    /**
+     * The declarations that a name at [position] can refer to, after [qualifier] (an alias or path of an
+     * opened module, or `this`) if there is one. A name of an inner layer hides that name in the outer ones;
+     * the `private` declarations of opened modules are not visible.
+     */
+    fun visible(position: PsiElement, qualifier: String? = null): List<Visible> {
+        val file = position.containingFile as? AlloyFile ?: return emptyList()
+        val result = mutableListOf<Visible>()
+        val hidden = mutableSetOf<String>()
+        fun layer(layer: Layer, declarations: List<AlloyNamedDeclaration>, module: AlloyFile? = null) {
+            val found = declarations.filter { it.name != null && it.name !in hidden }
+            result += found.map { Visible(it, layer, module) }
+            hidden += found.mapNotNull { it.name }
+        }
+        if (qualifier == null) {
+            // An inner binder hides an outer one of the same name
+            localScopes(position).forEach { layer(Layer.LOCAL, it) }
+            layer(Layer.FIELD, enclosingFields(position))
+        }
+        if (qualifier == null || qualifier == "this") {
+            layer(Layer.TOP_LEVEL, declarations(file))
+            if (qualifier == "this") return result
+        }
+        // Names of different opened modules do not hide each other
+        val outer = hidden.toSet()
+        result += openedModules(file, qualifier).flatMap { module ->
+            declarations(module).filter { it.name != null && it.name !in outer && !isPrivate(it) }.map { Visible(it, Layer.OPENED, module) }
+        }.distinctBy { it.declaration }
+        return result
+    }
+
+    /** The binders and parameters in scope at [reference], one list per enclosing scope, innermost first. */
+    private fun localScopes(reference: PsiElement): Sequence<List<AlloyNamedDeclaration>> {
         val offset = reference.textRange.startOffset
-        var scope: PsiElement? = reference.parent
-        while (scope != null && scope !is AlloyFile) {
-            val found: List<AlloyNamedDeclaration> = when (scope) {
+        return generateSequence(reference.parent) { it.parent }.takeWhile { it !is AlloyFile }.map { scope ->
+            when (scope) {
                 is AlloyQuantifierExpr, is AlloyComprehension ->
                     if (offset >= bodyStart(scope)) scope.children.filterIsInstance<AlloyBinderDecl>() else emptyList()
                 is AlloyLetExpr -> if (offset >= bodyStart(scope)) scope.children.filterIsInstance<AlloyLetDecl>() else emptyList()
                 is AlloyPredDecl, is AlloyFunDecl, is AlloyMacroDecl -> scope.children.filterIsInstance<AlloyParamDecl>()
                 else -> emptyList()
             }
-            found.filter { it.name == name }.ifNotEmpty { return it }
-            scope = scope.parent
         }
-        return emptyList()
     }
 
     /** Where the body of a binder starts: after its `|`, or at its block. Nothing is in scope before it. */
@@ -155,9 +190,9 @@ object AlloyScopes {
         return scope.children.filterIsInstance<AlloyBlock>().firstOrNull()?.textRange?.startOffset ?: Int.MAX_VALUE
     }
 
-    private fun enclosingFields(reference: PsiElement, name: String): List<AlloyNamedDeclaration> {
+    private fun enclosingFields(reference: PsiElement): List<AlloyNamedDeclaration> {
         val sig = PsiTreeUtil.getParentOfType(reference, AlloySigDecl::class.java) ?: return emptyList()
-        return PsiTreeUtil.findChildrenOfType(sig, AlloyFieldDecl::class.java).filter { it.name == name }
+        return PsiTreeUtil.findChildrenOfType(sig, AlloyFieldDecl::class.java).toList()
     }
 
     /** The declarations of [file] that other paragraphs see: signatures, fields, enums, predicates, functions... */
@@ -173,16 +208,36 @@ object AlloyScopes {
 
     private fun topLevel(file: AlloyFile, name: String): List<AlloyNamedDeclaration> = declarations(file).filter { it.name == name }
 
-    private fun opened(file: AlloyFile, qualifier: String?, name: String): List<AlloyNamedDeclaration> {
+    /** The modules that [file] opens, all of them, or those whose alias or path is [qualifier]. */
+    private fun openedModules(file: AlloyFile, qualifier: String?): List<AlloyFile> {
         val service = AlloyModelService.getInstance(file.project)
-        return file.children.filterIsInstance<AlloyOpenDecl>().flatMap { open ->
+        return file.children.filterIsInstance<AlloyOpenDecl>().mapNotNull { open ->
             val names = open.qualifiedNameList
-            val path = names.firstOrNull()?.text ?: return@flatMap emptyList()
+            val path = names.firstOrNull()?.text ?: return@mapNotNull null
             val alias = names.getOrNull(1)?.text ?: path.substringAfterLast('/')
-            if (qualifier != null && qualifier != alias && qualifier != path) return@flatMap emptyList()
-            service.openedModule(file, open)?.let { topLevel(it, name) }.orEmpty()
+            if (qualifier != null && qualifier != alias && qualifier != path) return@mapNotNull null
+            service.openedModule(file, open)
         }
     }
+
+    /**
+     * Whether [declaration] is `private` to its module: its paragraph, or its group of fields, starts with
+     * `private`. The members of an enum are as private as the enum.
+     */
+    private fun isPrivate(declaration: AlloyNamedDeclaration): Boolean = when (declaration) {
+        is AlloyFieldDecl -> {
+            // `private a, b: A` is one group; the bound of the group before it ends the walk
+            val group = generateSequence(declaration.prevSibling) { it.prevSibling }
+                .filterNot { it is PsiWhiteSpace || it is PsiComment }
+                .takeWhile { it is AlloyFieldDecl || it.node.elementType in FIELD_GROUP_TOKENS }
+            group.any { it.node.elementType == AlloyTypes.PRIVATE }
+        }
+        is AlloySigName -> declaration.parent.node.findChildByType(AlloyTypes.PRIVATE) != null
+        is AlloyEnumMember -> PsiTreeUtil.getParentOfType(declaration, AlloyEnumDecl::class.java)?.node?.findChildByType(AlloyTypes.PRIVATE) != null
+        else -> declaration.node.findChildByType(AlloyTypes.PRIVATE) != null
+    }
+
+    private val FIELD_GROUP_TOKENS = setOf(AlloyTypes.PRIVATE, AlloyTypes.VAR, AlloyTypes.DISJ, AlloyTypes.COMMA)
 
     private inline fun <T> List<T>.ifNotEmpty(action: (List<T>) -> Unit) {
         if (isNotEmpty()) action(this)

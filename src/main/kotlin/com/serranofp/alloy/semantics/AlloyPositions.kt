@@ -30,8 +30,13 @@ object AlloyPositions {
         else projectFiles[filename] ?: LocalFileSystem.getInstance().findFileByPath(filename)
 
     /** `/$alloy4$/models/util/ordering.als` is `jar://…/org.alloytools.alloy.core-6.2.0.jar!/models/util/ordering.als`. */
-    fun libraryFile(filename: String): VirtualFile? {
-        val entry = filename.removePrefix(Util.jarPrefix()).replace(File.separatorChar, '/')
+    fun libraryFile(filename: String): VirtualFile? =
+        jarEntry(filename.removePrefix(Util.jarPrefix()).replace(File.separatorChar, '/'))
+
+    /** The `models/` directory of the analyzer's JAR, which holds every library module. */
+    fun libraryRoot(): VirtualFile? = jarEntry("models")
+
+    private fun jarEntry(entry: String): VirtualFile? {
         val jar = PathManager.getJarPathForClass(Util::class.java) ?: return null
         return JarFileSystem.getInstance().findFileByPath(jar + JarFileSystem.JAR_SEPARATOR + entry)
     }

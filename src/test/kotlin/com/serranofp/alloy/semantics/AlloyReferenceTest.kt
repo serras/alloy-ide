@@ -3,6 +3,8 @@ package com.serranofp.alloy.semantics
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.vfs.JarFileSystem
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiPolyVariantReference
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -188,5 +190,48 @@ class AlloyReferenceTest : BasePlatformTestCase() {
         val target = target("B }")
         assertEquals("B", target.name)
         assertInstanceOf(target.parent, AlloySigDecl::class.java)
+    }
+
+    // Paths of `open` declarations
+
+    private fun module(marker: String): PsiElement? {
+        val reference = myFixture.file.findReferenceAt(myFixture.file.text.indexOf(marker))
+        assertInstanceOf(reference, AlloyModuleReference::class.java)
+        assertEquals(marker.substringBefore('['), reference!!.rangeInElement.substring(reference.element.text))
+        return reference.resolve()
+    }
+
+    fun testOpenPathToAProjectModule() {
+        val a = myFixture.addFileToProject("a.als", "sig A {}")
+        myFixture.configureByText("b.als", "open a\nfact { some A }")
+        assertEquals(a, module("a"))
+    }
+
+    fun testOpenPathToALibraryModule() {
+        myFixture.configureByText("m.als", "open util/ordering[S] as ord\nsig S {}")
+        val target = module("util/ordering[") as AlloyFile
+        assertTrue(target.virtualFile.url, target.virtualFile.url.endsWith("!/models/util/ordering.als"))
+        // The whole path is one reference, also from its last name
+        assertSame(myFixture.file.findReferenceAt(myFixture.file.text.indexOf("ordering"))!!.element,
+            myFixture.file.findReferenceAt(myFixture.file.text.indexOf("util"))!!.element)
+    }
+
+    fun testUnknownOpenPathResolvesToNothing() {
+        myFixture.configureByText("m.als", "open util/nothing\nsig S {}")
+        assertNull(module("util/nothing"))
+    }
+
+    fun testAliasesAndModuleNamesAreNotReferences() {
+        myFixture.configureByText("m.als", "module m\nopen util/ordering[S] as ord\nsig S {}")
+        assertNull(myFixture.file.findReferenceAt(myFixture.file.text.indexOf("ord\n")))
+        assertNull(myFixture.file.findReferenceAt(myFixture.file.text.indexOf("m\n")))
+    }
+
+    fun testRenamingTheOpenedModuleKeepsThePath() {
+        myFixture.addFileToProject("a.als", "sig A {}")
+        myFixture.configureByText("b.als", "open a\nfact { some A }")
+        val reference = myFixture.file.findReferenceAt(myFixture.file.text.indexOf("a\n"))!!
+        WriteCommandAction.runWriteCommandAction(project) { reference.handleElementRename("c.als") }
+        assertEquals("open a\nfact { some A }", myFixture.file.text)
     }
 }

@@ -24,12 +24,14 @@ The plugin SHALL show the syntax and type errors and the warnings reported by th
 #### Scenario: Error in an opened module
 - **WHEN** a file opens a project module that has a type error
 - **THEN** the error is shown in the opened module's file, and the opening file reports that the opened module has errors at its `open` line
+
 ### Requirement: Diagnostics visible in the Problems view
 Alloy diagnostics SHALL be reported to the IDE's standard problem infrastructure, so that they appear in the editor's error stripe and in the Problems tool window for the current file.
 
 #### Scenario: Problems tool window
 - **WHEN** the current Alloy file has a type error
 - **THEN** the Problems tool window lists that error, and selecting it moves the caret to its location
+
 ### Requirement: Quick documentation
 The plugin SHALL show documentation for an Alloy element on hover and on Quick Documentation. A reference shows its declaration as the analyzer explains it, preceded by the declaration's documentation comment if it has one.
 
@@ -44,8 +46,9 @@ The plugin SHALL show documentation for an Alloy element on hover and on Quick D
 #### Scenario: Model with errors
 - **WHEN** the model does not type-check and the user invokes Quick Documentation on a reference that resolves by name
 - **THEN** the popup shows the declaration's source text and documentation comment
+
 ### Requirement: Go to declaration
-Ctrl/Cmd-click and Go to Declaration on an Alloy reference SHALL navigate to its declaration. This includes declarations in other project files and in the Alloy library modules bundled with the analyzer.
+Ctrl/Cmd-click and Go to Declaration on an Alloy reference SHALL navigate to its declaration. This includes declarations in other project files and in the Alloy library modules bundled with the analyzer. On the path of an `open` declaration, they SHALL open the module that the analyzer loads for it. Bundled modules open read-only, in Reader mode when the IDE's Reader mode applies to library sources.
 
 #### Scenario: Navigating to a signature
 - **WHEN** the user Ctrl/Cmd-clicks a signature name used in a predicate
@@ -62,12 +65,30 @@ Ctrl/Cmd-click and Go to Declaration on an Alloy reference SHALL navigate to its
 #### Scenario: Navigating to a local variable
 - **WHEN** the user Ctrl/Cmd-clicks the `x` in `all x: A | some x.f`
 - **THEN** the caret moves to the binder `x` of that quantifier
+
+#### Scenario: Navigating from an open path to a project module
+- **WHEN** `b.als` contains `open a` and the user Ctrl/Cmd-clicks `a`
+- **THEN** `a.als` opens
+
+#### Scenario: Navigating from an open path to a library module
+- **WHEN** a file contains `open util/ordering[S]` and the user Ctrl/Cmd-clicks `util/ordering`
+- **THEN** the bundled `util/ordering` module opens read-only
+
+#### Scenario: Library module in Reader mode
+- **WHEN** Reader mode is enabled for library sources and the user navigates into a bundled module
+- **THEN** the module opens in Reader mode
+
+#### Scenario: Unresolved open path
+- **WHEN** the path of an `open` declaration names a module that neither the project nor the bundled library has
+- **THEN** Ctrl/Cmd-click on it navigates nowhere
+
 ### Requirement: Exact resolution for a valid model
 When the model type-checks, every reference SHALL resolve to exactly the declaration the analyzer resolved it to, including overloaded field names and the implicit `this` in signature facts.
 
 #### Scenario: Overloaded field
 - **WHEN** signatures `A` and `B` both declare a field `f`, the model type-checks, and the user navigates from `a.f` where `a: A`
 - **THEN** the caret moves to the field `f` of `A`, without offering `B`'s field
+
 ### Requirement: Name-based resolution for a model with errors
 When the model does not type-check, references SHALL resolve by name, searching from the innermost scope outwards:
 1. Enclosing binders and parameters.
@@ -92,12 +113,14 @@ A name that still matches several declarations SHALL offer all of them.
 #### Scenario: Qualified name
 - **WHEN** the model has errors, the file contains `open util/ordering[S] as ord`, and the user navigates from `ord/first`
 - **THEN** the caret moves to `first` in the bundled `util/ordering` module
+
 ### Requirement: Highlight usages in file
 Placing the caret on an Alloy declaration or reference SHALL highlight every usage of the same declaration in the current file. The resolution rules are the same as for Go to declaration.
 
 #### Scenario: Caret on a field
 - **WHEN** the caret is on a field name
 - **THEN** that field's declaration and every use of it in the file are highlighted
+
 ### Requirement: Find usages
 Find Usages on an Alloy declaration or reference SHALL list every reference to that declaration across the project's Alloy files. When some files do not type-check, the matches found by name in them SHALL be listed in a separate group of unconfirmed usages.
 
@@ -108,6 +131,7 @@ Find Usages on an Alloy declaration or reference SHALL list every reference to t
 #### Scenario: Usages in a file with errors
 - **WHEN** a predicate is used in a file that does not type-check
 - **THEN** those uses are listed in a separate unconfirmed usages group
+
 ### Requirement: Rename
 Rename on an Alloy declaration or reference SHALL update the declaration and every reference to it in the project in a single undoable action. Rename SHALL be refused, with a message saying why, while any affected file does not type-check.
 
@@ -126,6 +150,7 @@ Rename on an Alloy declaration or reference SHALL update the declaration and eve
 #### Scenario: Library declarations are read-only
 - **WHEN** the user invokes Rename on a declaration from a bundled library module
 - **THEN** the rename is refused because the module is read-only
+
 ### Requirement: Structure view and breadcrumbs
 The Structure tool window and the editor breadcrumbs of an Alloy file SHALL list its module, signatures (with their fields nested), facts, predicates, functions, assertions, macros and commands. Selecting an entry SHALL move the caret to it, whether or not the model type-checks.
 
@@ -140,12 +165,29 @@ The Structure tool window and the editor breadcrumbs of an Alloy file SHALL list
 #### Scenario: File with errors
 - **WHEN** the file has a type error
 - **THEN** the Structure tool window still lists all of its elements
+
 ### Requirement: Go to Symbol
-Go to Symbol and Search Everywhere SHALL find Alloy signatures, fields, predicates, functions, assertions, named facts and named commands declared in the project's Alloy files.
+Go to Symbol and Search Everywhere SHALL find Alloy signatures, fields, predicates, functions, assertions, named facts and named commands declared in the project's Alloy files. When the search includes non-project items, they SHALL also find the declarations of the bundled library modules.
 
 #### Scenario: Searching for a symbol
 - **WHEN** the user searches for a predicate name in Go to Symbol
 - **THEN** the predicate declared in a project `.als` file appears, and selecting it opens that file at the declaration
+
+#### Scenario: Searching for a library symbol
+- **WHEN** the user searches for `first` in Go to Symbol with non-project items included
+- **THEN** the `first` of the bundled `util/ordering` module appears, and selecting it opens that module at the declaration
+
+#### Scenario: Project-only search
+- **WHEN** the user searches for `first` in Go to Symbol restricted to project files, and no project file declares `first`
+- **THEN** no result from the bundled modules appears
+
+### Requirement: Bundled modules as a library
+The Alloy library modules bundled with the analyzer SHALL be available to every project as a read-only library named after the bundled Alloy version. The library SHALL be listed under External Libraries in the Project view and SHALL contain the bundled `util` modules.
+
+#### Scenario: External Libraries
+- **WHEN** the user expands External Libraries in the Project view
+- **THEN** an "Alloy 6.2.0" entry lists the bundled `util` modules, and opening one shows it read-only
+
 ### Requirement: Semantic features never block the editor
 The plugin SHALL compute semantic information off the UI thread, with any work for outdated text cancelled. Failures of the analyzer on any input SHALL degrade to name-based behavior and SHALL NOT raise IDE errors.
 

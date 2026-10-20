@@ -7,10 +7,15 @@
         Alloy 6.2.0 analyzer included and running inside the IDE: no separate process or Java installation is
         needed.
         <ul>
-          <li>Syntax highlighting, brace matching, commenting, folding and keyword completion</li>
-          <li>Diagnostics, hover and quick documentation, go to declaration (also into the bundled
-              <code>util/*</code> modules), highlight and find usages, rename, structure view, breadcrumbs and
-              Go to Symbol, which keep working by name while the model has errors</li>
+          <li>Syntax highlighting, brace matching, commenting and folding</li>
+          <li>Completion of keywords, of the names in scope (also after a module alias such as <code>ord/</code>,
+              and only predicates and functions after <code>run</code>), and of module paths after
+              <code>open</code></li>
+          <li>Diagnostics, hover and quick documentation, go to declaration (also from <code>open</code> paths
+              and into the bundled <code>util/*</code> modules), highlight and find usages, rename, structure
+              view, breadcrumbs and Go to Symbol, which keep working by name while the model has errors</li>
+          <li>The bundled <code>util/*</code> modules as a read-only "Alloy 6.2.0" library under External
+              Libraries, opened in Reader mode when it is enabled for library sources</li>
           <li>Run <code>run</code> and <code>check</code> commands from the gutter, with their results as inlay
               hints at the end of the command's line, the analyzer output in their tooltip, and a Stop menu on
               the gutter icon of a running command</li>
@@ -39,6 +44,8 @@
         <lang.foldingBuilder language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyFoldingBuilder"/>
         <completion.contributor language="Alloy"
                                 implementationClass="com.serranofp.alloy.editor.AlloyKeywordCompletionContributor"/>
+        <completion.contributor language="Alloy"
+                                implementationClass="com.serranofp.alloy.editor.AlloyCompletionContributor"/>
         <stubElementTypeHolder class="com.serranofp.alloy.psi.AlloyTypes" externalIdPrefix="alloy."/>
         <stubIndex implementation="com.serranofp.alloy.psi.stubs.AlloyNameIndex"/>
         <lang.findUsagesProvider language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyFindUsagesProvider"/>
@@ -49,6 +56,7 @@
         <lang.psiStructureViewFactory language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyStructureViewFactory"/>
         <breadcrumbsInfoProvider implementation="com.serranofp.alloy.editor.AlloyBreadcrumbsProvider"/>
         <gotoSymbolContributor implementation="com.serranofp.alloy.semantics.AlloySymbolContributor"/>
+        <additionalLibraryRootsProvider implementation="com.serranofp.alloy.semantics.AlloyLibraryRootsProvider"/>
         <toolWindow id="Alloy Instance" anchor="right" icon="/icons/alloy.svg" doNotActivateOnStart="true"
                     factoryClass="com.serranofp.alloy.viewer.AlloyInstanceToolWindowFactory"/>
         <externalAnnotator language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyExternalAnnotator"/>

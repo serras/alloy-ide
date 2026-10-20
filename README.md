@@ -38,11 +38,19 @@ Add `open util/ordering[A]` and `fact { some first }` to `a.als`.
 - [ ] Hovering a use of `A` shows a popup with the signature as the analyzer explains it; a `/** ... */` comment before a declaration appears under it. With a type error elsewhere in the file, the popup shows the declaration's source instead.
 - [ ] Cmd/Ctrl-clicking `p` in `b.als` opens `a.als` at the predicate, also while `b.als` has a type error.
 - [ ] Cmd/Ctrl-clicking `first` opens the bundled `util/ordering` module read-only, at the declaration of `first`.
+- [ ] Cmd/Ctrl-clicking `util/ordering` in `open util/ordering[A]` opens the bundled module read-only; Cmd/Ctrl-clicking `a` in `open a` in `b.als` opens `a.als`.
 - [ ] *Find Usages* on `p` lists its uses in both files, and each entry navigates to its location; with a type error in `b.als`, its uses are listed under "Unconfirmed usages (the model has errors)".
 - [ ] Placing the caret on `A` highlights the declaration and its uses in the file.
 - [ ] Renaming `A` to `B` updates both files, and a single *Undo* reverts it. With a type error in either file, the rename is refused with "Rename needs a model without errors". Renaming `first` is refused because the library module is read-only. Renaming the `x` of `pred p[x: A]` edits it in place, inside `p` only; with a type error in `a.als`, that rename is refused too.
 - [ ] The *Structure* tool window lists the signatures (with their fields nested), facts, predicates, assertions and commands, also with a type error in the file, and selecting one moves the caret. The breadcrumbs show `p` while the caret is in its body.
 - [ ] *Go to Symbol* finds `p` from `b.als`, and selecting it opens `a.als` at the declaration.
+- [ ] Invoking completion in a fact body of `a.als` offers `A`, `p` and `first`, each with its kind's icon and type text ("signature", "predicate", "function"); `first` shows `util/ordering` as tail text, and the declarations of `a.als` show none. Completion after `ord/` in a file with `open util/ordering[A] as ord` offers only the `util/ordering` names.
+- [ ] Completion after `run ` offers the predicates and functions only, and after `check ` the assertions only; no names are offered in comments or strings.
+- [ ] In `b.als`, completion after `open ` offers `a` and the bundled `util/...` modules (`util/ordering`, `util/integer`, ...), but not `b` itself; completing `open util/ord` inserts `util/ordering`.
+- [ ] A file in a subdirectory declaring a module name that does not match its location (such as `sub/x.als` with `module foo/x`) is offered after the others, greyed out, with "cannot be opened from this file"; typing its unique prefix does not insert it.
+- [ ] *External Libraries* in the *Project* view shows "Alloy 6.2.0", which lists the bundled `util` modules; opening one shows it read-only.
+- [ ] With Reader mode enabled for library sources (*Settings | Editor | Reader Mode*), Cmd/Ctrl-clicking `first` opens `util/ordering` in Reader mode.
+- [ ] *Go to Symbol* finds the `first` of `util/ordering` only with "All places"; with "Project files" it does not appear.
 
 ### Manual checklist: inline command results
 

@@ -3,6 +3,7 @@ package com.serranofp.alloy.semantics
 import com.intellij.navigation.ChooseByNameContributor
 import com.intellij.navigation.NavigationItem
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.psi.NavigatablePsiElement
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.CommonProcessors
@@ -18,9 +19,9 @@ class AlloySymbolContributorTest : BasePlatformTestCase() {
         return names.results.toSet()
     }
 
-    private fun items(name: String): List<NavigationItem> {
+    private fun items(name: String, everywhere: Boolean = false): List<NavigationItem> {
         val items = CommonProcessors.CollectProcessor<NavigationItem>()
-        contributor.processElementsWithName(name, items, FindSymbolParameters.wrap(name, project, false))
+        contributor.processElementsWithName(name, items, FindSymbolParameters.wrap(name, project, everywhere))
         return items.results.toList()
     }
 
@@ -52,5 +53,27 @@ class AlloySymbolContributorTest : BasePlatformTestCase() {
         myFixture.configureByText("m.als", "sig A {}\npred p[param: A] { all binder: A | some binder }")
         assertFalse(names().contains("param"))
         assertFalse(names().contains("binder"))
+    }
+
+    fun testLibraryDeclarationsWithNonProjectItems() {
+        myFixture.configureByText("m.als", "open util/ordering[A]\nsig A {}\nfact { some first }")
+        val allNames = CommonProcessors.CollectProcessor<String>()
+        contributor.processNames(allNames, GlobalSearchScope.allScope(project), null)
+        assertTrue(allNames.results.contains("first"))
+
+        // `util/seqrel`, `util/sequence` and `util/sequniv` declare a `first` too
+        val item = items("first", everywhere = true)
+            .single { (it as NavigatablePsiElement).containingFile.name == "ordering.als" }
+        val file = (item as NavigatablePsiElement).containingFile.virtualFile
+        assertTrue(file.url, file.url.endsWith("!/models/util/ordering.als"))
+
+        item.navigate(true)
+        assertEquals(file, FileEditorManager.getInstance(project).selectedFiles.first())
+    }
+
+    fun testLibraryDeclarationsAreNotProjectSymbols() {
+        myFixture.configureByText("m.als", "open util/ordering[A]\nsig A {}\nfact { some first }")
+        // The index may list names from outside the scope, but their declarations are filtered out
+        assertEmpty(items("first"))
     }
 }

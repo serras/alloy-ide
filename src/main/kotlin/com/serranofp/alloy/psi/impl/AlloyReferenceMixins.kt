@@ -7,9 +7,11 @@ import com.intellij.psi.util.PsiTreeUtil
 import com.serranofp.alloy.psi.AlloyBlock
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyFunDecl
+import com.serranofp.alloy.psi.AlloyOpenDecl
 import com.serranofp.alloy.psi.AlloyPredDecl
 import com.serranofp.alloy.psi.AlloyQualifiedName
 import com.serranofp.alloy.psi.AlloySigDecl
+import com.serranofp.alloy.semantics.AlloyModuleReference
 import com.serranofp.alloy.semantics.AlloyReference
 
 /** An identifier use inside a paragraph. */
@@ -19,11 +21,19 @@ abstract class AlloyRefMixin(node: ASTNode) : ASTWrapperPsiElement(node) {
 
 /**
  * A name in a paragraph's header. It is a reference where it names something declared elsewhere: the parents
- * of a signature, the receiver of `pred A.p`, and the target and scope of a command. Module paths, aliases
- * and the names of facts, assertions, enums, predicates, functions and macros are not.
+ * of a signature, the receiver of `pred A.p`, the target and scope of a command, and the module path of an
+ * `open`. Aliases, `module` names and the names of facts, assertions, enums, predicates, functions and
+ * macros are not.
  */
 abstract class AlloyQualifiedNameMixin(node: ASTNode) : ASTWrapperPsiElement(node) {
-    override fun getReference(): PsiReference? = if (isReference()) AlloyReference(this) else null
+    override fun getReference(): PsiReference? = when {
+        isModulePath() -> AlloyModuleReference(this)
+        isReference() -> AlloyReference(this)
+        else -> null
+    }
+
+    // The first name of an `open` is its path; the second one, after `as`, is its alias
+    private fun isModulePath(): Boolean = (parent as? AlloyOpenDecl)?.qualifiedNameList?.firstOrNull() === this
 
     private fun isReference(): Boolean = when (val paragraph = parent) {
         is AlloySigDecl -> true
