@@ -80,6 +80,14 @@ tasks.compileKotlin {
     dependsOn(tasks.generateLexer, tasks.generateParser)
 }
 
+// Without compatibility stubs, a class does not override the platform's deprecated interface defaults
+// (such as InlayActionHandler.handleClick(Editor, ...)) just by implementing the interface
+kotlin {
+    compilerOptions {
+        jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY)
+    }
+}
+
 tasks.compileJava {
     dependsOn(tasks.generateLexer, tasks.generateParser)
 }

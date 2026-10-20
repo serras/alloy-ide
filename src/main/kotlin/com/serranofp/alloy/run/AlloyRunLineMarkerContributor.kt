@@ -1,6 +1,5 @@
 package com.serranofp.alloy.run
 
-import com.intellij.execution.lineMarker.ExecutorAction
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
 import com.intellij.icons.AllIcons
 import com.intellij.psi.PsiElement
@@ -15,7 +14,7 @@ class AlloyRunLineMarkerContributor : RunLineMarkerContributor() {
         if (type != AlloyTypes.RUN && type != AlloyTypes.CHECK) return null
         val command = element.parent as? AlloyCommandDecl ?: return null
         if (command.firstChild !== element || command.parent !is AlloyFile) return null
-        return Info(AllIcons.RunConfigurations.TestState.Run, ExecutorAction.getActions(0)) {
+        return Info(AllIcons.RunConfigurations.TestState.Run, arrayOf(AlloyRunCommandAction(command))) {
             "Run ${AlloyCommands.ref(command).displayName}"
         }
     }

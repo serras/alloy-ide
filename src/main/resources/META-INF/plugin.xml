@@ -8,8 +8,9 @@
         <ul>
           <li>Syntax highlighting, brace matching, commenting, folding and keyword completion</li>
           <li>Diagnostics, hover, go to declaration, find usages, rename, structure view and Go to Symbol</li>
-          <li>Run <code>run</code> and <code>check</code> commands from the gutter or run configurations, with
-              results in the Run console and instances, counterexamples and unsat cores one click away</li>
+          <li>Run <code>run</code> and <code>check</code> commands from the gutter, with their results as inlay
+              hints at the end of the command's line, the analyzer output in their tooltip, and instances,
+              counterexamples and unsat cores one click away</li>
           <li>Analyzer settings under <em>Languages &amp; Frameworks | Alloy</em>, separate from the Alloy desktop
               application</li>
         </ul>
@@ -17,6 +18,7 @@
         <code>PATH</code> are available, and instances open in the Alloy visualizer in a separate window.</p>
         ]]></description>
     <depends>com.intellij.modules.lsp</depends>
+    <resource-bundle>messages.AlloyBundle</resource-bundle>
     <extensions defaultExtensionNs="com.intellij">
         <fileType name="Alloy" language="Alloy" extensions="als"
                   implementationClass="com.serranofp.alloy.AlloyFileType" fieldName="INSTANCE"/>
@@ -30,8 +32,14 @@
         <completion.contributor language="Alloy"
                                 implementationClass="com.serranofp.alloy.editor.AlloyKeywordCompletionContributor"/>
         <platform.lsp.integrationProvider implementation="com.serranofp.alloy.lsp.AlloyLspIntegrationProvider"/>
-        <configurationType implementation="com.serranofp.alloy.run.AlloyCommandConfigurationType"/>
-        <runConfigurationProducer implementation="com.serranofp.alloy.run.AlloyCommandRunConfigurationProducer"/>
+        <codeInsight.declarativeInlayProvider language="Alloy" group="OTHER_GROUP" isEnabledByDefault="true"
+                                              providerId="alloy.command.results"
+                                              bundle="messages.AlloyBundle"
+                                              nameKey="inlay.command.results.name"
+                                              descriptionKey="inlay.command.results.description"
+                                              implementationClass="com.serranofp.alloy.run.AlloyCommandResultHintsProvider"/>
+        <codeInsight.inlayActionHandler handlerId="alloy.command.result"
+                                        implementationClass="com.serranofp.alloy.run.AlloyCommandResultClickHandler"/>
         <runLineMarkerContributor language="Alloy" implementationClass="com.serranofp.alloy.run.AlloyRunLineMarkerContributor"/>
         <applicationConfigurable parentId="language" id="com.serranofp.alloy.settings" displayName="Alloy"
                                  instance="com.serranofp.alloy.settings.AlloySettingsConfigurable"/>

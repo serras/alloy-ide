@@ -18,6 +18,8 @@ class FakeServerConnection(
     private val service: AlloyRunService,
     var commands: CommandsListResult? = CommandsListResult(),
     var answersStop: Boolean = true,
+    /** What the server streams after `ExecuteAlloyCommand`. */
+    var onExecute: () -> Unit = {},
 ) : AlloyServerConnection {
     val listed = mutableListOf<String>()
     val executed = mutableListOf<List<Any?>>()
@@ -33,6 +35,7 @@ class FakeServerConnection(
 
     override fun execute(arguments: List<Any?>) {
         executed += arguments
+        onExecute()
     }
 
     override fun stop() {
