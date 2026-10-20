@@ -14,7 +14,7 @@
 
 ### Changed
 
-- Command results are shown as inlay hints at the end of each command's line instead of in a console: the hint names the outcome, its tooltip holds the full analyzer output, and clicking it opens the instance, counterexample or unsat core, or stops a running analysis. Results are marked as outdated after an edit of the file or a change of the analyzer settings, and progress is a cancellable background task in the status bar.
+- Command results are shown as inlay hints at the end of each command's line instead of in a console: the hint names the outcome, its tooltip holds the full analyzer output, and clicking it opens the instance, counterexample or unsat core, or stops a running analysis. Results are marked as outdated after an edit of the file or a change of the analyzer settings, progress is a cancellable background task in the status bar, and the gutter icon of a running command is a spinner.
 
 ### Removed
 

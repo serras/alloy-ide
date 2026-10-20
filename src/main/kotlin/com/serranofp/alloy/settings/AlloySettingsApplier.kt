@@ -1,12 +1,11 @@
 package com.serranofp.alloy.settings
 
-import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.platform.lsp.api.LspClientManager
 import com.serranofp.alloy.lsp.AlloyLspIntegrationProvider
 import com.serranofp.alloy.run.AlloyCommandExecution
+import com.serranofp.alloy.run.AlloyCommandResults
 import com.serranofp.alloy.run.AlloyRunService
 
 /**
@@ -26,9 +25,7 @@ object AlloySettingsApplier {
     fun settingsChanged(project: Project, restart: (Project) -> Unit) {
         AlloyRunService.getInstance(project).activeExecution?.fail(AlloyCommandExecution.INTERRUPTED, INTERRUPTED_MESSAGE)
         AlloySettings.getInstance().nextGeneration()
-        ApplicationManager.getApplication().invokeLater({
-            DaemonCodeAnalyzer.getInstance(project).restart("Alloy analyzer settings changed")
-        }, project.disposed)
+        AlloyCommandResults.getInstance(project).refreshHints()
         restart(project)
     }
 

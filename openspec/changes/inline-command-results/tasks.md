@@ -34,6 +34,12 @@
 - [x] 6.1 Update the README (feature "Running commands", replace "Manual checklist: command execution" with inline-result checks: hint states, tooltip renders as HTML with line breaks, dimmed and "(outdated)" after an edit, click opens the visualizer, click shows the core with core minimization on, click on running stops, status-bar progress and cancel, busy hint, server down, no tool window opens, hints can be turned off in *Settings | Editor | Inlay Hints*; update the settings checklist items that mention the Run console), the CHANGELOG (Changed: inline results; Removed: Alloy command run configurations; Fixed: core link) and the `plugin.xml` description; verify the README and CHANGELOG have no remaining mention of the Run console or the *Alloy command* configuration (`grep -n "Run console\|Alloy command" README.md CHANGELOG.md src/main/resources/META-INF/plugin.xml`)
 - [x] 6.2 Run the full build and verification; verify `./gradlew check buildPlugin verifyPlugin` succeeds with no new Plugin Verifier problems (in particular no experimental/internal API usage from the declarative inlay API)
 
+## 7. Fixes from the runIde review
+
+- [x] 7.1 Show results without reopening the file: `AlloyCommandResults.refreshHints` calls `DeclarativeInlayHintsPassFactory.scheduleRecompute` for the affected editors after each record and after a settings change; verify with `AlloyCommandResultEditorTest` that hints appear in a highlighted editor right after a result is recorded (the test fails with a plain daemon restart)
+- [x] 7.2 Show a spinner (`AnimatedIcon.Default`) as the gutter icon of a running command; verify in `AlloyCommandResultEditorTest` that only the running command spins and that the run icon comes back with the result
+- [x] 7.3 Open results on a plain click with `AlloyCommandResultMouseListener` (`editorFactoryMouseListener`), since the platform only runs hint actions on Ctrl/Cmd-click; verify that a plain click on an instance/counterexample hint opens its `XML: …` link, on a running hint sends one stop, and that hints with nothing to open, lines without results and Ctrl/Cmd-clicks are ignored
+
 ## Workflow follow-up
 
 - Run the README manual checklist for inline command results in `runIde`, especially the tooltip rendering (design risk 2).

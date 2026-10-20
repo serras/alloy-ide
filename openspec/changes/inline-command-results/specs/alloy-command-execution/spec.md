@@ -104,7 +104,7 @@ When an execution cannot produce a result, the hint SHALL show a short failure s
 ## MODIFIED Requirements
 
 ### Requirement: Run gutter markers
-The editor SHALL show a run gutter icon next to every top-level `run` and `check` command in an Alloy file, and clicking it SHALL execute that command directly.
+The editor SHALL show a run gutter icon next to every top-level `run` and `check` command in an Alloy file, and clicking it SHALL execute that command directly. While the command is executing, its icon SHALL be a spinner.
 
 #### Scenario: Markers on commands
 - **WHEN** a file contains `run show for 3` and `check noCycles for 5`
@@ -113,6 +113,10 @@ The editor SHALL show a run gutter icon next to every top-level `run` and `check
 #### Scenario: Running from the gutter
 - **WHEN** the user clicks the gutter icon of `check noCycles`
 - **THEN** `check noCycles` is executed and its line shows the running hint, and no run configuration is created
+
+#### Scenario: Spinner while running
+- **WHEN** `check noCycles` is executing
+- **THEN** its gutter icon is a spinner, and it turns back into the run icon when the analysis ends
 
 ### Requirement: Stopping an analysis
 The user SHALL be able to stop a running analysis by clicking its running hint or by cancelling its background progress indicator. The server is asked to abort the analysis, and the hint SHALL then say that the analysis was stopped.

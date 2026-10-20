@@ -40,6 +40,7 @@
                                               implementationClass="com.serranofp.alloy.run.AlloyCommandResultHintsProvider"/>
         <codeInsight.inlayActionHandler handlerId="alloy.command.result"
                                         implementationClass="com.serranofp.alloy.run.AlloyCommandResultClickHandler"/>
+        <editorFactoryMouseListener implementation="com.serranofp.alloy.run.AlloyCommandResultMouseListener"/>
         <runLineMarkerContributor language="Alloy" implementationClass="com.serranofp.alloy.run.AlloyRunLineMarkerContributor"/>
         <applicationConfigurable parentId="language" id="com.serranofp.alloy.settings" displayName="Alloy"
                                  instance="com.serranofp.alloy.settings.AlloySettingsConfigurable"/>

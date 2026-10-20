@@ -1,6 +1,6 @@
 package com.serranofp.alloy.run
 
-import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
+import com.intellij.codeInsight.hints.declarative.impl.DeclarativeInlayHintsPassFactory
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -9,11 +9,12 @@ import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.UserDataHolderEx
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiManager
+import com.serranofp.alloy.AlloyFileType
 import com.serranofp.alloy.settings.AlloySettings
 import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.atomic.AtomicLong
@@ -74,10 +75,24 @@ class AlloyCommandResults(private val project: Project) : Disposable {
     /** Replaces the result of [command], and makes the editors of [file] show it. */
     fun record(file: VirtualFile, command: AlloyCommandRef, result: CommandResult) {
         synchronized(this) { results.getOrPut(file) { mutableMapOf() }[command] = result }
+        refreshHints(file)
+    }
+
+    /**
+     * Shows the current results (hints and gutter icons) in the editors of [file], or of every Alloy file.
+     * Restarting the daemon is not enough: the declarative hints pass skips editors whose PSI did not change
+     * since it last ran, unless it is asked to recompute.
+     */
+    fun refreshHints(file: VirtualFile? = null) {
         ApplicationManager.getApplication().invokeLater({
-            if (!file.isValid) return@invokeLater
-            val psiFile = PsiManager.getInstance(project).findFile(file) ?: return@invokeLater
-            DaemonCodeAnalyzer.getInstance(project).restart(psiFile, "Alloy command result changed")
+            val documents = FileDocumentManager.getInstance()
+            for (editor in EditorFactory.getInstance().allEditors) {
+                if (editor.project != project) continue
+                val shown = documents.getFile(editor.document) ?: continue
+                if (if (file != null) shown == file else shown.fileType == AlloyFileType) {
+                    DeclarativeInlayHintsPassFactory.scheduleRecompute(editor, project)
+                }
+            }
         }, project.disposed)
     }
 
