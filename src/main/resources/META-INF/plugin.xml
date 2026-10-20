@@ -4,26 +4,15 @@
     <vendor url="https://serranofp.com">Alejandro Serrano Mena</vendor>
     <description><![CDATA[
         Support for <a href="https://alloytools.org">Alloy</a> 6 models (<code>.als</code> files), with the
-        Alloy 6.2.0 analyzer included and running inside the IDE: no separate process or Java installation is
-        needed.
+        Alloy Analyzer included and running inside the IDE: no separate process or Java installation is needed.
         <ul>
-          <li>Syntax highlighting, brace matching, commenting and folding</li>
-          <li>Completion of keywords, of the names in scope (also after a module alias such as <code>ord/</code>,
-              and only predicates and functions after <code>run</code>), and of module paths after
-              <code>open</code></li>
           <li>Diagnostics, hover and quick documentation, go to declaration (also from <code>open</code> paths
               and into the bundled <code>util/*</code> modules), highlight and find usages, rename, structure
-              view, breadcrumbs and Go to Symbol, which keep working by name while the model has errors</li>
-          <li>The bundled <code>util/*</code> modules as a read-only "Alloy 6.2.0" library under External
-              Libraries, opened in Reader mode when it is enabled for library sources</li>
-          <li>Run <code>run</code> and <code>check</code> commands from the gutter, with their results as inlay
-              hints at the end of the command's line, the analyzer output in their tooltip, and a Stop menu on
-              the gutter icon of a running command</li>
-          <li>The <em>Alloy Instance</em> tool window: instances and counterexamples as a graph (with the magic
-              layout), text or table, new configurations, traces, initial states and forks, trace state stepping
-              and projection over several signatures</li>
-          <li>Analyzer settings under <em>Languages &amp; Frameworks | Alloy</em>, separate from the Alloy desktop
-              application</li>
+              view, breadcrumbs, completion, and <i>Go to Symbol</i></li>
+          <li>Run <code>run</code> and <code>check</code> commands from the gutter, with their results directly
+              visible as inlay hints, and the full analyzer output as a tooltip</li>
+          <li>The <em>Alloy Instance</em> tool window: instances and counterexamples as a graph, text or table,
+              with dedicated support for traces and state changes</li>
         </ul>
         <p>Solvers: the pure-Java SAT4J variants, and Yices, Plingeling and Electrod when their executables are on
         the <code>PATH</code>. Known limitations: solvers that need a native library are not available, and
