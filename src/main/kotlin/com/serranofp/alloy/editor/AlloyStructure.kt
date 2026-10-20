@@ -12,6 +12,7 @@ import com.intellij.navigation.ItemPresentation
 import com.intellij.pom.Navigatable
 import com.intellij.lang.PsiStructureViewFactory
 import com.intellij.openapi.editor.Editor
+import com.intellij.platform.backend.navigation.NavigationRequest
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
@@ -97,9 +98,8 @@ class AlloyStructureElement(private val element: PsiElement) : StructureViewTree
     override fun getChildren(): Array<TreeElement> =
         AlloyPresentation.children(element).map(::AlloyStructureElement).toTypedArray()
 
-    override fun navigate(requestFocus: Boolean) {
-        (element as? Navigatable)?.navigate(requestFocus)
-    }
+    override fun navigationRequest(): NavigationRequest? =
+        (element as? Navigatable)?.navigationRequest()
 
     override fun canNavigate(): Boolean = (element as? Navigatable)?.canNavigate() == true
 
