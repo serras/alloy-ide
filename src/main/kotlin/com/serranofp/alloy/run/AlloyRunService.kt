@@ -1,6 +1,5 @@
 package com.serranofp.alloy.run
 
-import com.intellij.execution.ExecutionException
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -11,12 +10,12 @@ import com.serranofp.alloy.lsp.CommandsListResult
 import java.util.concurrent.CompletableFuture
 
 /**
- * The single Alloy run of a project. The server silently ignores a second `ExecuteAlloyCommand` while it is
- * busy, and its output carries no run id, so at most one run exists and all output goes to it.
+ * The single Alloy execution of a project. The server silently ignores a second `ExecuteAlloyCommand` while it
+ * is busy, and its output carries no run id, so at most one execution exists and all output goes to it.
  */
 @Service(Service.Level.PROJECT)
 class AlloyRunService(project: Project) : Disposable {
-    private var active: AlloyRunProcessHandler? = null
+    private var active: AlloyCommandExecution? = null
     private var pendingCommands: CompletableFuture<CommandsListResult>? = null
 
     init {
@@ -27,25 +26,30 @@ class AlloyRunService(project: Project) : Disposable {
         })
     }
 
-    val activeRun: AlloyRunProcessHandler?
+    val activeExecution: AlloyCommandExecution?
         @Synchronized get() = active
 
-    /** Registers [handler] as the active run, or refuses if another one is still running. */
-    @Synchronized
-    @Throws(ExecutionException::class)
-    fun startRun(handler: AlloyRunProcessHandler) {
-        if (active != null) throw ExecutionException(BUSY_MESSAGE)
-        active = handler
+    /**
+     * Registers [execution] as the active one and records it as running, or refuses (returning false, with
+     * the results untouched) if another one is still running.
+     */
+    fun startRun(execution: AlloyCommandExecution): Boolean {
+        synchronized(this) {
+            if (active != null) return false
+            active = execution
+        }
+        execution.started()
+        return true
     }
 
     @Synchronized
-    fun runFinished(handler: AlloyRunProcessHandler) {
-        if (active === handler) active = null
+    fun runFinished(execution: AlloyCommandExecution) {
+        if (active === execution) active = null
     }
 
-    /** Output of the active run; output that arrives with no active run belongs to no one and is dropped. */
+    /** Output of the active execution; output that arrives with none active belongs to no one and is dropped. */
     fun executionOutput(message: AlloyExecutionMessage) {
-        activeRun?.render(message)
+        activeExecution?.render(message)
     }
 
     /** Asks for the commands of a document; the answer is the next `alloy/commandsListResult`. */
@@ -64,13 +68,13 @@ class AlloyRunService(project: Project) : Disposable {
         future?.complete(result)
     }
 
-    /** The server process stopped: the active run can never complete. */
+    /** The server process stopped: the active execution can never complete. */
     fun serverStopped() {
-        activeRun?.fail(SERVER_UNAVAILABLE_MESSAGE)
+        activeExecution?.fail(AlloyCommandExecution.SERVER_UNAVAILABLE, SERVER_UNAVAILABLE_MESSAGE)
     }
 
     override fun dispose() {
-        activeRun?.terminate(1)
+        activeExecution?.terminate()
     }
 
     companion object {

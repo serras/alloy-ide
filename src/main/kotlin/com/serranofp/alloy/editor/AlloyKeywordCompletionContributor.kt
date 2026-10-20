@@ -33,7 +33,7 @@ class AlloyKeywordCompletionContributor : CompletionContributor() {
 }
 
 /** Word keywords, taken from the token types (whose debug names are their spelling). */
-private val KEYWORDS: List<String> =
+internal val KEYWORDS: List<String> =
     (AlloyTokenSets.KEYWORDS.types + AlloyTokenSets.TEMPORAL_OPERATORS.types)
         .map { it.toString() }
         .filter { it.first().isLetter() }

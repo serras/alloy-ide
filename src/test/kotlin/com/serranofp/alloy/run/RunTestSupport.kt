@@ -1,33 +1,17 @@
 package com.serranofp.alloy.run
 
 import com.google.gson.JsonParser
-import com.intellij.execution.filters.HyperlinkInfo
-import com.intellij.execution.ui.ConsoleViewContentType
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.serranofp.alloy.lsp.AlloyExecutionMessage
 import com.serranofp.alloy.lsp.AlloyMessageType
 import com.serranofp.alloy.lsp.CommandsListResult
 import com.serranofp.alloy.lsp.CommandsListResultItem
+import com.serranofp.alloy.settings.AlloySettings
 import org.eclipse.lsp4j.Command
 import java.nio.file.Files
 import java.nio.file.Path
-
-class RecordingSink : AlloyConsoleSink {
-    data class Segment(val text: String, val type: ConsoleViewContentType?, val link: HyperlinkInfo? = null)
-
-    val segments = mutableListOf<Segment>()
-
-    val text: String
-        get() = segments.joinToString("") { it.text }
-
-    override fun print(text: String, contentType: ConsoleViewContentType) {
-        segments += Segment(text, contentType)
-    }
-
-    override fun printHyperlink(text: String, info: HyperlinkInfo) {
-        segments += Segment(text, null, info)
-    }
-}
 
 /** Stands in for the language server: answers like the 6.2.0 server, or not at all. */
 class FakeServerConnection(
@@ -79,3 +63,20 @@ fun capturedOutput(): List<AlloyExecutionMessage> =
             lineBreak = p["lineBreak"].asBoolean,
         )
     }
+
+/** An execution of [command] in [file] that analyzes the current document and settings, as a launch does. */
+fun newExecution(
+    project: Project,
+    file: VirtualFile,
+    command: AlloyCommandRef = AlloyCommandRef("show", 0),
+    stopTimeoutMillis: Long = AlloyCommandExecution.STOP_TIMEOUT_MILLIS,
+): AlloyCommandExecution =
+    AlloyCommandExecution(
+        AlloyRunService.getInstance(project),
+        AlloyCommandResults.getInstance(project),
+        file,
+        command,
+        AlloyCommandResults.getInstance(project).stamp(FileDocumentManager.getInstance().getDocument(file)!!),
+        AlloySettings.getInstance().generation,
+        stopTimeoutMillis,
+    )

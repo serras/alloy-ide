@@ -6,6 +6,7 @@ import com.intellij.openapi.components.SimplePersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
+import java.util.concurrent.atomic.AtomicLong
 
 /** The analyzer options, with the defaults of Alloy 6.2.0. */
 class AlloySettingsState : BaseState() {
@@ -34,6 +35,19 @@ class AlloySettingsState : BaseState() {
 @Service(Service.Level.APP)
 @State(name = "AlloySettings", storages = [Storage("alloy.xml")])
 class AlloySettings : SimplePersistentStateComponent<AlloySettingsState>(AlloySettingsState()) {
+    private val generationCounter = AtomicLong()
+
+    /**
+     * Counts the applied changes in this session (it is not persisted): a command result recorded under an
+     * older generation is outdated.
+     */
+    val generation: Long
+        get() = generationCounter.get()
+
+    fun nextGeneration() {
+        generationCounter.incrementAndGet()
+    }
+
     /**
      * The options as `A4Preferences` id to value, in its encoding: choices as their integer, booleans as `y`/`n`,
      * and the solver as its `SATFactory` id. A solver that is not [available] is replaced by `sat4j`.

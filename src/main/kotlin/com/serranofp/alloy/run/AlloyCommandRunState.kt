@@ -1,29 +1,36 @@
 package com.serranofp.alloy.run
 
-import com.intellij.execution.DefaultExecutionResult
+import com.intellij.execution.ExecutionException
 import com.intellij.execution.ExecutionResult
 import com.intellij.execution.Executor
 import com.intellij.execution.configurations.RunProfileState
-import com.intellij.execution.filters.TextConsoleBuilderFactory
-import com.intellij.execution.process.ProcessEvent
-import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.runners.ProgramRunner
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.serranofp.alloy.settings.AlloySettings
 
+/** Starts the command without a console: its result is recorded in [AlloyCommandResults]. */
 class AlloyCommandRunState(
     private val project: Project,
     private val file: VirtualFile,
     private val command: AlloyCommandRef,
 ) : RunProfileState {
-    override fun execute(executor: Executor, runner: ProgramRunner<*>): ExecutionResult {
+    override fun execute(executor: Executor, runner: ProgramRunner<*>): ExecutionResult? {
         val service = AlloyRunService.getInstance(project)
-        val console = TextConsoleBuilderFactory.getInstance().createBuilder(project).console
-        val handler = AlloyRunProcessHandler(service, ConsoleViewSink(console))
-        service.startRun(handler)
-        console.attachToProcess(handler)
+        val results = AlloyCommandResults.getInstance(project)
+        val document = FileDocumentManager.getInstance().getDocument(file)
+        val execution = AlloyCommandExecution(
+            service,
+            results,
+            file,
+            command,
+            document?.let(results::stamp) ?: 0,
+            AlloySettings.getInstance().generation,
+        )
+        if (!service.startRun(execution)) throw ExecutionException(AlloyRunService.BUSY_MESSAGE)
 
         // The server analyzes the text it was sent with didOpen/didChange, so the model must be open in an
         // editor; the platform then keeps the server in sync with unsaved edits.
@@ -31,15 +38,11 @@ class AlloyCommandRunState(
             FileEditorManager.getInstance(project).openFile(file, false)
         }
 
-        handler.addProcessListener(object : ProcessListener {
-            override fun startNotified(event: ProcessEvent) {
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    val connection = awaitConnection()
-                    AlloyCommandLauncher(service).launch(handler, connection, connection?.uriOf(file), file.name, command)
-                }
-            }
-        })
-        return DefaultExecutionResult(console, handler)
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val connection = awaitConnection()
+            AlloyCommandLauncher(service).launch(execution, connection, connection?.uriOf(file), file.name, command)
+        }
+        return null
     }
 
     /** A server that is still starting (for example, because the file was just opened) is waited for. */

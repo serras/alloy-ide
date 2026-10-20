@@ -20,41 +20,41 @@ class AlloyCommandLauncher(
         AlloySettings.getInstance().solverFallbackWarning { AlloySolvers.getInstance().ids() }
     },
 ) {
-    /** Runs on a background thread; every failure ends [handler] with a message in its console. */
+    /** Runs on a background thread; every failure ends [execution] with a summary and its cause. */
     fun launch(
-        handler: AlloyRunProcessHandler,
+        execution: AlloyCommandExecution,
         connection: AlloyServerConnection?,
         uri: String?,
         fileName: String,
         command: AlloyCommandRef,
     ) {
-        solverWarning()?.let(handler::warn)
+        solverWarning()?.let(execution::warn)
         if (connection == null || uri == null) {
-            handler.fail(AlloyRunService.SERVER_UNAVAILABLE_MESSAGE)
+            execution.fail(AlloyCommandExecution.SERVER_UNAVAILABLE, AlloyRunService.SERVER_UNAVAILABLE_MESSAGE)
             return
         }
-        handler.connection = connection
+        execution.connection = connection
 
         val commands = try {
             service.requestCommands(connection, uri).get(listTimeoutMillis, TimeUnit.MILLISECONDS).commands
         } catch (_: TimeoutException) {
-            handler.fail("The Alloy language server did not list the commands of $fileName in time")
+            execution.fail(AlloyRunLog.FAILED, "The Alloy language server did not list the commands of $fileName in time")
             return
         } catch (e: ExecutionException) {
-            handler.fail("Could not list the commands of $fileName: ${e.cause?.message ?: e.message}")
+            execution.fail(AlloyRunLog.FAILED, "Could not list the commands of $fileName: ${e.cause?.message ?: e.message}")
             return
         }
-        if (handler.isFinished()) return
+        if (execution.isFinished()) return
 
         if (commands.isEmpty()) {
             // The server lists no commands when the module does not parse or type-check
-            handler.fail("$fileName has errors, see the problems reported in the editor")
+            execution.fail(AlloyCommandExecution.MODEL_HAS_ERRORS, "$fileName has errors, see the problems reported in the editor")
             return
         }
         val item = select(commands, command)
         val arguments = item?.command?.arguments
         if (arguments == null) {
-            handler.fail("Command ${command.displayName} was not found in $fileName")
+            execution.fail(AlloyCommandExecution.COMMAND_NOT_FOUND, "Command ${command.displayName} was not found in $fileName")
             return
         }
         connection.execute(arguments)
