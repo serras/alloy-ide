@@ -69,7 +69,7 @@ abstract class AlloyNamedStubMixin : StubBasedPsiElementBase<AlloyNamedStub>, Al
     /** For Go to Symbol: the name, the file it is declared in, and its kind's icon. */
     override fun getPresentation(): ItemPresentation = PresentationData(
         AlloyPresentation.text(this) ?: name,
-        containingFile?.name,
+        containingFile.name,
         AlloyPresentation.icon(this),
         null,
     )

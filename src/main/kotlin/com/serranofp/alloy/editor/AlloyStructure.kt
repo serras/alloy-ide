@@ -98,8 +98,11 @@ class AlloyStructureElement(private val element: PsiElement) : StructureViewTree
     override fun getChildren(): Array<TreeElement> =
         AlloyPresentation.children(element).map(::AlloyStructureElement).toTypedArray()
 
-    override fun navigationRequest(): NavigationRequest? =
-        (element as? Navigatable)?.navigationRequest()
+    // override fun navigationRequest(): NavigationRequest? = (element as? Navigatable)?.navigationRequest()
+
+    override fun navigate(requestFocus: Boolean) {
+        (element as? Navigatable)?.navigate(requestFocus)
+    }
 
     override fun canNavigate(): Boolean = (element as? Navigatable)?.canNavigate() == true
 

@@ -26,6 +26,8 @@ import com.serranofp.alloy.psi.impl.AlloyMacroDeclImpl
 import com.serranofp.alloy.psi.impl.AlloyPredDeclImpl
 import com.serranofp.alloy.psi.impl.AlloySigNameImpl
 
+internal val NAME_INDEX_KEY: StubIndexKey<String, AlloyNamedDeclaration> = StubIndexKey.createIndexKey("alloy.name")
+
 /** The stub of a declaration in [AlloyNameIndex]: its name, or null for an unnamed assertion. */
 class AlloyNamedStub(parent: StubElement<*>?, type: IStubElementType<*, *>, val name: String?) :
     StubBase<AlloyNamedDeclaration>(parent, type)
@@ -58,7 +60,7 @@ class AlloyNamedStubElementType(private val id: String) : IStubElementType<Alloy
         AlloyNamedStub(parentStub, this, dataStream.readNameString())
 
     override fun indexStub(stub: AlloyNamedStub, sink: IndexSink) {
-        stub.name?.let { sink.occurrence(AlloyNameIndex.KEY, it) }
+        stub.name?.let { sink.occurrence(NAME_INDEX_KEY, it) }
     }
 }
 
@@ -82,12 +84,8 @@ object AlloyFileElementType : IStubFileElementType<PsiFileStub<AlloyFile>>("ALLO
  * are not in it.
  */
 class AlloyNameIndex : StringStubIndexExtension<AlloyNamedDeclaration>() {
-    override fun getKey(): StubIndexKey<String, AlloyNamedDeclaration> = KEY
+    override fun getKey(): StubIndexKey<String, AlloyNamedDeclaration> = NAME_INDEX_KEY
 
     override fun getVersion(): Int = super.getVersion() + 1
-
-    companion object {
-        val KEY: StubIndexKey<String, AlloyNamedDeclaration> = StubIndexKey.createIndexKey("alloy.name")
-    }
 }
 

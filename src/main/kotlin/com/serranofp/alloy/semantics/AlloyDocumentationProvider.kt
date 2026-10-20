@@ -33,6 +33,45 @@ class AlloyDocumentationProvider : AbstractDocumentationProvider() {
         }
     }
 
+    /**
+     * The declaration as written, without its body: the header of a paragraph or signature, or a field,
+     * parameter or binder with its bound (`a, b: set A` for `b` gives `b: set A`).
+     */
+    fun source(declaration: AlloyNamedDeclaration): String {
+        val paragraph = if (declaration is AlloySigName) declaration.parent as AlloySigDecl else declaration
+        if (paragraph.parent is PsiFile) {
+            val body = paragraph.children.firstOrNull { it is AlloyBlock }
+            val end = body?.textRange?.startOffset ?: paragraph.textRange.endOffset
+            return normalize(paragraph.containingFile.text.substring(paragraph.textRange.startOffset, end))
+        }
+        val text = StringBuilder()
+        var seenColon = false
+        var node = declaration.node
+        while (true) {
+            val type = node.elementType
+            if (type == AlloyTypes.COMMA && seenColon) break
+            if (type in STOPS || type == AlloyTypes.BLOCK) break
+            if (type == AlloyTypes.COLON) seenColon = true
+            text.append(node.text)
+            node = node.treeNext ?: break
+        }
+        return normalize(text.toString())
+    }
+
+    private val STOPS = setOf(AlloyTypes.RBRACE, AlloyTypes.RBRACKET, AlloyTypes.RPAREN, AlloyTypes.BAR)
+
+    private fun normalize(text: String) = text.trim().replace(Regex("\\s+"), " ")
+
+    /** The text of the `/** ... */` comment right before the declaration's paragraph or field. */
+    fun docComment(declaration: AlloyNamedDeclaration): String? {
+        val owner = if (declaration is AlloySigName) declaration.parent else declaration
+        val comment = PsiTreeUtil.skipWhitespacesBackward(owner) as? PsiComment ?: return null
+        if (comment.tokenType != AlloyTypes.DOC_COMMENT) return null
+        return comment.text.removePrefix("/**").removeSuffix("*/")
+            .lines().joinToString("\n") { it.trim().removePrefix("*").trim() }
+            .trim()
+    }
+
     override fun generateHoverDoc(element: PsiElement, originalElement: PsiElement?): String? = generateDoc(element, originalElement)
 
     /** The analyzer's explanation of the use at [original], the element under the caret or mouse. */
@@ -40,46 +79,5 @@ class AlloyDocumentationProvider : AbstractDocumentationProvider() {
         val reference = generateSequence(original) { it.parent.takeUnless { parent -> parent is PsiFile } }
             .firstNotNullOfOrNull { it.reference as? AlloyReference } ?: return null
         return reference.exactExplanation()
-    }
-
-    companion object {
-        /**
-         * The declaration as written, without its body: the header of a paragraph or signature, or a field,
-         * parameter or binder with its bound (`a, b: set A` for `b` gives `b: set A`).
-         */
-        fun source(declaration: AlloyNamedDeclaration): String {
-            val paragraph = if (declaration is AlloySigName) declaration.parent as AlloySigDecl else declaration
-            if (paragraph.parent is PsiFile) {
-                val body = paragraph.children.firstOrNull { it is AlloyBlock }
-                val end = body?.textRange?.startOffset ?: paragraph.textRange.endOffset
-                return normalize(paragraph.containingFile.text.substring(paragraph.textRange.startOffset, end))
-            }
-            val text = StringBuilder()
-            var seenColon = false
-            var node = declaration.node
-            while (true) {
-                val type = node.elementType
-                if (type == AlloyTypes.COMMA && seenColon) break
-                if (type in STOPS || type == AlloyTypes.BLOCK) break
-                if (type == AlloyTypes.COLON) seenColon = true
-                text.append(node.text)
-                node = node.treeNext ?: break
-            }
-            return normalize(text.toString())
-        }
-
-        private val STOPS = setOf(AlloyTypes.RBRACE, AlloyTypes.RBRACKET, AlloyTypes.RPAREN, AlloyTypes.BAR)
-
-        private fun normalize(text: String) = text.trim().replace(Regex("\\s+"), " ")
-
-        /** The text of the `/** ... */` comment right before the declaration's paragraph or field. */
-        fun docComment(declaration: AlloyNamedDeclaration): String? {
-            val owner = if (declaration is AlloySigName) declaration.parent else declaration
-            val comment = PsiTreeUtil.skipWhitespacesBackward(owner) as? PsiComment ?: return null
-            if (comment.tokenType != AlloyTypes.DOC_COMMENT) return null
-            return comment.text.removePrefix("/**").removeSuffix("*/")
-                .lines().joinToString("\n") { it.trim().removePrefix("*").trim() }
-                .trim()
-        }
     }
 }

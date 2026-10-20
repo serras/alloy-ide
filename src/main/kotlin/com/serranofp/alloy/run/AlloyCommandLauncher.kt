@@ -45,7 +45,7 @@ class AlloyCommandLauncher(
         val fileName = execution.file.name
         val target = when (val found = ReadAction.nonBlocking<Found> { find(execution) }.executeSynchronously()) {
             is Target -> found
-            is NotFound -> {
+            is NotFound, null -> {
                 execution.fail(found.summary, found.details)
                 return
             }

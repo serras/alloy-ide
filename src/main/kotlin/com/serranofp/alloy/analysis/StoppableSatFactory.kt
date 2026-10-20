@@ -31,7 +31,7 @@ internal class StoppableSatFactory private constructor(
     override fun incremental(): Boolean = original.incremental()
     override fun unbounded(): Boolean = original.unbounded()
     override fun maxsat(): Boolean = original.maxsat()
-    override fun isTransformer(): Boolean = original.isTransformer()
+    override fun isTransformer(): Boolean = original.isTransformer
     override fun getExecutables(): Array<String> = original.executables
     override fun getLibraries(): Array<String> = original.libraries
 
@@ -75,7 +75,7 @@ internal class StoppableSatFactory private constructor(
             .filter { process ->
                 val info = process.info()
                 val program = listOfNotNull(info.command().orElse(null), info.arguments().orElse(null)?.firstOrNull())
-                program.any { fileName(it) in names } && info.startInstant().map { !it.isBefore(started) }.orElse(true)
+                program.any { fileName(it) in names } && info.startInstant().map { !it.isBefore(started) }.orElse(true)!!
             }
             .forEach { it.destroyForcibly() }
     }

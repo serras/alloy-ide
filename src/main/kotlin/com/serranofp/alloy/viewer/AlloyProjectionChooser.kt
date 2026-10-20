@@ -6,7 +6,6 @@ import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.DropDownLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.util.ui.JBUI
-import edu.mit.csail.sdg.alloy4viz.AlloyType
 import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JPanel

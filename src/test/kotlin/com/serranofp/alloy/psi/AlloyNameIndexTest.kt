@@ -7,16 +7,16 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.serranofp.alloy.psi.stubs.AlloyNameIndex
+import com.serranofp.alloy.psi.stubs.NAME_INDEX_KEY
 
 class AlloyNameIndexTest : BasePlatformTestCase() {
     private fun find(name: String): List<AlloyNamedDeclaration> =
-        StubIndex.getElements(AlloyNameIndex.KEY, name, project, GlobalSearchScope.projectScope(project), AlloyNamedDeclaration::class.java).toList()
+        StubIndex.getElements(NAME_INDEX_KEY, name, project, GlobalSearchScope.projectScope(project), AlloyNamedDeclaration::class.java).toList()
 
     /** The names indexed for [file]; light tests share their project with other tests' files. */
     private fun names(file: com.intellij.openapi.vfs.VirtualFile): Set<String> {
         val names = mutableSetOf<String>()
-        StubIndex.getInstance().processAllKeys(AlloyNameIndex.KEY, { names += it; true }, GlobalSearchScope.fileScope(project, file), null)
+        StubIndex.getInstance().processAllKeys(NAME_INDEX_KEY, { names += it; true }, GlobalSearchScope.fileScope(project, file), null)
         return names.filterTo(mutableSetOf()) { name -> find(name).any { it.containingFile.virtualFile == file } }
     }
 

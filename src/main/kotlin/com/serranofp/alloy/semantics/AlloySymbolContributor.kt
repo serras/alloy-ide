@@ -9,16 +9,17 @@ import com.intellij.util.indexing.FindSymbolParameters
 import com.intellij.util.indexing.IdFilter
 import com.serranofp.alloy.psi.AlloyNamedDeclaration
 import com.serranofp.alloy.psi.stubs.AlloyNameIndex
+import com.serranofp.alloy.psi.stubs.NAME_INDEX_KEY
 
 /** Go to Symbol and Search Everywhere over the declarations in [AlloyNameIndex]. */
 class AlloySymbolContributor : ChooseByNameContributorEx {
     override fun processNames(processor: Processor<in String>, scope: GlobalSearchScope, filter: IdFilter?) {
-        StubIndex.getInstance().processAllKeys(AlloyNameIndex.KEY, processor, scope, filter)
+        StubIndex.getInstance().processAllKeys(NAME_INDEX_KEY, processor, scope, filter)
     }
 
     override fun processElementsWithName(name: String, processor: Processor<in NavigationItem>, parameters: FindSymbolParameters) {
         StubIndex.getInstance().processElements(
-            AlloyNameIndex.KEY, name, parameters.project, parameters.searchScope, parameters.idFilter,
+            NAME_INDEX_KEY, name, parameters.project, parameters.searchScope, parameters.idFilter,
             AlloyNamedDeclaration::class.java,
         ) { declaration -> (declaration as? NavigationItem)?.let(processor::process) ?: true }
     }

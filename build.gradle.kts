@@ -3,6 +3,7 @@ import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.models.ProductRelease
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -56,7 +57,7 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "262"
+            sinceBuild = "261"
         }
         changeNotes = provider {
             changelog.renderItem(changelog.getOrNull(version.toString()) ?: changelog.getUnreleased(), Changelog.OutputType.HTML)
@@ -68,7 +69,7 @@ intellijPlatform {
             select {
                 types = listOf(IntelliJPlatformType.IntellijIdea)
                 channels = listOf(ProductRelease.Channel.RELEASE, ProductRelease.Channel.RC, ProductRelease.Channel.EAP, ProductRelease.Channel.BETA)
-                sinceBuild = "262"
+                sinceBuild = "261"
                 untilBuild = provider { null }
             }
         }
@@ -105,7 +106,7 @@ tasks.compileKotlin {
 // (such as InlayActionHandler.handleClick(Editor, ...)) just by implementing the interface
 kotlin {
     compilerOptions {
-        jvmDefault.set(org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY)
+        jvmDefault = JvmDefaultMode.NO_COMPATIBILITY
     }
 }
 

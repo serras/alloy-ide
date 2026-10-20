@@ -27,35 +27,35 @@ class AlloyRenameProcessor : RenamePsiElementProcessor() {
         return null
     }
 
+    /** Why [declaration] cannot be renamed, or null if it can. */
+    fun refusal(declaration: AlloyNamedDeclaration): String? {
+        val file = declaration.containingFile?.virtualFile ?: return null
+        if (!file.isWritable || file.fileSystem is JarFileSystem) {
+            return "${declaration.name} cannot be renamed: it is declared in the read-only library module ${file.nameWithoutExtension}"
+        }
+        val withErrors = ProgressManager.getInstance().runProcessWithProgressSynchronously(
+            ThrowableComputable<List<String>, RuntimeException> { ReadAction.computeBlocking<List<String>, RuntimeException> { filesWithErrors(declaration) } },
+            "Checking the Alloy models",
+            true,
+            declaration.project,
+        )
+        if (withErrors.isEmpty()) return null
+        return "$NEEDS_A_MODEL_WITHOUT_ERRORS: ${withErrors.joinToString(", ")} " + (if (withErrors.size == 1) "has errors" else "have errors")
+    }
+
+    /** The declaring file and the files with references, among those whose model does not type-check. */
+    private fun filesWithErrors(declaration: AlloyNamedDeclaration): List<String> {
+        val files = linkedSetOf(declaration.containingFile)
+        ReferencesSearch.search(declaration, declaration.useScope).forEach { files += it.element.containingFile }
+        val service = AlloyModelService.getInstance(declaration.project)
+        return files.filterIsInstance<AlloyFile>()
+            .filter { service.model(it) !is AlloyModelResult.Model }
+            .map { it.name }
+    }
+
     companion object {
         const val TITLE = "Rename"
         const val NEEDS_A_MODEL_WITHOUT_ERRORS = "Rename needs a model without errors"
-
-        /** Why [declaration] cannot be renamed, or null if it can. */
-        fun refusal(declaration: AlloyNamedDeclaration): String? {
-            val file = declaration.containingFile?.virtualFile ?: return null
-            if (!file.isWritable || file.fileSystem is JarFileSystem) {
-                return "${declaration.name} cannot be renamed: it is declared in the read-only library module ${file.nameWithoutExtension}"
-            }
-            val withErrors = ProgressManager.getInstance().runProcessWithProgressSynchronously(
-                ThrowableComputable<List<String>, RuntimeException> { ReadAction.computeBlocking<List<String>, RuntimeException> { filesWithErrors(declaration) } },
-                "Checking the Alloy models",
-                true,
-                declaration.project,
-            )
-            if (withErrors.isEmpty()) return null
-            return "$NEEDS_A_MODEL_WITHOUT_ERRORS: ${withErrors.joinToString(", ")} " + (if (withErrors.size == 1) "has errors" else "have errors")
-        }
-
-        /** The declaring file and the files with references, among those whose model does not type-check. */
-        private fun filesWithErrors(declaration: AlloyNamedDeclaration): List<String> {
-            val files = linkedSetOf(declaration.containingFile)
-            ReferencesSearch.search(declaration, declaration.useScope).forEach { files += it.element.containingFile }
-            val service = AlloyModelService.getInstance(declaration.project)
-            return files.filterIsInstance<AlloyFile>()
-                .filter { service.model(it) !is AlloyModelResult.Model }
-                .map { it.name }
-        }
     }
 }
 

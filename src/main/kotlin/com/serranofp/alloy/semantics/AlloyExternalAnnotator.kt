@@ -29,10 +29,9 @@ class AlloyExternalAnnotator : ExternalAnnotator<AlloyFile, List<AlloyDiagnostic
     }
 
     override fun apply(file: PsiFile, diagnostics: List<AlloyDiagnostic>, holder: AnnotationHolder) {
-        for (diagnostic in diagnostics) {
-            val tooltip = XmlStringUtil.wrapInHtml(XmlStringUtil.escapeString(diagnostic.message).replace("\n", "<br>"))
-            val builder = holder.newAnnotation(diagnostic.severity, diagnostic.message).tooltip(tooltip)
-            val range = diagnostic.range
+        for ((severity, message, range) in diagnostics) {
+            val tooltip = XmlStringUtil.wrapInHtml(XmlStringUtil.escapeString(message).replace("\n", "<br>"))
+            val builder = holder.newAnnotation(severity, message).tooltip(tooltip)
             if (range == null) builder.fileLevel().create()
             else builder.range(clamp(range, file)).create()
         }

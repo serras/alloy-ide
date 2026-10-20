@@ -8,7 +8,6 @@ import com.intellij.execution.configurations.PathEnvironmentVariableUtil
 import kodkod.engine.satlab.SATFactory
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
-import kotlin.io.path.pathString
 
 data class AlloySolver(val id: String, val name: String)
 
