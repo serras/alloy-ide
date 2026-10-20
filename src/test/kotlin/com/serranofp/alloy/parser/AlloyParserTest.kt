@@ -55,4 +55,7 @@ class AlloyParserTest : ParsingTestCase("parser", "als", AlloyParserDefinition()
 
     /** Enum members, untyped macro parameters and typed function parameters. */
     fun testParameters() = doTest(true, true)
+
+    /** After `:`, `one Node, id: ...` is a multiplicity and the next declaration, not a quantifier. */
+    fun testMultiplicities() = doTest(true, true)
 }

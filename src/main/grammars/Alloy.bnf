@@ -214,8 +214,10 @@ private parenthesized_parameter_list ::= LPAREN (parameter_group | !RPAREN balan
 private parameter_group ::= DISJ? paramDecl (COMMA DISJ? paramDecl)* (COLON declaration_bound)?
 paramDecl ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyLocalDeclarationMixin" implements="com.serranofp.alloy.psi.AlloyNamedDeclaration"}
 
-// The type of declared names: up to the next comma, `|` or block (a comprehension can still be a bound)
-private declaration_bound ::= (comprehension | !(COMMA | BAR | LBRACE | RBRACE | RBRACKET | RPAREN | paragraph_keyword) balanced_item)*
+// The type of declared names: up to the next comma, `|` or block (a comprehension can still be a bound).
+// Right after `:` or `disj`, `one` and the like are multiplicities, as in upstream CompFilter: in
+// `succ: one Node, id: one Id` there is no quantifier over `Node` and `id`.
+private declaration_bound ::= DISJ? quantifier_keyword? (comprehension |!(COMMA | BAR | LBRACE | RBRACE | RBRACKET | RPAREN | paragraph_keyword) balanced_item)*
 
 // `all disj x, y: A, z: B | body`, or with a block as body. A binder needs its `:`, so `some x` is not one.
 // The body has no end of its own in this grammar: it runs to the end of the enclosing group.
