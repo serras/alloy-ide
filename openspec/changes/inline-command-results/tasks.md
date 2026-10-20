@@ -2,7 +2,7 @@
 
 ## 1. Spec baseline
 
-- [ ] 1.1 Sync the archived specs of `2026-10-19-add-alloy-intellij-plugin` into `openspec/specs/` (`alloy-editor`, `alloy-language-server`, `alloy-command-execution`, `alloy-analyzer-settings`), each with its `## Purpose`; verify `openspec list --specs` lists the four capabilities and `openspec validate inline-command-results --strict` no longer reports "Archive would refuse this delta"
+- [x] 1.1 Sync the archived specs of `2026-10-19-add-alloy-intellij-plugin` into `openspec/specs/` (`alloy-editor`, `alloy-language-server`, `alloy-command-execution`, `alloy-analyzer-settings`), each with its `## Purpose`; verify `openspec list --specs` lists the four capabilities and `openspec validate inline-command-results --strict` no longer reports "Archive would refuse this delta"
 
 ## 2. Analyzer output interpretation
 
