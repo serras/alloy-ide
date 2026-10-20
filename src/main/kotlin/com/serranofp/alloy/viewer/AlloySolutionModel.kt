@@ -16,7 +16,8 @@ import java.io.StringWriter
  * One satisfiable solution as the instance viewer shows it: the state of the trace that is selected, its text
  * and table forms as the analyzer prints them, and the visualizer's theme ([vizState]) for the graph. A first
  * solution gets the magic layout; a solution enumerated from a shown one gets a copy of its [theme], with its
- * projections. Stepping through the trace keeps the theme and projections, and reloads the instance.
+ * projections. Stepping through the trace keeps the theme and projections, and reloads the instance. A trace
+ * also shows the [successor] of the selected state, in [nextVizState], a copy of the theme kept in step with it.
  */
 class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? = null) {
     /** The solution as the visualizer reads it, written once; each state is parsed from it when first shown. */
@@ -47,6 +48,14 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
         }
     }
 
+    /**
+     * The second state a trace shows, a copy of [vizState]'s theme with the successor's instance; null for a
+     * single state. Projections change both.
+     */
+    val nextVizState: VizState? by lazy {
+        if (hasStates) VizState(vizState).also { it.loadInstance(instance(successor())) } else null
+    }
+
     fun instance(state: Int): AlloyInstance =
         synchronized(instances) { instances.getOrPut(state) { StaticInstanceReader.parseInstance(StringReader(xml), state) } }
 
@@ -57,10 +66,13 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
         require(state in 0 until traceLength) { "No state $state in a trace of $traceLength" }
         this.state = state
         vizState.loadInstance(instance(state))
+        nextVizState?.loadInstance(instance(successor(state)))
     }
 
-    /** The next state, which after the last one is the loop target. */
-    fun next() = goTo(if (state + 1 < traceLength) state + 1 else loopState)
+    /** The state after [state], which after the last one is the loop target. */
+    fun successor(state: Int = this.state): Int = if (state + 1 < traceLength) state + 1 else loopState
+
+    fun next() = goTo(successor())
 
     fun previous() {
         if (state > 0) goTo(state - 1)
@@ -70,11 +82,28 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
 
     val loopText: String get() = "Loops back to state $loopState"
 
+    /** The caption of the selected state's pane. */
+    val caption: String get() = "State $state"
+
+    /** The caption of the successor's pane, which names the loop target as such; null for a single state. */
+    val nextCaption: String?
+        get() {
+            if (!hasStates) return null
+            val next = successor()
+            return if (state + 1 < traceLength) "State $next" else "State $next (loop)"
+        }
+
     /** The Text tab: `toString(state)`, as the visualizer's Text mode shows it. */
     val text: String get() = solution.toString(state)
 
+    /** The Text tab of a trace: the difference from the selected state to its successor; null for a single state. */
+    val diff: TraceDiff? get() = if (hasStates) TraceDiff.of(solution, state, successor()) else null
+
     /** The Table tab: `format(state)`, as the visualizer's Table mode shows it. */
     val table: String get() = solution.format(state)
+
+    /** The successor's table, for the second pane of the Table tab; null for a single state. */
+    val nextTable: String? get() = if (hasStates) solution.format(successor()) else null
 
     /** The signatures the visualization can be projected over, including those projected now. */
     val projectableTypes: List<AlloyType>
@@ -85,8 +114,8 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
 
     /** Projects over [type] too, or no longer over it. */
     fun setProjected(type: AlloyType, projected: Boolean) {
-        if (projected) vizState.project(type) else vizState.deproject(type)
+        for (viz in listOfNotNull(vizState, nextVizState)) if (projected) viz.project(type) else viz.deproject(type)
     }
 
-    fun clearProjections() = vizState.deprojectAll()
+    fun clearProjections() = listOfNotNull(vizState, nextVizState).forEach { it.deprojectAll() }
 }

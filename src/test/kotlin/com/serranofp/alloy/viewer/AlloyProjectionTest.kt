@@ -1,5 +1,6 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.DropDownLink
@@ -11,7 +12,12 @@ import com.serranofp.alloy.run.CommandLink
 import com.serranofp.alloy.run.CommandResult
 import com.serranofp.alloy.run.CommandState
 import com.serranofp.alloy.settings.AlloySettings
+import edu.mit.csail.sdg.alloy4graph.GraphViewer
+import edu.mit.csail.sdg.alloy4viz.AlloyProjection
 import javax.swing.JComponent
+
+/** Two atoms in every state, one of them in `X` only in the first state. */
+private const val TWO_NODES = "sig Node {}\nvar sig X in Node {}\nfact { #Node = 2 }\nrun { some X and after no X } for 2 but 2..3 steps"
 
 class AlloyProjectionTest : BasePlatformTestCase() {
     private val states = "sig Item {}\nsig State { holds: set Item }\nrun { some holds } for 3"
@@ -31,6 +37,21 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         assertEquals(listOf("State"), model.vizState.projectedTypes.map { it.name })
         model.clearProjections()
         assertEmpty(model.vizState.projectedTypes)
+    }
+
+    fun testProjectingAppliesToBothStatesOfATrace() {
+        val model = AlloySolutionModel(solve(TRACES))
+        val both = listOf(model.vizState, model.nextVizState!!)
+        model.setProjected(model.type("A"), true)
+        for (viz in both) assertEquals(listOf("A"), viz.projectedTypes.map { it.name })
+        // Stepping keeps the projection of both
+        model.next()
+        for (viz in both) assertEquals(listOf("A"), viz.projectedTypes.map { it.name })
+        model.setProjected(model.type("A"), false)
+        for (viz in both) assertEmpty(viz.projectedTypes)
+        model.setProjected(model.type("A"), true)
+        model.clearProjections()
+        for (viz in both) assertEmpty(viz.projectedTypes)
     }
 
     fun testMagicLayoutDefault() {
@@ -74,7 +95,7 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         assertTrue(chooser.createContent().checkBoxes().single { it.text == "State" }.isSelected)
     }
 
-    fun testPanelShowsTheChooser() {
+    private fun panelFor(model: String): AlloyInstancePanel {
         AlloyCommandResults.getInstance(project).clear()
         val viewer = AlloyInstanceViewer.getInstance(project)
         viewer.clear()
@@ -82,11 +103,53 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         val panel = AlloyInstancePanel(project, testRootDisposable)
         val results = AlloyCommandResults.getInstance(project)
         val result = CommandResult(
-            CommandState.InstanceFound, "found", link = CommandLink.Solution(solve(ORDERING)),
+            CommandState.InstanceFound, "found", link = CommandLink.Solution(solve(model)),
             documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation,
         )
         viewer.open(myFixture.file.virtualFile, AlloyCommandRef("show", 0), result)
         UIUtil.dispatchAllInvocationEvents()
+        return panel
+    }
+
+    private val session get() = AlloyInstanceViewer.getInstance(project).session!!
+
+    private fun JComponent.graphs() = UIUtil.findComponentsOfType(this, GraphViewer::class.java)
+
+    private fun JComponent.atomSelectors() = UIUtil.findComponentsOfType(this, ComboBox::class.java)
+
+    fun testPanelShowsTheChooser() {
+        val panel = panelFor(ORDERING)
         assertEquals("State", UIUtil.findComponentOfType(panel, DropDownLink::class.java)!!.text)
+        // The magic layout's projection has its atom selector, on the first atom
+        val selector = panel.atomSelectors().single()
+        assertEquals(session.model.vizState.originalInstance.type2atoms(session.model.projections.single()).sorted().first(), selector.selectedItem)
+    }
+
+    fun testATraceShowsTwoGraphsAndAStaticResultOne() {
+        assertEquals(2, panelFor(LASSO).graphs().size)
+        assertEquals(1, panelFor(STATIC).graphs().size)
+    }
+
+    fun testPickingAnAtomAppliesToBothGraphs() {
+        val panel = panelFor(TWO_NODES)
+        val model = session.model
+        val node = model.type("Node")
+        model.setProjected(node, true)
+        panel.stateChanged()
+        val selector = panel.atomSelectors().single()
+        val atoms = model.vizState.originalInstance.type2atoms(node).sorted()
+        assertEquals(2, atoms.size)
+        assertEquals(atoms[0], selector.selectedItem)
+
+        selector.selectedItem = atoms[1]
+        val choice = AlloyProjection(mapOf(node to atoms[1]))
+        // The visualizer caches one graph per projection, so these are the graphs for that atom
+        assertEquals(listOf(model.vizState.getGraph(null, choice), model.nextVizState!!.getGraph(null, choice)), panel.graphs())
+        assertEquals(1, panel.atomSelectors().size)
+
+        // Stepping keeps the atom, which still exists
+        model.next()
+        panel.stateChanged()
+        assertEquals(atoms[1], panel.atomSelectors().single().selectedItem)
     }
 }

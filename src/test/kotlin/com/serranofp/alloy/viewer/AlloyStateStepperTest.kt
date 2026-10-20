@@ -45,12 +45,60 @@ class AlloyStateStepperTest : BasePlatformTestCase() {
         assertSame(model.instance(1), model.vizState.originalInstance)
     }
 
+    fun testSuccessorsOfTheLasso() {
+        val model = AlloySolutionModel(solve(LASSO))
+        assertEquals(listOf(1, 2, 1), (0 until 3).map { model.successor(it) })
+    }
+
+    fun testBothStatesFollowTheStepper() {
+        val model = AlloySolutionModel(solve(LASSO))
+        val first = model.vizState
+        val second = model.nextVizState!!
+        assertSame(model.instance(0), first.originalInstance)
+        assertSame(model.instance(1), second.originalInstance)
+
+        // One state at a time, so that each transition is shown once
+        model.next()
+        assertEquals(1, model.state)
+        assertSame(model.instance(1), first.originalInstance)
+        assertSame(model.instance(2), second.originalInstance)
+        model.next()
+        assertSame(model.instance(2), first.originalInstance)
+        assertSame(model.instance(1), second.originalInstance)
+        model.previous()
+        assertEquals(1, model.state)
+        assertSame(model.instance(1), first.originalInstance)
+        assertSame(model.instance(2), second.originalInstance)
+
+        // The same two theme objects, with the same theme
+        assertSame(first, model.vizState)
+        assertSame(second, model.nextVizState)
+        assertEquals(first.nodePalette, second.nodePalette)
+        assertEquals(first.edgePalette, second.edgePalette)
+        assertEquals(first.fontSize, second.fontSize)
+        assertEquals(first.projectedTypes, second.projectedTypes)
+        for (atom in first.originalInstance.allAtoms) assertEquals(atom.toString(), first.nodeColor(atom, first.originalInstance), second.nodeColor(atom, second.originalInstance))
+    }
+
+    fun testCaptions() {
+        val model = AlloySolutionModel(solve(LASSO))
+        assertEquals("State 0", model.caption)
+        assertEquals("State 1", model.nextCaption)
+        model.goTo(2)
+        assertEquals("State 2", model.caption)
+        assertEquals("State 1 (loop)", model.nextCaption)
+        // The stepper still names the first pane
+        assertEquals("State 2 of 3", model.stepperText)
+    }
+
     fun testStaticResultHasNoStepper() {
         val model = AlloySolutionModel(solve(STATIC))
         assertFalse(model.isTemporal)
         assertFalse(model.hasStates)
         model.next()
         assertEquals(0, model.state)
+        assertNull(model.nextVizState)
+        assertNull(model.nextCaption)
     }
 
     private fun stepperShownFor(model: String): Boolean {
@@ -65,7 +113,7 @@ class AlloyStateStepperTest : BasePlatformTestCase() {
         )
         AlloyInstanceViewer.getInstance(project).open(myFixture.file.virtualFile, AlloyCommandRef("show", 0), result)
         UIUtil.dispatchAllInvocationEvents()
-        val stepper = UIUtil.findComponentsOfType(panel, JBLabel::class.java).single { it.text.startsWith("State ") }
+        val stepper = UIUtil.findComponentsOfType(panel, JBLabel::class.java).single { it.text.matches(Regex("State \\d+ of \\d+")) }
         return stepper.isVisible
     }
 

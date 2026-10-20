@@ -1,9 +1,10 @@
 package com.serranofp.alloy.viewer
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import edu.mit.csail.sdg.alloy4viz.AlloyIdeMagic
+import edu.mit.csail.sdg.alloy4viz.AlloyProjection
 import edu.mit.csail.sdg.alloy4viz.StaticInstanceReader
-import edu.mit.csail.sdg.alloy4viz.VizGraphPanel
 import edu.mit.csail.sdg.alloy4viz.VizState
 import edu.mit.csail.sdg.ast.Func
 import java.io.PrintWriter
@@ -34,9 +35,7 @@ class AlloyMagicLayoutTest : BasePlatformTestCase() {
         assertEquals(2, model.state)
     }
 
-    fun testGraphPanelIsBuiltWithoutAFrame() {
-        val panel = VizGraphPanel(null, listOf(vizState(STATIC)), false)
-        assertEquals(1, panel.numPanels())
-        panel.remakeAll(null)
+    fun testGraphIsBuiltWithoutAFrame() {
+        assertInstanceOf(vizState(STATIC).getGraph(null, AlloyProjection()), GraphViewer::class.java)
     }
 }
