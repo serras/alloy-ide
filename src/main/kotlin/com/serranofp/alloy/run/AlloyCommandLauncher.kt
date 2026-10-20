@@ -1,75 +1,96 @@
 package com.serranofp.alloy.run
 
-import com.serranofp.alloy.lsp.CommandsListResultItem
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.editor.impl.DocumentImpl
+import com.intellij.openapi.project.Project
+import com.intellij.psi.PsiManager
+import com.serranofp.alloy.analysis.AlloyAnalysisEngine
+import com.serranofp.alloy.analysis.AlloyAnalysisEvent
+import com.serranofp.alloy.psi.AlloyFile
+import com.serranofp.alloy.semantics.AlloyModelResult
+import com.serranofp.alloy.semantics.AlloyModelService
+import com.serranofp.alloy.semantics.AlloyPositions
 import com.serranofp.alloy.settings.AlloySettings
 import com.serranofp.alloy.settings.AlloySolvers
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
+import edu.mit.csail.sdg.translator.A4Options
 
 /**
- * Starts a command on the server: lists the commands of the file, picks [command] by label (or position),
- * and executes it with the server's own `[uri, index, line, character]`, so that its positions never have
- * to be reproduced from the native PSI.
+ * Starts a command inside the IDE: takes the model of the file from [AlloyModelService], finds the
+ * analyzer's command at the position of the gutter's command, and executes it on [AlloyAnalysisEngine].
  */
 class AlloyCommandLauncher(
-    private val service: AlloyRunService,
-    private val listTimeoutMillis: Long = LIST_TIMEOUT_MILLIS,
-    /** Set while the saved solver is unavailable and the server runs with `sat4j` instead. */
+    private val project: Project,
+    private val engine: AlloyAnalysisEngine = AlloyAnalysisEngine.getInstance(),
+    private val options: () -> A4Options = { AlloySettings.getInstance().analyzerOptions { AlloySolvers.getInstance().ids() } },
+    /** Set while the saved solver is unavailable and the run uses `sat4j` instead. */
     private val solverWarning: () -> String? = {
         AlloySettings.getInstance().solverFallbackWarning { AlloySolvers.getInstance().ids() }
     },
+    private val nonFatalWarnings: () -> Boolean = { AlloySettings.getInstance().state.nonFatalWarnings },
 ) {
-    /** Runs on a background thread; every failure ends [execution] with a summary and its cause. */
-    fun launch(
-        execution: AlloyCommandExecution,
-        connection: AlloyServerConnection?,
-        uri: String?,
-        fileName: String,
-        command: AlloyCommandRef,
-    ) {
+    private sealed interface Found
+
+    /** What to execute: the command at [index] among the analyzer's commands of [filename]. */
+    private class Target(val model: AlloyModelResult.Model, val filename: String, val index: Int) : Found
+
+    private class NotFound(val summary: String, val details: String) : Found
+
+    /**
+     * Runs on a background thread; every failure ends [execution] with a summary and its cause. Disposing
+     * [parent] stops the analysis.
+     */
+    fun launch(execution: AlloyCommandExecution, parent: Disposable) {
         solverWarning()?.let(execution::warn)
-        if (connection == null || uri == null) {
-            execution.fail(AlloyCommandExecution.SERVER_UNAVAILABLE, AlloyRunService.SERVER_UNAVAILABLE_MESSAGE)
+        val fileName = execution.file.name
+        val target = when (val found = ReadAction.nonBlocking<Found> { find(execution) }.executeSynchronously()) {
+            is Target -> found
+            is NotFound -> {
+                execution.fail(found.summary, found.details)
+                return
+            }
+        }
+        val warnings = target.model.warnings
+        if (warnings.isNotEmpty() && !nonFatalWarnings()) {
+            warnings.forEach { execution.accept(AlloyAnalysisEvent.Warning(it, System.currentTimeMillis())) }
+            execution.fail(AlloyRunLog.FAILED, "$fileName has warnings. $WARNINGS_ARE_FATAL")
             return
         }
-        execution.connection = connection
+        val options = options().apply { originalFilename = target.filename }
+        execution.begin {
+            engine.execute(
+                execution.command.displayName, parent, target.model.modules.contents, target.filename, target.index, options,
+                execution::accept,
+            )
+        }
+    }
 
-        val commands = try {
-            service.requestCommands(connection, uri).get(listTimeoutMillis, TimeUnit.MILLISECONDS).commands
-        } catch (_: TimeoutException) {
-            execution.fail(AlloyRunLog.FAILED, "The Alloy language server did not list the commands of $fileName in time")
-            return
-        } catch (e: ExecutionException) {
-            execution.fail(AlloyRunLog.FAILED, "Could not list the commands of $fileName: ${e.cause?.message ?: e.message}")
-            return
+    private fun find(execution: AlloyCommandExecution): Found {
+        val fileName = execution.file.name
+        val psiFile = PsiManager.getInstance(project).findFile(execution.file) as? AlloyFile
+            ?: return NotFound(AlloyRunLog.FAILED, "$fileName is not an Alloy file")
+        val model = when (val result = AlloyModelService.getInstance(project).model(psiFile)) {
+            is AlloyModelResult.Model -> result
+            is AlloyModelResult.Errors ->
+                return NotFound(AlloyCommandExecution.MODEL_HAS_ERRORS, "$fileName has errors, see the problems reported in the editor")
+            is AlloyModelResult.Unavailable ->
+                return NotFound(AlloyRunLog.FAILED, "The Alloy analyzer failed: ${result.cause.message ?: result.cause}")
         }
-        if (execution.isFinished()) return
-
-        if (commands.isEmpty()) {
-            // The server lists no commands when the module does not parse or type-check
-            execution.fail(AlloyCommandExecution.MODEL_HAS_ERRORS, "$fileName has errors, see the problems reported in the editor")
-            return
+        val notFound = NotFound(AlloyCommandExecution.COMMAND_NOT_FOUND, "Command ${execution.command.displayName} was not found in $fileName")
+        val psiCommand = AlloyCommands.find(psiFile, execution.command) ?: return notFound
+        val filename = AlloyPositions.filename(execution.file)
+        val text = model.modules.contents[filename] ?: return notFound
+        val document = DocumentImpl(text)
+        // A command's position starts at its keyword, or at the last command of a `=>` chain
+        val index = model.module.allCommands.indexOfFirst {
+            it.pos.filename == filename && AlloyPositions.textRange(it.pos, document).startOffset in psiCommand.textRange
         }
-        val item = select(commands, command)
-        val arguments = item?.command?.arguments
-        if (arguments == null) {
-            execution.fail(AlloyCommandExecution.COMMAND_NOT_FOUND, "Command ${command.displayName} was not found in $fileName")
-            return
-        }
-        connection.execute(arguments)
+        return if (index < 0) notFound else Target(model, filename, index)
     }
 
     companion object {
-        const val LIST_TIMEOUT_MILLIS = 10_000L
-
-        fun select(commands: List<CommandsListResultItem>, command: AlloyCommandRef): CommandsListResultItem? =
-            if (command.label != null) {
-                commands.firstOrNull { item ->
-                    AlloyCommands.labelOfServerTitle(item.title)?.let { AlloyCommands.sameLabel(it, command.label) } == true
-                }
-            } else {
-                commands.getOrNull(command.index)
-            }
+        const val WARNINGS_ARE_FATAL =
+            "Warnings often indicate errors in the model. To analyze it anyway, turn on Non-fatal warnings in " +
+                "Settings | Languages & Frameworks | Alloy."
     }
 }

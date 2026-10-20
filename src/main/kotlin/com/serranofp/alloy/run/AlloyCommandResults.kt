@@ -16,6 +16,7 @@ import com.intellij.openapi.util.UserDataHolderEx
 import com.intellij.openapi.vfs.VirtualFile
 import com.serranofp.alloy.AlloyFileType
 import com.serranofp.alloy.settings.AlloySettings
+import edu.mit.csail.sdg.translator.A4Solution
 import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.atomic.AtomicLong
 
@@ -28,6 +29,12 @@ data class CommandDetails(
     val failure: String? = null,
 )
 
+/** What a click on a result opens. */
+sealed interface CommandLink {
+    /** The instance or counterexample, as the analyzer returned it. */
+    class Solution(val solution: A4Solution) : CommandLink
+}
+
 /**
  * The latest result of one command. [documentStamp] (see [AlloyCommandResults.stamp]) and [settingsGeneration]
  * are taken when the command is launched, so that an edit during the analysis already makes its result outdated.
@@ -36,8 +43,7 @@ data class CommandResult(
     val state: CommandState,
     val summary: String,
     val details: CommandDetails = CommandDetails(),
-    /** What a click opens through `OpenModel`: `XML: <file>` or `CORE: <file>`. */
-    val link: String? = null,
+    val link: CommandLink? = null,
     val documentStamp: Long,
     val settingsGeneration: Long,
 )

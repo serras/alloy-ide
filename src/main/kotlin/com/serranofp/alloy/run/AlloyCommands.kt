@@ -7,9 +7,9 @@ import com.serranofp.alloy.psi.AlloyQualifiedName
 import com.serranofp.alloy.psi.AlloyTypes
 
 /**
- * How a run configuration identifies a command: by its label when it has one, otherwise by its position
- * among the commands of the file. Positions come from the native PSI; the server's own positions are only
- * used at launch (see [AlloyCommandLauncher]).
+ * How a result identifies a command: by its label when it has one, otherwise by its position among the
+ * commands of the file, in the native PSI. At launch it is found in the analyzer's commands by the
+ * position of its PSI element (see [AlloyCommandLauncher]).
  */
 data class AlloyCommandRef(val label: String?, val index: Int) {
     val displayName: String
@@ -19,8 +19,13 @@ data class AlloyCommandRef(val label: String?, val index: Int) {
 object AlloyCommands {
     private val END_OF_NAMES = TokenSet.create(AlloyTypes.FOR, AlloyTypes.EXPECT, AlloyTypes.IMPLIES, AlloyTypes.IMPLIES_ARROW)
 
-    /** Top-level commands in source order, the same order in which the server lists them. */
+    /** Top-level commands in source order. */
     fun commands(file: PsiFile): List<AlloyCommandDecl> = file.children.filterIsInstance<AlloyCommandDecl>()
+
+    /** The command of [file] that [ref] names: by label if it has one (its position may be stale), else by position. */
+    fun find(file: PsiFile, ref: AlloyCommandRef): AlloyCommandDecl? =
+        if (ref.label != null) commands(file).firstOrNull { label(it)?.let { label -> sameLabel(label, ref.label) } == true }
+        else commands(file).getOrNull(ref.index)
 
     fun ref(command: AlloyCommandDecl): AlloyCommandRef =
         AlloyCommandRef(label(command), commands(command.containingFile).indexOf(command))
@@ -38,10 +43,6 @@ object AlloyCommands {
         }
         return null
     }
-
-    /** "Run show for 3 expect 1" and "Check noCycles for 3" are labelled `show` and `noCycles`. */
-    fun labelOfServerTitle(title: String): String? =
-        title.split(' ').takeIf { it.size >= 2 && (it[0] == "Run" || it[0] == "Check") }?.get(1)
 
     fun sameLabel(a: String, b: String): Boolean = a.removePrefix("this/") == b.removePrefix("this/")
 }

@@ -1,17 +1,15 @@
 package com.serranofp.alloy.run
 
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.util.concurrency.AppExecutorUtil
-import com.serranofp.alloy.lsp.AlloyExecutionMessage
-import com.serranofp.alloy.lsp.AlloyMessageType
+import com.serranofp.alloy.analysis.AlloyAnalysis
+import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 import com.serranofp.alloy.run.AlloyRunLog.Outcome
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * An execution of an Alloy command. The analysis runs inside the language server, which streams
- * `alloy/showExecutionOutput` messages that [AlloyRunService] routes here; their interpretation, and the
- * failures found before the analysis starts, are recorded in [results] as the command's result.
+ * An execution of an Alloy command: an [AlloyAnalysis] inside the IDE, whose events are recorded in
+ * [results] as the command's result, together with the failures found before the analysis starts.
  */
 class AlloyCommandExecution(
     private val service: AlloyRunService,
@@ -21,16 +19,13 @@ class AlloyCommandExecution(
     /** The document and settings this execution analyzes; see [CommandResult]. */
     private val documentStamp: Long,
     private val settingsGeneration: Long,
-    private val stopTimeoutMillis: Long = STOP_TIMEOUT_MILLIS,
 ) {
-    /** Set once the server has been found; until then Stop just ends the execution. */
-    @Volatile
-    var connection: AlloyServerConnection? = null
-
     val log = AlloyRunLog()
 
     private val warnings = mutableListOf<String>()
+    private var analysis: AlloyAnalysis? = null
     private var finished = false
+    private var stopping = false
     private val done = CountDownLatch(1)
 
     /** Called by [AlloyRunService.startRun] once this is the active execution. */
@@ -39,23 +34,38 @@ class AlloyCommandExecution(
         record(CommandState.Running, AlloyRunLog.RUNNING)
     }
 
+    /** Starts the analysis, unless the execution already ended (it was stopped while the model was read). */
     @Synchronized
-    fun render(message: AlloyExecutionMessage) {
+    fun begin(start: () -> AlloyAnalysis) {
         if (finished) return
-        log.accept(message)
-        if (message.type == AlloyMessageType.RunCompleted) {
-            val state = when (log.outcome) {
-                Outcome.InstanceFound -> CommandState.InstanceFound
-                Outcome.CounterexampleFound -> CommandState.CounterexampleFound
-                Outcome.NoInstance -> CommandState.NoInstance
-                Outcome.NoCounterexample -> CommandState.NoCounterexample
-                Outcome.None -> if (log.completionText == AlloyRunLog.STOPPED) CommandState.Stopped else CommandState.Failed
+        analysis = start()
+    }
+
+    /** The events of the analysis, one at a time. */
+    @Synchronized
+    fun accept(event: AlloyAnalysisEvent) {
+        if (finished) return
+        log.accept(event)
+        when (event) {
+            is AlloyAnalysisEvent.Sat -> finish(state(), log.summary, link = CommandLink.Solution(event.solution))
+            is AlloyAnalysisEvent.Unsat -> finish(state(), log.summary)
+            is AlloyAnalysisEvent.Failed -> finish(CommandState.Failed, AlloyRunLog.FAILED, failure = event.failure.message)
+            is AlloyAnalysisEvent.Stopped -> finish(CommandState.Stopped, AlloyRunLog.STOPPED)
+            // Until the analyzer reaches a point where it can stop, such as the end of the translation
+            is AlloyAnalysisEvent.Stopping -> {
+                stopping = true
+                record(CommandState.Running, AlloyRunLog.STOPPING)
             }
-            finish(state, log.summary, link = log.link)
-        } else {
-            // Running, with the output so far for the tooltip
-            record(CommandState.Running, AlloyRunLog.RUNNING)
+            else -> record(CommandState.Running, if (stopping) AlloyRunLog.STOPPING else AlloyRunLog.RUNNING)
         }
+    }
+
+    private fun state(): CommandState = when (log.outcome) {
+        Outcome.InstanceFound -> CommandState.InstanceFound
+        Outcome.CounterexampleFound -> CommandState.CounterexampleFound
+        Outcome.NoInstance -> CommandState.NoInstance
+        Outcome.NoCounterexample -> CommandState.NoCounterexample
+        Outcome.None -> CommandState.Failed
     }
 
     /** A warning shown before the analyzer's output, such as the solver fallback. */
@@ -73,10 +83,13 @@ class AlloyCommandExecution(
     }
 
     /** Ends the execution with what the log holds so far, for example when the project closes. */
-    @Synchronized
     fun terminate() {
-        if (finished) return
-        finish(CommandState.Stopped, AlloyRunLog.STOPPED)
+        val running = synchronized(this) {
+            if (finished) return
+            finish(CommandState.Stopped, AlloyRunLog.STOPPED)
+            analysis
+        }
+        running?.stop()
     }
 
     @Synchronized
@@ -84,39 +97,30 @@ class AlloyCommandExecution(
 
     fun waitFor(timeoutMillis: Long): Boolean = done.await(timeoutMillis, TimeUnit.MILLISECONDS)
 
-    /** Stop: the server aborts the analysis and answers `RunCompleted "Stopped"`, which ends the execution. */
+    /** Stops the analysis, which then reports that it stopped; before it started, ends the execution. */
     fun stop() {
-        val server = connection
-        if (server == null) {
-            terminate()
-            return
+        // Outside this lock: the analysis delivers its Stopping event to accept() while it holds its own
+        val running = synchronized(this) {
+            if (finished) return
+            analysis
         }
-        server.stop()
-        AppExecutorUtil.getAppScheduledExecutorService().schedule({
-            fail(AlloyRunLog.STOPPED, STOP_NOT_CONFIRMED_MESSAGE, CommandState.Stopped)
-        }, stopTimeoutMillis, TimeUnit.MILLISECONDS)
+        if (running != null) running.stop() else terminate()
     }
 
-    private fun finish(state: CommandState, summary: String, link: String? = null, failure: String? = null) {
+    private fun finish(state: CommandState, summary: String, link: CommandLink? = null, failure: String? = null) {
         finished = true
         record(state, summary, link, failure)
         service.runFinished(this)
         done.countDown()
     }
 
-    private fun record(state: CommandState, summary: String, link: String? = null, failure: String? = null) {
+    private fun record(state: CommandState, summary: String, link: CommandLink? = null, failure: String? = null) {
         val details = CommandDetails(warnings.toList(), log.lines, failure)
         results.record(file, command, CommandResult(state, summary, details, link, documentStamp, settingsGeneration))
     }
 
     companion object {
-        const val STOP_TIMEOUT_MILLIS = 5_000L
-
-        const val SERVER_UNAVAILABLE = "Server unavailable"
         const val MODEL_HAS_ERRORS = "Model has errors"
         const val COMMAND_NOT_FOUND = "Command not found"
-        const val INTERRUPTED = "Interrupted"
-
-        const val STOP_NOT_CONFIRMED_MESSAGE = "The Alloy language server did not confirm that the analysis stopped"
     }
 }

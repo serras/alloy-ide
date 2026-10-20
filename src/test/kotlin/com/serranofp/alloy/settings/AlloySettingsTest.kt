@@ -34,61 +34,64 @@ class AlloySettingsTest : BasePlatformTestCase() {
         assertEquals(state, settings.state)
     }
 
-    fun testDefaultPropertyMap() {
-        assertEquals(
-            mapOf(
-                "SatSolver2" to "sat4j",
-                "SkolemDepth3" to "1",
-                "NoOverflow" to "y",
-                "CoreMinimization" to "2",
-                "CoreGranularity" to "0",
-                "WarningNonfatal" to "n",
-                "RecordKodkod" to "n",
-                "InferPartialInstance" to "n",
-            ),
-            AlloySettings().analyzerPreferences(unavailable),
-        )
-    }
-
-    fun testChangedPropertyMap() {
-        val settings = AlloySettings()
-        settings.state.apply {
-            skolemDepth = 4
-            preventOverflows = false
-            coreMinimization = 1
-            coreGranularity = 3
-            nonFatalWarnings = true
-            recordKodkod = true
-            inferPartialInstance = true
-        }
-        assertEquals(
-            mapOf(
-                "SatSolver2" to "sat4j",
-                "SkolemDepth3" to "4",
-                "NoOverflow" to "n",
-                "CoreMinimization" to "1",
-                "CoreGranularity" to "3",
-                "WarningNonfatal" to "y",
-                "RecordKodkod" to "y",
-                "InferPartialInstance" to "y",
-            ),
-            settings.analyzerPreferences(unavailable),
-        )
-    }
-
     fun testAvailableSolverIsUsed() {
         val settings = AlloySettings().apply { state.solver = "minisat" }
-        assertEquals("minisat", settings.analyzerPreferences { setOf("sat4j", "minisat") }["SatSolver2"])
+        assertEquals("minisat", settings.effectiveSolver { setOf("sat4j", "minisat") })
         assertNull(settings.solverFallbackWarning { setOf("sat4j", "minisat") })
     }
 
     fun testUnavailableSolverFallsBackToSat4j() {
         val settings = AlloySettings().apply { state.solver = "minisat" }
-        assertEquals("sat4j", settings.analyzerPreferences { setOf("sat4j") }["SatSolver2"])
+        assertEquals("sat4j", settings.effectiveSolver { setOf("sat4j") })
         assertEquals(
             "The solver minisat is not available, using sat4j instead\n",
             settings.solverFallbackWarning { setOf("sat4j") },
         )
+    }
+
+    fun testDefaultAnalyzerOptions() {
+        val options = AlloySettings().analyzerOptions(unavailable)
+        assertEquals("sat4j", options.solver.id())
+        assertEquals(1, options.skolemDepth)
+        assertTrue(options.noOverflow)
+        assertEquals(2, options.coreMinimization)
+        assertEquals(0, options.coreGranularity)
+        assertFalse(options.recordKodkod)
+        assertFalse(options.inferPartialInstance)
+    }
+
+    fun testChangedAnalyzerOptions() {
+        val settings = AlloySettings()
+        settings.state.apply {
+            solver = "sat4j.light"
+            skolemDepth = 4
+            preventOverflows = false
+            coreMinimization = 0
+            coreGranularity = 3
+            recordKodkod = true
+            inferPartialInstance = true
+        }
+        val options = settings.analyzerOptions { setOf("sat4j", "sat4j.light") }
+        assertEquals("sat4j.light", options.solver.id())
+        assertEquals(4, options.skolemDepth)
+        assertFalse(options.noOverflow)
+        assertEquals(0, options.coreMinimization)
+        assertEquals(3, options.coreGranularity)
+        assertTrue(options.recordKodkod)
+        assertTrue(options.inferPartialInstance)
+    }
+
+    fun testEachRunGetsItsOwnOptions() {
+        val settings = AlloySettings()
+        val first = settings.analyzerOptions(unavailable)
+        settings.state.skolemDepth = 2
+        assertEquals(1, first.skolemDepth)
+        assertEquals(2, settings.analyzerOptions(unavailable).skolemDepth)
+    }
+
+    fun testUnavailableSolverOptionsUseSat4j() {
+        val settings = AlloySettings().apply { state.solver = "minisat" }
+        assertEquals("sat4j", settings.analyzerOptions { setOf("sat4j") }.solver.id())
     }
 
     fun testDefaultSolverNeedsNoDiscovery() {

@@ -150,7 +150,7 @@ STRING_CHAR=[^\\\"] | "\\" [^]
 "’"              { return PRIME;         }
 
 // Upstream rejects a string followed by an identifier character and a name starting with a digit;
-// here they lex as two tokens and the language server reports the error.
+// here they lex as two tokens and the bundled analyzer reports the error.
 [\"] {STRING_CHAR}* [\"]                                               { return STRING_LITERAL; }
 [\"] {STRING_CHAR}* "\\"?                                              { return STRING_LITERAL; }
 [0]"x"([_]|([0-9A-Fa-f][0-9A-Fa-f]))+                                  { return NUMBER; }

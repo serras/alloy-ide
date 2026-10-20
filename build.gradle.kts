@@ -10,28 +10,42 @@ plugins {
     id("org.jetbrains.intellij.platform.grammarkit")
 }
 
-// Runtime classpath of the out-of-process language server, shipped in lib/server/ so that
-// it never ends up on the plugin classloader (it brings its own, older lsp4j)
-val alloyServer = configurations.register("alloyServer") {
+// The analyzer's factories for external solvers, without the native libraries and executables that the same JAR
+// carries for four platforms: JNI solvers are not offered, and external ones are only used from the PATH
+val pardinusNative = configurations.register("pardinusNative") {
     isCanBeConsumed = false
     isCanBeResolved = true
-    attributes {
-        attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
-        attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
-        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
-        attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
+    isTransitive = false
+}
+
+val pardinusNativeFactories = tasks.register<Jar>("pardinusNativeFactories") {
+    archiveBaseName = "org.alloytools.pardinus.native-factories"
+    archiveVersion = libs.versions.alloy
+    destinationDirectory = layout.buildDirectory.dir("pardinus")
+    from(pardinusNative.map { configuration -> configuration.files.map(::zipTree) }) {
+        exclude("native/**")
     }
 }
 
+// The IDE provides slf4j; a second copy on the plugin classloader could clash with it
+configurations.runtimeClasspath {
+    exclude(group = "org.slf4j")
+}
+
 dependencies {
-    alloyServer(libs.alloy.lsp)
-    alloyServer(project(":server-shim"))
+    // The analyzer, on the plugin classloader
+    implementation(libs.alloy.core)
+    implementation(libs.alloy.application)
+    pardinusNative(libs.pardinus.native)
+    implementation(files(pardinusNativeFactories))
 
     testImplementation(libs.junit)
 
     intellijPlatform {
         intellijIdea("2026.2.3")
         testFramework(TestFrameworkType.Platform)
+        // For myFixture.testStructureView, whose component is in this module
+        testBundledModule("intellij.platform.structureView")
 
         // Add plugin dependencies for compilation here, for example:
         // bundledPlugin("com.intellij.java")
@@ -92,12 +106,9 @@ tasks.compileJava {
     dependsOn(tasks.generateLexer, tasks.generateParser)
 }
 
-// Every sandbox, not just prepareSandbox (used by buildPlugin): runIde and the other run tasks
-// prepare their own (prepareSandbox_runIde, ...)
+// SAT4J's test classes come with it as a dependency of pardinus; the plugin does not need them
 tasks.withType<PrepareSandboxTask>().configureEach {
-    from(alloyServer) {
-        into(pluginName.map { "$it/lib/server" })
-    }
+    exclude("**/org.sat4j.core-*-tests.jar")
 }
 
 tasks.test {

@@ -12,20 +12,6 @@ class AlloyCommandResultTooltipTest : TestCase() {
 
     private fun html(details: CommandDetails, outdated: Outdated? = null) = AlloyCommandResultTooltip.html(result(details), outdated)
 
-    fun testCapturedRun() {
-        val log = AlloyRunLog().apply { capturedOutput().take(8).forEach(::accept) }
-        assertEquals(
-            "<html>Starting the solver...<br><br>" +
-                "<b>Executing &quot;Run show for 3&quot;</b><br>" +
-                "&nbsp;&nbsp;&nbsp;Solver=sat4j Bitwidth=4 MaxSeq=3 SkolemDepth=1 Symmetry=20 Mode=batch<br>" +
-                "&nbsp;&nbsp;&nbsp;Generating CNF...<br>" +
-                "&nbsp;&nbsp;&nbsp;103 vars. 12 primary vars. 149 clauses. 29ms.<br>" +
-                "&nbsp;&nbsp;&nbsp;Solving...<br>" +
-                "<b>&nbsp;&nbsp;&nbsp;Instance found. Predicate is consistent. </b>4ms.</html>",
-            html(CommandDetails(log = log.lines)),
-        )
-    }
-
     fun testEscapesLogText() {
         assertEquals(
             "<html>Warning a &lt; b &amp;&amp; <b>c &gt; d</b></html>",
@@ -64,8 +50,8 @@ class AlloyCommandResultTooltipTest : TestCase() {
 
     fun testFailureAfterTheLog() {
         assertEquals(
-            "<html>&nbsp;&nbsp;&nbsp;Solving...<br>The Alloy language server did not confirm that the analysis stopped</html>",
-            html(CommandDetails(log = listOf(line(Span("   Solving..."))), failure = AlloyCommandExecution.STOP_NOT_CONFIRMED_MESSAGE)),
+            "<html>&nbsp;&nbsp;&nbsp;Solving...<br>The analysis ran out of stack space</html>",
+            html(CommandDetails(log = listOf(line(Span("   Solving..."))), failure = "The analysis ran out of stack space")),
         )
     }
 

@@ -170,3 +170,7 @@ Commands SHALL be analyzed by the Alloy analyzer bundled with the plugin, inside
 ### Requirement: Execution requires a running server
 **Reason**: There is no language server any more. The analyzer runs inside the IDE, so it is always available.
 **Migration**: None needed. Failures that used to show "Server unavailable" now show the specific cause through "Failures reported inline".
+
+### Requirement: Opening unsat cores
+**Reason**: None of the solvers the plugin can run produces an unsat core: the ones that do are native (JNI) libraries, which could crash the IDE. There is also no clear place in the UI to show a core.
+**Migration**: None. The tooltip of a result still shows what the analyzer reports about cores, and results without an instance or counterexample are not clickable.

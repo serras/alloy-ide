@@ -124,19 +124,31 @@ For results with more than one state, the toolbar SHALL show the current state a
 - **THEN** no state stepper is shown
 
 ### Requirement: Projection selection
-The toolbar SHALL let the user project the visualization over any signature that the visualizer allows to be projected, and remove projections. For each projected signature the tool window SHALL let the user pick the atom being shown. Projection SHALL only affect the Visualization tab.
+The toolbar SHALL let the user project the visualization over any number of the signatures that the visualizer allows to be projected, by checking and unchecking each in a dropdown, and SHALL let the user remove every projection at once. When collapsed, the dropdown SHALL name the projected signatures, or say "None". For each projected signature the tool window SHALL let the user pick the atom being shown. Projection SHALL only affect the Visualization tab.
 
 #### Scenario: Projecting over a signature
-- **WHEN** the user selects projection over `State`
-- **THEN** the graph shows the instance for one `State` atom, and an atom selector for `State` appears
+- **WHEN** the user checks `State` in the projection dropdown
+- **THEN** the graph shows the instance for one `State` atom, an atom selector for `State` appears, and the collapsed dropdown says `State`
 
-#### Scenario: Removing the projection
-- **WHEN** the user selects no projection
-- **THEN** the graph shows the whole instance again
+#### Scenario: Projecting over several signatures
+- **WHEN** the user checks `State` and then `Time`
+- **THEN** the graph is projected over both, with an atom selector for each, and the collapsed dropdown names both
+
+#### Scenario: Removing a projection
+- **WHEN** `State` and `Time` are checked and the user unchecks `Time`
+- **THEN** the graph is projected over `State` only
+
+#### Scenario: Removing every projection
+- **WHEN** the user chooses to clear every projection
+- **THEN** the graph shows the whole instance again, and the collapsed dropdown says "None"
 
 #### Scenario: Default projection from magic layout
 - **WHEN** the magic layout chooses a projection for a new result
-- **THEN** the projection selector reflects that choice
+- **THEN** the projection dropdown shows that signature checked
+
+#### Scenario: New solution keeps the projection
+- **WHEN** the graph is projected over `State` and the user asks for a new solution
+- **THEN** the new solution is shown with the same theme and projected over `State`
 
 ### Requirement: Visualizer independent of desktop preferences
 The tool window SHALL neither read nor write the Alloy desktop application's stored visualizer preferences, such as its last visualization mode or theme.

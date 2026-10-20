@@ -123,9 +123,10 @@
   ]
 }
 
-// Shallow grammar: the top-level paragraphs of upstream Alloy.cup (Spec ::= ...), with every body,
-// parameter list and expression kept as balanced groups of tokens. Semantic checking is left to the
-// language server.
+// The top-level paragraphs of upstream Alloy.cup (Spec ::= ...). Inside them, only what declares a name and
+// every identifier use are parsed: fields, enum members, parameters, quantifier/let/comprehension binders and
+// references. The rest of an expression is a flat token sequence in balanced groups, so an unbalanced bracket
+// only fails its paragraph. Semantic checking is left to the bundled analyzer.
 
 alloyFile ::= paragraph*
 
@@ -140,42 +141,109 @@ private paragraph_start ::= PRIVATE? (MODULE | OPEN | ENUM | FACT | ASSERT | PRE
 // so an unclosed group stops before them instead of swallowing the rest of the file
 private paragraph_keyword ::= MODULE | OPEN | ENUM | SIG | ABSTRACT | FACT | ASSERT | PRED | FUN | RUN | CHECK
 
-moduleDecl ::= MODULE qualifiedName bracket_group? {pin=1}
+// Module parameters are not references
+moduleDecl ::= MODULE qualifiedName raw_bracket_group? {pin=1}
 
 openDecl ::= PRIVATE? OPEN qualifiedName bracket_group? (AS qualifiedName)? {pin=2}
 
-enumDecl ::= PRIVATE? ENUM qualifiedName block {pin=2}
+enumDecl ::= PRIVATE? ENUM qualifiedName enumBlock {pin=2 mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
+// Enum and sig bodies are blocks too, as the folding builder expects of every paragraph body
+enumBlock ::= LBRACE (enumMember | !(RBRACE | paragraph_keyword) balanced_item)* RBRACE {pin=1 elementType=block}
+enumMember ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
 
-sigDecl ::= sig_qualifier* SIG qualifiedName (COMMA qualifiedName)* sig_extension? block block? {pin=2}
+sigDecl ::= sig_qualifier* SIG sigName (COMMA sigName)* sig_extension? sigBlock block? {pin=2}
 private sig_qualifier ::= ABSTRACT | LONE | ONE | SOME | PRIVATE | VAR
 private sig_extension ::= (EXTENDS | IN | EQUALS) sig_ref (PLUS sig_ref)*
 private sig_ref ::= qualifiedName | UNIV | SIGINT | STRING | NONE
+sigName ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
 
-factDecl ::= FACT (qualifiedName | STRING_LITERAL)? block {pin=1}
+// `var disj a, b: set A` declares the fields a and b; their type is a flat expression up to the next comma
+sigBlock ::= LBRACE (field_group | !(RBRACE | paragraph_keyword) balanced_item)* RBRACE {pin=1 elementType=block}
+private field_group ::= &field_start (VAR | PRIVATE)* DISJ? fieldDecl (COMMA DISJ? fieldDecl)* COLON declaration_bound {pin=1}
+private field_start ::= (VAR | PRIVATE)* DISJ? IDENTIFIER (COMMA DISJ? IDENTIFIER)* COLON
+fieldDecl ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
 
-assertDecl ::= ASSERT (qualifiedName | STRING_LITERAL)? block {pin=1}
+factDecl ::= FACT (qualifiedName | STRING_LITERAL)? block {pin=1 mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
 
-predDecl ::= PRIVATE? PRED (sig_ref DOT)? qualifiedName parameters? block {pin=2}
+assertDecl ::= ASSERT (qualifiedName | STRING_LITERAL)? block {pin=1 mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
 
-funDecl ::= PRIVATE? FUN (sig_ref DOT)? qualifiedName parameters? COLON return_type block {pin=2}
-private return_type ::= (bracket_group | paren_group | !(LBRACE | RBRACE | RBRACKET | RPAREN | paragraph_keyword) <<anyToken>>)+
+predDecl ::= PRIVATE? PRED (sig_ref DOT)? qualifiedName parameters? block {pin=2 mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
 
-macroDecl ::= PRIVATE? LET qualifiedName parameters? (block | EQUALS macro_body) {pin=2}
-private macro_body ::= (block | bracket_group | paren_group | !(RBRACE | RBRACKET | RPAREN | paragraph_start) <<anyToken>>)+
+funDecl ::= PRIVATE? FUN (sig_ref DOT)? qualifiedName parameters? COLON return_type block {pin=2 mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
+private return_type ::= (bracket_group | paren_group | ref | !(LBRACE | RBRACE | RBRACKET | RPAREN | paragraph_keyword) <<anyToken>>)+
+
+macroDecl ::= PRIVATE? LET qualifiedName parameters? (block | EQUALS macro_body) {pin=2 mixin="com.serranofp.alloy.psi.impl.AlloyNamedStubMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
+private macro_body ::= (block | bracket_group | paren_group | ref | !(RBRACE | RBRACKET | RPAREN | paragraph_start) <<anyToken>>)+
 
 // A chain `run a => check b` is a single command, as in upstream
-commandDecl ::= command_keyword command_body ((IMPLIES_ARROW | IMPLIES) command_keyword command_body)* {pin=1}
+commandDecl ::= command_keyword command_body ((IMPLIES_ARROW | IMPLIES) command_keyword command_body)* {pin=1
+  mixin="com.serranofp.alloy.psi.impl.AlloyCommandMixin"
+  implements="com.serranofp.alloy.psi.AlloyNamedDeclaration" stubClass="com.serranofp.alloy.psi.stubs.AlloyNamedStub"
+  elementTypeFactory="com.serranofp.alloy.psi.stubs.AlloyStubElementTypes.create"}
 private command_keyword ::= RUN | CHECK
 private command_body ::= qualifiedName? (block | qualifiedName)? scope? (EXPECT NUMBER)?
 private scope ::= FOR scope_item+ {pin=1}
 private scope_item ::= NUMBER | BUT | EXACTLY | COMMA | DOT | COLON | SIGINT | INT | SEQ | STRING | STEPS | UNIV | NONE | qualifiedName
 
+// A reference where it names something declared elsewhere: a parent signature, a receiver or a command's target
 qualifiedName ::= (THIS | SEQ) SLASH IDENTIFIER (SLASH IDENTIFIER)* | IDENTIFIER (SLASH IDENTIFIER)*
+  {mixin="com.serranofp.alloy.psi.impl.AlloyQualifiedNameMixin"}
 
-private parameters ::= bracket_group | paren_group
+// `[x: A, disj y, z: B]` or `(x, y)` (macros take untyped parameters)
+private parameters ::= parameter_list | parenthesized_parameter_list
+private parameter_list ::= LBRACKET (parameter_group | !RBRACKET balanced_item)* RBRACKET {pin=1}
+private parenthesized_parameter_list ::= LPAREN (parameter_group | !RPAREN balanced_item)* RPAREN {pin=1}
+private parameter_group ::= DISJ? paramDecl (COMMA DISJ? paramDecl)* (COLON declaration_bound)?
+paramDecl ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyLocalDeclarationMixin" implements="com.serranofp.alloy.psi.AlloyNamedDeclaration"}
+
+// The type of declared names: up to the next comma, `|` or block (a comprehension can still be a bound)
+private declaration_bound ::= (comprehension | !(COMMA | BAR | LBRACE | RBRACE | RBRACKET | RPAREN | paragraph_keyword) balanced_item)*
+
+// `all disj x, y: A, z: B | body`, or with a block as body. A binder needs its `:`, so `some x` is not one.
+// The body has no end of its own in this grammar: it runs to the end of the enclosing group.
+quantifierExpr ::= &quantifier_start quantifier_keyword binder_group (COMMA binder_group)* (BAR | &LBRACE) binder_body {pin=2}
+private quantifier_start ::= quantifier_keyword DISJ? IDENTIFIER (COMMA DISJ? IDENTIFIER)* COLON
+private quantifier_keyword ::= ALL | SOME | NO | ONE | LONE | SUM
+private binder_group ::= DISJ? binderDecl (COMMA DISJ? binderDecl)* COLON DISJ? declaration_bound {pin=2}
+binderDecl ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyLocalDeclarationMixin" implements="com.serranofp.alloy.psi.AlloyNamedDeclaration"}
+private binder_body ::= balanced_item*
+
+// `let x = e, y = f | body`, or with a block as body
+letExpr ::= LET let_binding (COMMA let_binding)* (BAR | &LBRACE) binder_body {pin=1}
+private let_binding ::= letDecl EQUALS let_value {pin=1}
+private let_value ::= (comprehension | !(COMMA | BAR | LBRACE | RBRACE | RBRACKET | RPAREN | paragraph_keyword) balanced_item)*
+letDecl ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyLocalDeclarationMixin" implements="com.serranofp.alloy.psi.AlloyNamedDeclaration"}
+
+// `{ x: A, y: B | body }`
+comprehension ::= LBRACE &comprehension_start binder_group (COMMA binder_group)* BAR binder_body RBRACE {pin=2}
+private comprehension_start ::= DISJ? IDENTIFIER (COMMA DISJ? IDENTIFIER)* COLON
+
+// An identifier use: `x`, `ord/first`, `this/A`
+ref ::= (THIS | SEQ) SLASH IDENTIFIER (SLASH IDENTIFIER)* | IDENTIFIER (SLASH IDENTIFIER)* {mixin="com.serranofp.alloy.psi.impl.AlloyRefMixin"}
 
 block ::= LBRACE balanced_item* RBRACE {pin=1}
 private bracket_group ::= LBRACKET balanced_item* RBRACKET {pin=1}
 private paren_group ::= LPAREN balanced_item* RPAREN {pin=1}
-private balanced_item ::= block | bracket_group | paren_group
+private balanced_item ::= quantifierExpr | letExpr | comprehension | block | bracket_group | paren_group | ref
                         | !(RBRACE | RBRACKET | RPAREN | paragraph_keyword) <<anyToken>>
+
+private raw_bracket_group ::= LBRACKET raw_item* RBRACKET {pin=1}
+private raw_item ::= raw_bracket_group | !(RBRACE | RBRACKET | RPAREN | paragraph_keyword) <<anyToken>>

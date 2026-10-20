@@ -10,7 +10,8 @@ import com.serranofp.alloy.psi.AlloyTypes
 
 /**
  * A run icon on the `run`/`check` keyword of every top-level command (the first one of a `=>` chain),
- * which spins while the command is running. [AlloyCommandResults] refreshes the editor when that changes.
+ * which spins while the command is running; clicking the spinner opens a menu with Stop.
+ * [AlloyCommandResults] refreshes the editor when that changes.
  */
 class AlloyRunLineMarkerContributor : RunLineMarkerContributor() {
     override fun getInfo(element: PsiElement): Info? {
@@ -23,7 +24,7 @@ class AlloyRunLineMarkerContributor : RunLineMarkerContributor() {
             ?.let { AlloyCommandResults.getInstance(command.project).get(it, ref) }
             ?.state == CommandState.Running
         return if (running) {
-            Info(AnimatedIcon.Default.INSTANCE, arrayOf(AlloyRunCommandAction(command))) { "Running ${ref.displayName}…" }
+            Info(AnimatedIcon.Default.INSTANCE, arrayOf(AlloyRunningCommandMenuAction(command))) { "Running ${ref.displayName}…" }
         } else {
             Info(AllIcons.RunConfigurations.TestState.Run, arrayOf(AlloyRunCommandAction(command))) { "Run ${ref.displayName}" }
         }

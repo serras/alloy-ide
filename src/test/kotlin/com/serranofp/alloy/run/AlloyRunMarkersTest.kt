@@ -1,26 +1,30 @@
 package com.serranofp.alloy.run
 
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.EmptyProgressIndicator
+import com.intellij.ui.AnimatedIcon
+import java.util.concurrent.TimeUnit
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.TestActionEvent
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.util.ui.UIUtil
 import com.serranofp.alloy.AlloyLanguage
-import com.serranofp.alloy.lsp.CommandsListResult
 import com.serranofp.alloy.psi.AlloyCommandDecl
 
 class AlloyRunMarkersTest : BasePlatformTestCase() {
     private val model = """
-        sig Node { next: lone Node }
-        pred show { some next }
+        sig Node { succ: lone Node }
+        pred show { some succ }
         run show for 3
-        fact { no n: Node | n in n.^next }
-        check noCycles { no iden & ^next } for 5
+        fact { no n: Node | n in n.^succ }
+        check noCycles { no iden & ^succ } for 5
         run { some Node } for 2
         run first => check second
+        pred first {}
+        assert second {}
     """.trimIndent()
 
     private val service get() = AlloyRunService.getInstance(project)
@@ -37,7 +41,6 @@ class AlloyRunMarkersTest : BasePlatformTestCase() {
     override fun tearDown() {
         try {
             service.activeExecution?.terminate()
-            service.connectionProvider = { null }
         } finally {
             super.tearDown()
         }
@@ -56,36 +59,42 @@ class AlloyRunMarkersTest : BasePlatformTestCase() {
     fun testMarkerActionLaunchesItsCommand() {
         myFixture.configureByText("model.als", model)
         val file = myFixture.file.virtualFile
-        val uri = "file://${file.path}"
-        val connection = FakeServerConnection(
-            service,
-            CommandsListResult(
-                listOf(
-                    item("Run show for 3", uri, 0, 2),
-                    item("Check noCycles for 5", uri, 1, 4),
-                    item("Run run\$3 for 2", uri, 2, 5),
-                    item("Run first", uri, 3, 6),
-                ),
-            ),
-        )
-        connection.onExecute = { capturedOutput().subList(8, 16).forEach(service::executionOutput) }
-        service.connectionProvider = { connection }
 
         val action = contributor.getInfo(commandAt("check noCycles").firstChild)!!.actions.single()
         assertEquals("Run noCycles", action.templatePresentation.text)
         val context = SimpleDataContext.builder().add(CommonDataKeys.EDITOR, myFixture.editor).build()
         action.actionPerformed(TestActionEvent.createTestEvent(action, context))
-        val deadline = System.currentTimeMillis() + 10_000
-        while (service.activeExecution != null) {
-            assertTrue(System.currentTimeMillis() < deadline)
-            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-            Thread.sleep(10)
-        }
-        UIUtil.dispatchAllInvocationEvents()
+        waitUntilIdle(project)
 
-        assertEquals(listOf(listOf<Any?>(uri, 1, 4, 0)), connection.executed)
         assertEquals(listOf(AlloyCommandRef("noCycles", 1)), results.results(file).keys.toList())
-        assertEquals(CommandState.CounterexampleFound, results.get(file, AlloyCommandRef("noCycles", 1))!!.state)
+        val result = results.get(file, AlloyCommandRef("noCycles", 1))!!
+        assertEquals(result.toString(), CommandState.NoCounterexample, result.state)
+        assertEquals("Executing \"Check noCycles for 5\"", result.details.log[2].text)
+    }
+
+    fun testRunningMarkerOpensAMenuWithStop() {
+        myFixture.configureByText("model.als", PIGEONHOLE)
+        val file = myFixture.file.virtualFile
+        val show = AlloyCommandRef("show", 0)
+        val execution = newExecution(project, file, show)
+        service.startRun(execution)
+        val task = AlloyCommandTask(project, execution, AlloyCommandLauncher(project, options = ::slowOptions), testRootDisposable)
+        val running = ApplicationManager.getApplication().executeOnPooledThread { task.run(EmptyProgressIndicator()) }
+        waitUntil("the analysis did not start solving") { execution.log.progress == "Solving..." }
+
+        val command = PsiTreeUtil.findChildOfType(myFixture.file, AlloyCommandDecl::class.java)!!
+        val info = contributor.getInfo(command.firstChild)!!
+        assertSame(AnimatedIcon.Default.INSTANCE, info.icon)
+        // A single action is what a click runs: it opens the menu
+        val menu = info.actions.single() as AlloyRunningCommandMenuAction
+        val stop = menu.group.getChildren(null).single()
+        assertEquals("Stop", stop.templatePresentation.text)
+
+        stop.actionPerformed(TestActionEvent.createTestEvent(stop, SimpleDataContext.getProjectContext(project)))
+        running.get(10, TimeUnit.SECONDS)
+        assertTrue(execution.isFinished())
+        assertEquals("Stopped before completion", results.get(file, show)!!.summary)
+        assertSame(AllIcons.RunConfigurations.TestState.Run, contributor.getInfo(command.firstChild)!!.icon)
     }
 
     private fun commandAt(prefix: String): AlloyCommandDecl =

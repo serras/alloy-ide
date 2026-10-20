@@ -26,7 +26,6 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
         results.clear()
-        connection = FakeServerConnection(service)
         myFixture.configureByText("model.als", "pred show {}\nrun show for 3\ncheck noCycles {} for 3\n")
     }
 
@@ -40,7 +39,7 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
 
     private val file get() = myFixture.file.virtualFile
 
-    private fun record(command: AlloyCommandRef, state: CommandState, summary: String, link: String? = null) {
+    private fun record(command: AlloyCommandRef, state: CommandState, summary: String, link: CommandLink? = null) {
         results.record(
             file,
             command,
@@ -65,7 +64,7 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
     }
 
     fun testHintBecomesOutdatedAfterASettingsChange() {
-        record(show, CommandState.InstanceFound, "Instance found · 4 ms", "XML: /tmp/0.cnf.xml")
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
         assertEquals(listOf(1), hintLines())
         AlloySettings.getInstance().nextGeneration()
         results.refreshHints()
@@ -86,11 +85,11 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
         record(show, CommandState.Running, "Running…")
         assertSame(AnimatedIcon.Default.INSTANCE, gutterIcon("run show"))
         assertSame(AllIcons.RunConfigurations.TestState.Run, gutterIcon("check noCycles"))
-        record(show, CommandState.InstanceFound, "Instance found · 4 ms", "XML: /tmp/0.cnf.xml")
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
         assertSame(AllIcons.RunConfigurations.TestState.Run, gutterIcon("run show"))
     }
 
-    private lateinit var connection: FakeServerConnection
+    private val instance by lazy { instanceLink() }
 
     private fun clickHintOfLine(line: Int, modifiers: Int = 0): EditorMouseEvent {
         val editor = myFixture.editor
@@ -103,30 +102,27 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
             editor, mouse, EditorMouseEventArea.EDITING_AREA, offset,
             editor.offsetToLogicalPosition(offset), editor.offsetToVisualPosition(offset), false, null, inlay, null,
         )
-        AlloyCommandResultMouseListener(AlloyCommandResultClickHandler { connection }).mouseClicked(event)
+        AlloyCommandResultMouseListener(AlloyCommandResultClickHandler()).mouseClicked(event)
         return event
     }
 
-    fun testPlainClickOnAnInstanceOpensIt() {
-        record(show, CommandState.InstanceFound, "Instance found · 4 ms", "XML: /tmp/0.cnf.xml")
+    fun testPlainClickOnAnInstanceIsHandled() {
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
         assertTrue(clickHintOfLine(1).isConsumed)
-        assertEquals(listOf("XML: /tmp/0.cnf.xml"), connection.opened)
     }
 
-    fun testPlainClickOnACounterexampleOpensIt() {
-        record(noCycles, CommandState.CounterexampleFound, "Counterexample found · 3 ms", "XML: /tmp/1.cnf.xml")
+    fun testPlainClickOnACounterexampleIsHandled() {
+        record(noCycles, CommandState.CounterexampleFound, "Counterexample found · 3 ms", instance)
         assertTrue(clickHintOfLine(2).isConsumed)
-        assertEquals(listOf("XML: /tmp/1.cnf.xml"), connection.opened)
     }
 
     fun testPlainClickOnARunningHintStops() {
         val execution = newExecution(project, file, show)
         service.startRun(execution)
-        execution.connection = connection
         UIUtil.dispatchAllInvocationEvents()
         assertTrue(clickHintOfLine(1).isConsumed)
         UIUtil.dispatchAllInvocationEvents()
-        assertEquals(1, connection.stops)
+        assertTrue(execution.isFinished())
         assertEquals(CommandState.Stopped, results.get(file, show)!!.state)
     }
 
@@ -136,10 +132,9 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
     }
 
     fun testCtrlClickIsLeftToThePlatform() {
-        record(show, CommandState.InstanceFound, "Instance found · 4 ms", "XML: /tmp/0.cnf.xml")
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
         assertFalse(clickHintOfLine(1, InputEvent.CTRL_DOWN_MASK).isConsumed)
         assertFalse(clickHintOfLine(1, InputEvent.META_DOWN_MASK).isConsumed)
-        assertEmpty(connection.opened)
     }
 
     fun testClickOnALineWithoutResultIsIgnored() {

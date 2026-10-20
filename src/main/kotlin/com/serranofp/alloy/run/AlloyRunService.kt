@@ -8,33 +8,20 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.serranofp.alloy.lsp.AlloyExecutionMessage
-import com.serranofp.alloy.lsp.AlloyServerNotifications
-import com.serranofp.alloy.lsp.CommandsListResult
+import com.intellij.psi.PsiDocumentManager
 import com.serranofp.alloy.settings.AlloySettings
-import org.jetbrains.annotations.TestOnly
-import java.util.concurrent.CompletableFuture
 
 /**
- * The single Alloy execution of a project. The server silently ignores a second `ExecuteAlloyCommand` while it
- * is busy, and its output carries no run id, so at most one execution exists and all output goes to it.
+ * The single Alloy execution of a project, or the instance viewer's enumeration. At most one runs at a time: an analysis uses the IDE's own memory,
+ * and the hints and gutter icons share one running state. Analyses are children of this service, so closing
+ * the project stops them.
  */
 @Service(Service.Level.PROJECT)
 class AlloyRunService(private val project: Project) : Disposable {
     private var active: AlloyCommandExecution? = null
-    private var pendingCommands: CompletableFuture<CommandsListResult>? = null
 
-    init {
-        project.messageBus.connect(this).subscribe(AlloyServerNotifications.TOPIC, object : AlloyServerNotifications {
-            override fun commandsListed(result: CommandsListResult) = this@AlloyRunService.commandsListed(result)
-
-            override fun executionOutput(message: AlloyExecutionMessage) = this@AlloyRunService.executionOutput(message)
-        })
-    }
-
-    /** Blocks until the server is running, or gives up with null. */
-    @set:TestOnly
-    var connectionProvider: () -> AlloyServerConnection? = ::awaitConnection
+    /** Whether the instance viewer is asking for a new solution, which also takes the project's one analysis. */
+    private var enumerating = false
 
     val activeExecution: AlloyCommandExecution?
         @Synchronized get() = active
@@ -45,7 +32,7 @@ class AlloyRunService(private val project: Project) : Disposable {
      */
     fun startRun(execution: AlloyCommandExecution): Boolean {
         synchronized(this) {
-            if (active != null) return false
+            if (active != null || enumerating) return false
             active = execution
         }
         execution.started()
@@ -53,16 +40,11 @@ class AlloyRunService(private val project: Project) : Disposable {
     }
 
     /**
-     * Executes [command] of [file], open in [editor], as a cancellable background task. If another execution
-     * is running, the editor says so and the results are untouched.
+     * Executes [command] of [file], open in [editor], as a cancellable background task, on the current text of
+     * the file and of the modules it opens, saved or not. If another execution is running, the editor says so
+     * and the results are untouched.
      */
-    fun launch(
-        file: VirtualFile,
-        command: AlloyCommandRef,
-        editor: Editor,
-        connection: () -> AlloyServerConnection? = connectionProvider,
-        launcher: AlloyCommandLauncher = AlloyCommandLauncher(this),
-    ): Boolean {
+    fun launch(file: VirtualFile, command: AlloyCommandRef, editor: Editor, launcher: AlloyCommandLauncher = AlloyCommandLauncher(project)): Boolean {
         val results = AlloyCommandResults.getInstance(project)
         val execution = AlloyCommandExecution(
             this,
@@ -76,50 +58,27 @@ class AlloyRunService(private val project: Project) : Disposable {
             HintManager.getInstance().showInformationHint(editor, BUSY_MESSAGE)
             return false
         }
-        // The file is open in the editor, so the server already analyzes its current text
-        ProgressManager.getInstance().run(AlloyCommandTask(project, execution, launcher, connection))
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        ProgressManager.getInstance().run(AlloyCommandTask(project, execution, launcher, this))
         return true
     }
 
-    /** A server that is still starting (for example, because the file was just opened) is waited for. */
-    private fun awaitConnection(): AlloyServerConnection? {
-        val deadline = System.currentTimeMillis() + SERVER_START_TIMEOUT_MILLIS
-        while (true) {
-            LspAlloyServerConnection.find(project)?.let { return it }
-            if (System.currentTimeMillis() > deadline) return null
-            Thread.sleep(100)
-        }
+    /** Takes the project's one analysis for an enumeration, or refuses (false) if another analysis runs. */
+    @Synchronized
+    fun startEnumeration(): Boolean {
+        if (active != null || enumerating) return false
+        enumerating = true
+        return true
+    }
+
+    @Synchronized
+    fun enumerationFinished() {
+        enumerating = false
     }
 
     @Synchronized
     fun runFinished(execution: AlloyCommandExecution) {
         if (active === execution) active = null
-    }
-
-    /** Output of the active execution; output that arrives with none active belongs to no one and is dropped. */
-    fun executionOutput(message: AlloyExecutionMessage) {
-        activeExecution?.render(message)
-    }
-
-    /** Asks for the commands of a document; the answer is the next `alloy/commandsListResult`. */
-    fun requestCommands(connection: AlloyServerConnection, uri: String): CompletableFuture<CommandsListResult> {
-        val future = CompletableFuture<CommandsListResult>()
-        synchronized(this) {
-            pendingCommands?.cancel(false)
-            pendingCommands = future
-        }
-        connection.listCommands(uri)
-        return future
-    }
-
-    fun commandsListed(result: CommandsListResult) {
-        val future = synchronized(this) { pendingCommands.also { pendingCommands = null } }
-        future?.complete(result)
-    }
-
-    /** The server process stopped: the active execution can never complete. */
-    fun serverStopped() {
-        activeExecution?.fail(AlloyCommandExecution.SERVER_UNAVAILABLE, SERVER_UNAVAILABLE_MESSAGE)
     }
 
     override fun dispose() {
@@ -128,8 +87,6 @@ class AlloyRunService(private val project: Project) : Disposable {
 
     companion object {
         const val BUSY_MESSAGE = "An Alloy analysis is already running"
-        const val SERVER_UNAVAILABLE_MESSAGE = "The Alloy language server is unavailable"
-        const val SERVER_START_TIMEOUT_MILLIS = 15_000L
 
         fun getInstance(project: Project): AlloyRunService = project.service()
     }

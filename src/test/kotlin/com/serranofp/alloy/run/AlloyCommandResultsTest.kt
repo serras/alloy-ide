@@ -11,6 +11,8 @@ class AlloyCommandResultsTest : BasePlatformTestCase() {
     private val results get() = AlloyCommandResults.getInstance(project)
     private val show = AlloyCommandRef("show", 0)
 
+    private val instance by lazy { instanceLink() }
+
     override fun setUp() {
         super.setUp()
         results.clear()
@@ -24,7 +26,7 @@ class AlloyCommandResultsTest : BasePlatformTestCase() {
         results.record(
             file,
             show,
-            CommandResult(state, summary, link = "XML: /tmp/0.cnf.xml", documentStamp = results.stamp(document), settingsGeneration = AlloySettings.getInstance().generation),
+            CommandResult(state, summary, link = instance, documentStamp = results.stamp(document), settingsGeneration = AlloySettings.getInstance().generation),
         )
     }
 

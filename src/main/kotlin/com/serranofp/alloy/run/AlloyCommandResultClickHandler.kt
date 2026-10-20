@@ -1,21 +1,18 @@
 package com.serranofp.alloy.run
 
-import com.intellij.codeInsight.hint.HintManager
 import com.intellij.codeInsight.hints.declarative.InlayActionHandler
 import com.intellij.codeInsight.hints.declarative.InlayActionPayload
 import com.intellij.codeInsight.hints.declarative.StringInlayActionPayload
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.project.Project
+import com.serranofp.alloy.viewer.AlloyInstanceViewer
 
 /**
- * A click on a result hint: stops a running analysis, or opens the result's instance, counterexample or
- * core through the server, even when the result is outdated.
+ * A click on a result hint: stops a running analysis, or shows an instance or counterexample in the Alloy
+ * Instance tool window, even when the result is outdated.
  */
-class AlloyCommandResultClickHandler(
-    private val connection: (Project) -> AlloyServerConnection? = LspAlloyServerConnection::find,
-) : InlayActionHandler {
+class AlloyCommandResultClickHandler : InlayActionHandler {
     override fun handleClick(e: EditorMouseEvent, payload: InlayActionPayload) = click(e.editor, payload)
 
     fun click(editor: Editor, payload: InlayActionPayload) {
@@ -29,13 +26,7 @@ class AlloyCommandResultClickHandler(
                 ?.stop()
             return
         }
-        val link = result.link ?: return
-        val server = connection(project)
-        if (server == null) {
-            HintManager.getInstance().showErrorHint(editor, AlloyRunService.SERVER_UNAVAILABLE_MESSAGE)
-            return
-        }
-        server.openModel(link)
+        if (result.link is CommandLink.Solution) AlloyInstanceViewer.getInstance(project).open(file, ref, result)
     }
 
     companion object {

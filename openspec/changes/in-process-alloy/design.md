@@ -66,6 +66,9 @@ Constraints from the Alloy 6.2.0 JARs, checked in their sources:
 
 `libs.versions.toml` gets `alloy-core` and `alloy-application` (6.2.0) as `implementation`. They bring `pardinus.core`, `api` and `aQute.libg` with them. The `alloyServer` configuration, the `PrepareSandboxTask` copy, `include("server-shim")` and `server-shim/` are deleted. `plugin.xml` depends on `com.intellij.modules.platform`.
 
+- **External solvers.** The factories for external solvers (Yices, Plingeling, Electrod with NuSMV or nuXmv) are in `org.alloytools.pardinus.native`. Its JAR also carries 16 MB of JNI libraries and executables for four platforms. The build repackages it without `native/**`, so the plugin gets only the factory classes (84 KB).
+- **Excluded JARs.** `slf4j-api` is excluded from the plugin's runtime classpath: the IDE provides slf4j, and a second copy on the plugin classloader could clash with it. SAT4J's test JAR, which pardinus depends on, is left out of the sandbox.
+
 *Alternatives:*
 - Keep a worker JVM through `WorkerEngine.run`. It is more robust against OOM, but the user asked for in-process, and it would keep `A4Solution` out of reach for enumeration.
 - Shade the JARs. Nothing currently conflicts with the platform: no lsp4j is left, and SAT4J is only in pardinus. Shading can be added later if a conflict appears.
@@ -156,12 +159,31 @@ These events replace `AlloyExecutionMessage` and `AlloyRunLog`'s text parsing. T
 
 Stop works in three layers:
 1. **Reporter checkpoints.** A `StoppableReporter extends A4Reporter` checks a flag in every callback and throws `AlloyStopped`. This covers parse, typecheck, scope, the steps between translation phases, and `minimizing`.
-2. **Solver abort.** `A4Options.solver` is the user's choice. Kodkod builds the solver itself, so the engine interrupts the analysis thread and also signals the live solver:
-   - **SAT4J:** a wrapping `SATFactory` returns the Kodkod SAT4J wrapper and keeps its `ISolver` so that `expireTimeout()` can be called on it.
-   - **External solvers:** the solver process is destroyed.
+2. **Solver abort.** `A4Options.solver` is the user's choice. Kodkod builds the solver itself, so the engine signals the live solver:
+   - **SAT4J** (`sat4j`, `sat4j.light`, `sat4j.pmax`): a wrapping `SATFactory` with the same id and capabilities builds the same Kodkod wrapper as the original factory, keeps its `ISolver`, and calls `expireTimeout()` on it.
+   - **External solvers:** the solver process is destroyed. Pardinus keeps the `Process` in a local variable, so the engine destroys the child processes of the IDE whose command is one of the factory's executables.
 
-   If wrapping the factory is not viable for a solver, the fallback is the interrupt plus the reporter flag.
+   For any other factory, only the reporter flag applies. The thread is also interrupted, which costs nothing, although nothing in pardinus or SAT4J checks it outside decomposed mode.
 3. **Stopping state.** If neither layer can act immediately (inside a long FOL→boolean translation), the execution shows "Stopping…". It becomes "Stopped before completion" once the thread reaches the next checkpoint. The thread is never abandoned while still holding solver memory.
+
+`execute_command` wraps every `Throwable` from the analysis, including `AlloyStopped`, solver aborts, `OutOfMemoryError` and `StackOverflowError`, in `ErrorFatal("Unknown exception occurred")`. The engine therefore classifies the end of an analysis by its own stop flag first, and otherwise by the cause chain.
+
+**Spike results (task 3.1).** Measured on an Apple Silicon laptop with JBR 25 and the 6.2.0 JARs, with a 64 MB analysis thread stack. Each gap is the time from the stop request to the end of the analysis thread.
+
+| Mechanism | During solving | During translation |
+|---|---|---|
+| Reporter flag | Not stopped after 5 s | 6.1 s: the rest of the FOL→boolean translation |
+| Thread interrupt (with the flag) | Not stopped after 5 s | 6.1 s, the same as the flag alone |
+| SAT4J `expireTimeout()` | < 1 ms | Not applicable: no solver exists yet |
+| Destroying an external solver process | 6 ms | Not applicable: the process starts after translation |
+
+- **Models.** Solving used pigeonhole, 11 pigeons in 10 holes, with symmetry breaking off. It runs for more than 20 s. Translation used a four-variable quantified formula over a ternary relation, for scope 35. It translates in about 6 s. The README's `run big { #Node = 30 } for 30 but 7 Int` is not slow on this machine: it translates in 93 ms and solves in 14 ms. The README's manual checklist needs a slower model for its stop items.
+- **SAT4J.** SAT4J 2.3.1 ends `expireTimeout()` with a `NullPointerException` in the analysis thread (`Timer.cancel()` on a null timer), even when a timeout was set first. The stop is still immediate, and the stop flag classifies the outcome as stopped.
+- **External solvers.** No external `SATFactory` is bundled: the pardinus JAR has no `ServiceLoader` entries, so `SATFactory.getAllSolvers()` lists only the three SAT4J variants. The external case was measured with a stand-in `ExternalSolver` running a script that sleeps. Destroying its process makes `ExternalSolver.solve` fail with `SATAbortedException`.
+- **Translation.** Kodkod's `Reporter` hooks fire around the FOL→boolean translation (`translatingToBoolean`, `translatingToCNF`), not inside it. A finer checkpoint is not available, so the "Stopping…" state covers this gap.
+- **Concurrency.** A semantic parse can run while an analysis runs. The only mutable statics on these paths are `TranslateAlloyToKodkod.cnt` and `am`. `cnt` is an unsynchronized counter that only names Kodkod variables, which are compared by identity. `am` is never written. Builtin sigs record no children under `univ`. In the spike, three threads parsed 101 models while 15 analyses ran, with enumeration of the next solutions. Every result was identical to a sequential run.
+
+**Chosen mechanism.** The reporter flag, plus the SAT4J handle for the SAT4J variants and process destruction for external solvers. The "Stopping…" state covers translation.
 
 `OutOfMemoryError` and `StackOverflowError` on the analysis thread are caught at its root. They become `Failed(MemoryExhausted|StackExhausted)` and the solution is dropped. `ProcessCanceledException` is never thrown into Alloy code.
 
@@ -174,17 +196,17 @@ Stop works in three layers:
 ### 9. Command list, unsat core, settings
 
 - **Command lists** come from `CompModule.getAllCommands()`, with each `Command.pos` mapped to a PSI command element. A gutter command with no matching analyzer command is "Command not found", as before.
-- **Unsat cores** come from `A4Solution.highLevelCore()`. They are highlighted as warnings through the same mechanism as today: a per-file highlighting pass from the stored result instead of server-published diagnostics.
+- **Unsat cores** are not shown. Only provers produce them, and the only prover (`minisat.prover`) is a JNI library, which the plugin does not run. The tooltip keeps what the analyzer reports about cores.
 - **Settings:**
   - `AlloySettings` builds an `A4Options` for each run, including the solver fallback warning.
-  - `AlloySolvers` calls `SATFactory.getAllSolvers().filter(isPresent)` in-process, cached for the IDE session.
+  - `AlloySolvers` lists `SATFactory.getAllSolvers()` in-process, cached for the IDE session: those that are present, need no native library and are not transformers. An IDE started from the desktop may not have the shell's `PATH`. So each executable is first looked up on the user's `PATH` (`PathEnvironmentVariableUtil`), and pardinus is pointed at it through `alloy.native.exe.<name>`. That property is set to `NO` when the executable is not on the `PATH`, so pardinus never falls back to binaries of its own. An analysis finds its factory the same way, not through `SATFactory.find`: its list is computed once, and may predate those properties.
   - `AlloySettingsApplier` only bumps the settings generation. That marks results outdated and changes nothing else.
 
   `java.util.prefs` is never touched by the code paths used: no `VizGUI` and no `SimpleGUI`. A test asserts that the desktop node is unchanged after a run and a viewer open, as the shim's test did.
 
 ### 10. Instance viewer tool window
 
-`AlloyInstanceToolWindowFactory` registers the "Alloy Instance" tool window, anchored at the bottom. `AlloyInstanceViewer` is a project service that holds at most one `ViewerSession`:
+`AlloyInstanceToolWindowFactory` registers the "Alloy Instance" tool window, anchored to the right of the editor. `AlloyInstanceViewer` is a project service that holds at most one `ViewerSession`:
 - `origin`: the file, command text, line, and instance or counterexample;
 - the `A4Solution`;
 - the result stamp, for the outdated marking;
@@ -197,7 +219,7 @@ Opening a result replaces the session, and the content is rebuilt.
 +------------------------------------------------------------------+
 | graph.als : check noCycles for 3 (line 12) - Counterexample  [o] |  <- header, click = navigate
 +------------------------------------------------------------------+
-| [New config][New trace][New init][New fork] | |< < State 1 of 3 (loop 1) > | Projection: [none v] |
+| [New config][New trace][New init][New fork] | |< < State 1 of 3 (loop 1) > | Projection: None v   |
 +------------------------------------------------------------------+
 | [Visualization] [Text] [Table]                                   |
 |                                                                  |
@@ -206,8 +228,8 @@ Opening a result replaces the session, and the content is rebuilt.
 ```
 
 - **Instance:** the solution is written as XML to a `StringWriter` once per solution, with source files taken from the analyzed content map. `StaticInstanceReader.parseInstance(StringReader, state)` is called for each state that is shown, and the results are cached per state.
-- **Magic layout:** a new session runs `MagicLayout.magic` and `MagicColor.magic` on its `VizState`. `MagicLayout` is package-private, so a two-line bridge class `edu.mit.csail.sdg.alloy4viz.AlloyIdeMagic` lives in the plugin. Split packages are allowed on the plugin classloader, which is not modular. When the state changes, the `VizState` is kept and only the instance is reloaded (`loadInstance`), so the theme and projection persist.
-- **Graph:** `new VizGraphPanel(ideFrame, listOf(vizState), false)` is placed inside a `JBScrollPane`. Its own projection atom combos at the bottom are kept: they are how the user picks the atom of each projected type, as the spec requires. The toolbar's projection dropdown lists `canProject` types and calls `project`/`deproject`, then `remakeAll`.
+- **Magic layout:** a session opened from a result runs `MagicLayout.magic` and `MagicColor.magic` on its `VizState`. Both classes are package-private, so a small bridge class `edu.mit.csail.sdg.alloy4viz.AlloyIdeMagic` lives in the plugin. A session for a solution enumerated from a shown one starts from a copy of that one's `VizState` (`new VizState(old)`, then `loadInstance`), so the theme and projections carry over. Split packages are allowed on the plugin classloader, which is not modular. When the state changes, the `VizState` is kept and only the instance is reloaded (`loadInstance`), so the theme and projection persist.
+- **Graph:** `new VizGraphPanel(ideFrame, listOf(vizState), false)` is placed inside a `JBScrollPane`. Its own projection atom combos at the bottom are kept: they are how the user picks the atom of each projected type, as the spec requires. The toolbar's projection control is a dropdown link that names the projected types (or "None"). Its popup has a checkbox for each `canProject` type and a *Clear all* link, which call `project`, `deproject` and `deprojectAll`, then `remakeAll`.
 - **Text and Table:** read-only `EditorTextField` or `JBTextArea` in a monospaced font with `toString(state)` and `format(state)`.
 - **Toolbar:** an `ActionToolbar` with these actions:
 
@@ -217,6 +239,8 @@ Opening a result replaces the session, and the content is rebuilt.
   | New trace | `fork(-2)` | the model has mutable relations, i.e. the solution XML has variable sigs or fields |
   | New init | `fork(0)` | same as New trace |
   | New fork | `fork(state+1)` | same as New trace |
+
+  Each action has its own icon, borrowed from the debugger by analogy: New config is *Restart*, New trace *Step Over*, New init *Drop Frame* and New fork *Run to Cursor*.
 
   `fork` returns this solution unchanged (UNSAT or no `eval`) when nothing new exists. The viewer detects that and shows "No more solutions of that kind" in the tool window's status line. Every enumeration runs as an `AlloyAnalysis` on the engine, with a background progress indicator. While the session is outdated, all four buttons are disabled.
 - **Last tab:** the selected tab is remembered in a project-level `@State`.
@@ -232,10 +256,10 @@ Opening a result replaces the session, and the content is rebuilt.
 ## Risks / Trade-offs
 
 - **[A runaway analysis exhausts IDE memory.]** → Catch `OutOfMemoryError` on the analysis thread and drop the solution right away. Keep only one analysis per project. Document in the README that very large scopes are best run in the desktop app. A real OOM can still destabilize the IDE, and that is accepted as the price of running in-process.
-- **[Stop cannot interrupt a long translation step.]** → Show the "Stopping…" state. A spike (task 3.1) measures how long the gap is on a large model. If it is too long, add flag checks through a Kodkod `Reporter` (pardinus calls its `translatingToBoolean`/`generatingSAT` hooks at a finer grain than `A4Reporter`).
+- **[Stop cannot interrupt a long translation step.]** → Show the "Stopping…" state. The spike (task 3.1) measured a gap of about 6 s on a heavy model. Kodkod's `Reporter` has no hook inside the translation that could shorten it.
 - **[Native solvers loaded through JNI crash the IDE.]** → No change from today's settings scope. Only SAT4J and external-executable solvers are listed, as `AlloySolvers` already restricts. JNI solvers stay excluded.
 - **[`VizGraphPanel`/`alloy4graph` assume a `JFrame` parent and the AWT thread.]** → All viewer UI is built on the EDT, and the IDE frame is passed (`WindowManager.getFrame(project)`). A spike task checks that the panel renders, scrolls and zooms inside a tool window.
-- **[Static state in the Alloy libraries is not thread-safe.]** Examples are `A4Solution` caches, `CompUtil` and `Util` statics. → Parsing for semantics can run concurrently with an analysis. Each uses its own `CompModule`, and `CompUtil`/the translator keep no mutable globals that are shared across modules (verify in the spike). Analyses are already serialized per project. Across projects they are serialized globally by the engine, as the old single server per project effectively was for each worker.
+- **[Static state in the Alloy libraries is not thread-safe.]** Examples are `A4Solution` caches, `CompUtil` and `Util` statics. → Parsing for semantics can run concurrently with an analysis. Each uses its own `CompModule`, and `CompUtil`/the translator keep no mutable globals that are shared across modules. The spike confirmed this. Analyses are serialized per project by `AlloyRunService`. Across projects they can run in parallel: the spike found no shared state that needs a global lock.
 - **[The deeper grammar regresses parser error recovery.]** → Body rules are wrapped with `recoverWhile`/`pin` so that a broken binder fails only its own sub-tree. All existing parser, folding and brace tests must still pass unchanged.
 - **[Name-based resolution gives wrong targets for overloaded fields.]** → It returns all candidates instead of guessing, and rename never uses it.
 - **[A larger plugin distribution.]** About 2 MB of JARs, which is less than today's `lib/server/` with lsp4j and its dependencies.
@@ -246,5 +270,5 @@ This is a single release with no data migration. Settings keep their `@State` st
 
 ## Open Questions
 
-- Whether a solver-handle `SATFactory` wrapper is cleaner than interrupting the thread, for SAT4J specifically. The spike in task 3.1 decides this. Both satisfy the specs.
-- The exact Kodkod hook to use for finer-grained translation checkpoints, if the spike shows that one is needed.
+- ~~Whether a solver-handle `SATFactory` wrapper is cleaner than interrupting the thread, for SAT4J specifically.~~ Resolved by the spike in task 3.1: interrupting does not stop SAT4J at all, so the solver handle is required. See Decision 8.
+- ~~The exact Kodkod hook to use for finer-grained translation checkpoints.~~ Resolved by the spike: Kodkod has no hook inside the FOL→boolean translation. The gap (about 6 s on a heavy model) is covered by the "Stopping…" state. See Decision 8.

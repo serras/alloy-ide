@@ -74,6 +74,8 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
         }
     }
 
+    private val instance by lazy { instanceLink() }
+
     override fun setUp() {
         super.setUp()
         results.clear()
@@ -82,7 +84,7 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
 
     private val file get() = myFixture.file.virtualFile
 
-    private fun record(command: AlloyCommandRef, state: CommandState, summary: String, link: String? = null) =
+    private fun record(command: AlloyCommandRef, state: CommandState, summary: String, link: CommandLink? = null) =
         results.record(
             file,
             command,
@@ -108,7 +110,7 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
     }
 
     fun testHintAtTheEndOfTheFirstLineOfAMultiLineCommand() {
-        record(show, CommandState.InstanceFound, "Instance found · 4 ms", "XML: /tmp/0.cnf.xml")
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
         val hint = hints().single()
         assertEquals(2, hint.line)
         assertEquals("Instance found · 4 ms", hint.text)
@@ -119,7 +121,7 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
     }
 
     fun testOnlyTheExecutedCommandGetsAHint() {
-        record(noCycles, CommandState.CounterexampleFound, "Counterexample found · 3 ms", "XML: /tmp/1.cnf.xml")
+        record(noCycles, CommandState.CounterexampleFound, "Counterexample found · 3 ms", instance)
         assertEquals(listOf(4), hints().map { it.line })
     }
 
@@ -131,7 +133,7 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
     }
 
     fun testOutdatedAfterAnEdit() {
-        record(show, CommandState.InstanceFound, "Instance found · 4 ms", "XML: /tmp/0.cnf.xml")
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
         myFixture.type("x")
         val hint = hints().single()
         assertEquals("Instance found · 4 ms (outdated)", hint.text)
@@ -150,5 +152,30 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
         val hint = hints().single()
         assertEquals("Running…", hint.text)
         assertNotNull(hint.action)
+    }
+
+    fun testStoppingIsStillRunning() {
+        record(show, CommandState.Running, AlloyRunLog.STOPPING)
+        val hint = hints().single()
+        assertEquals("Stopping…", hint.text)
+        assertNotNull(hint.action)
+    }
+
+    fun testStoppedBeforeCompletionKeepsTheOutputInItsTooltip() {
+        results.record(
+            file,
+            show,
+            CommandResult(
+                CommandState.Stopped,
+                AlloyRunLog.STOPPED,
+                CommandDetails(log = listOf(AlloyRunLog.Line(listOf(AlloyRunLog.Span("   Solving..."))))),
+                documentStamp = results.stamp(myFixture.editor.document),
+                settingsGeneration = AlloySettings.getInstance().generation,
+            ),
+        )
+        val hint = hints().single()
+        assertEquals("Stopped before completion", hint.text)
+        assertNull(hint.action)
+        assertEquals("<html>&nbsp;&nbsp;&nbsp;Solving...</html>", hint.tooltip)
     }
 }

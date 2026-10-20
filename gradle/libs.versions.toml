@@ -4,4 +4,6 @@ alloy = "6.2.0"
 
 [libraries]
 junit = { module = "junit:junit", version.ref = "junit" }
-alloy-lsp = { module = "org.alloytools:org.alloytools.alloy.lsp", version.ref = "alloy" }
+alloy-core = { module = "org.alloytools:org.alloytools.alloy.core", version.ref = "alloy" }
+alloy-application = { module = "org.alloytools:org.alloytools.alloy.application", version.ref = "alloy" }
+pardinus-native = { module = "org.alloytools:org.alloytools.pardinus.native", version.ref = "alloy" }

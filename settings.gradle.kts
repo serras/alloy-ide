@@ -22,5 +22,3 @@ dependencyResolutionManagement {
         }
     }
 }
-
-include("server-shim")

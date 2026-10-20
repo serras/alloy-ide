@@ -1,79 +1,22 @@
 package com.serranofp.alloy.run
 
-import com.google.gson.JsonParser
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.serranofp.alloy.lsp.AlloyExecutionMessage
-import com.serranofp.alloy.lsp.AlloyMessageType
-import com.serranofp.alloy.lsp.CommandsListResult
-import com.serranofp.alloy.lsp.CommandsListResultItem
+import com.intellij.openapi.util.Disposer
+import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.util.ui.UIUtil
+import com.serranofp.alloy.analysis.AlloyAnalysisEngine
+import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 import com.serranofp.alloy.settings.AlloySettings
-import org.eclipse.lsp4j.Command
-import java.nio.file.Files
-import java.nio.file.Path
-
-/** Stands in for the language server: answers like the 6.2.0 server, or not at all. */
-class FakeServerConnection(
-    private val service: AlloyRunService,
-    var commands: CommandsListResult? = CommandsListResult(),
-    var answersStop: Boolean = true,
-    /** What the server streams after `ExecuteAlloyCommand`. */
-    var onExecute: () -> Unit = {},
-) : AlloyServerConnection {
-    val listed = mutableListOf<String>()
-    val executed = mutableListOf<List<Any?>>()
-    val opened = mutableListOf<String>()
-    var stops = 0
-
-    override fun uriOf(file: VirtualFile): String = "file://${file.path}"
-
-    override fun listCommands(uri: String) {
-        listed += uri
-        commands?.let(service::commandsListed)
-    }
-
-    override fun execute(arguments: List<Any?>) {
-        executed += arguments
-        onExecute()
-    }
-
-    override fun stop() {
-        stops++
-        if (answersStop) {
-            service.executionOutput(AlloyExecutionMessage(AlloyMessageType.RunCompleted.ordinal, "Stopped", bold = true))
-        }
-    }
-
-    override fun openModel(link: String) {
-        opened += link
-    }
-}
-
-fun item(title: String, uri: String, index: Int, line: Int): CommandsListResultItem =
-    CommandsListResultItem(title, Command("Execute", "ExecuteAlloyCommand", listOf(uri, index, line, 0)))
-
-/** `alloy/showExecutionOutput` messages captured from the 6.2.0 server (see testData/lsp). */
-fun capturedOutput(): List<AlloyExecutionMessage> =
-    JsonParser.parseString(Files.readString(Path.of("src/test/testData/lsp/showExecutionOutput.json"))).asJsonArray.map {
-        val p = it.asJsonObject["params"].asJsonObject
-        AlloyExecutionMessage(
-            messageType = p["messageType"].asInt,
-            message = p["message"]?.asString,
-            link = p["link"]?.asString,
-            bold = p["bold"].asBoolean,
-            replaceLast = p["replaceLast"].asBoolean,
-            lineBreak = p["lineBreak"].asBoolean,
-        )
-    }
+import edu.mit.csail.sdg.alloy4.A4Reporter
+import edu.mit.csail.sdg.parser.CompUtil
+import edu.mit.csail.sdg.translator.A4Options
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /** An execution of [command] in [file] that analyzes the current document and settings, as a launch does. */
-fun newExecution(
-    project: Project,
-    file: VirtualFile,
-    command: AlloyCommandRef = AlloyCommandRef("show", 0),
-    stopTimeoutMillis: Long = AlloyCommandExecution.STOP_TIMEOUT_MILLIS,
-): AlloyCommandExecution =
+fun newExecution(project: Project, file: VirtualFile, command: AlloyCommandRef = AlloyCommandRef("show", 0)): AlloyCommandExecution =
     AlloyCommandExecution(
         AlloyRunService.getInstance(project),
         AlloyCommandResults.getInstance(project),
@@ -81,5 +24,50 @@ fun newExecution(
         command,
         AlloyCommandResults.getInstance(project).stamp(FileDocumentManager.getInstance().getDocument(file)!!),
         AlloySettings.getInstance().generation,
-        stopTimeoutMillis,
     )
+
+/** Executes the first command of [model] and returns every event of the analysis. */
+fun analysisEvents(model: String): List<AlloyAnalysisEvent> {
+    val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, model)
+    val events = CopyOnWriteArrayList<AlloyAnalysisEvent>()
+    val disposable = Disposer.newDisposable()
+    try {
+        val analysis = AlloyAnalysisEngine.getInstance()
+            .execute("test", disposable, module.allReachableSigs, module.allCommands.first(), A4Options()) { events += it }
+        check(analysis.await(30, TimeUnit.SECONDS)) { "the analysis did not end" }
+    } finally {
+        Disposer.dispose(disposable)
+    }
+    return events
+}
+
+/** A real instance, for results that link to one. */
+fun instanceLink(): CommandLink.Solution =
+    CommandLink.Solution((analysisEvents("sig A {}\nrun { some A } for 1").last() as AlloyAnalysisEvent.Sat).solution)
+
+/** Options without symmetry breaking, under which [PIGEONHOLE] solves for more than 20 s. */
+fun slowOptions(): A4Options = A4Options().apply { symmetry = 0 }
+
+const val PIGEONHOLE = "sig H {}\nsig P { h: one H }\nfact { all disj a, b: P | a.h != b.h }\npred show { #P = 11 and #H = 10 }\nrun show for 11"
+
+/** Waits for [project]'s execution to end, dispatching the EDT events meanwhile, as the task may run on it. */
+fun waitUntilIdle(project: Project) {
+    val service = AlloyRunService.getInstance(project)
+    val deadline = System.currentTimeMillis() + 30_000
+    while (service.activeExecution != null) {
+        check(System.currentTimeMillis() < deadline) { "execution did not finish" }
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        Thread.sleep(10)
+    }
+    UIUtil.dispatchAllInvocationEvents()
+}
+
+/** Waits until [condition] holds, dispatching the EDT events meanwhile. */
+fun waitUntil(message: String, condition: () -> Boolean) {
+    val deadline = System.currentTimeMillis() + 30_000
+    while (!condition()) {
+        check(System.currentTimeMillis() < deadline) { message }
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        Thread.sleep(10)
+    }
+}

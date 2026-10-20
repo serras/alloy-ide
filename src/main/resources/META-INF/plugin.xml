@@ -3,21 +3,29 @@
     <name>Alloy 6</name>
     <vendor url="https://serranofp.com">Alejandro Serrano Mena</vendor>
     <description><![CDATA[
-        Support for <a href="https://alloytools.org">Alloy</a> 6 models (<code>.als</code> files), backed by the
-        Alloy 6.2.0 analyzer and language server.
+        Support for <a href="https://alloytools.org">Alloy</a> 6 models (<code>.als</code> files), with the
+        Alloy 6.2.0 analyzer included and running inside the IDE: no separate process or Java installation is
+        needed.
         <ul>
           <li>Syntax highlighting, brace matching, commenting, folding and keyword completion</li>
-          <li>Diagnostics, hover, go to declaration, find usages, rename, structure view and Go to Symbol</li>
+          <li>Diagnostics, hover and quick documentation, go to declaration (also into the bundled
+              <code>util/*</code> modules), highlight and find usages, rename, structure view, breadcrumbs and
+              Go to Symbol, which keep working by name while the model has errors</li>
           <li>Run <code>run</code> and <code>check</code> commands from the gutter, with their results as inlay
-              hints at the end of the command's line, the analyzer output in their tooltip, and instances,
-              counterexamples and unsat cores one click away</li>
+              hints at the end of the command's line, the analyzer output in their tooltip, and a Stop menu on
+              the gutter icon of a running command</li>
+          <li>The <em>Alloy Instance</em> tool window: instances and counterexamples as a graph (with the magic
+              layout), text or table, new configurations, traces, initial states and forks, trace state stepping
+              and projection over several signatures</li>
           <li>Analyzer settings under <em>Languages &amp; Frameworks | Alloy</em>, separate from the Alloy desktop
               application</li>
         </ul>
-        <p>Known limitations: only the pure-Java SAT4J solvers and solvers whose executable is on the
-        <code>PATH</code> are available, and instances open in the Alloy visualizer in a separate window.</p>
+        <p>Solvers: the pure-Java SAT4J variants, and Yices, Plingeling and Electrod when their executables are on
+        the <code>PATH</code>. Known limitations: solvers that need a native library are not available, and
+        analyses use the IDE's memory, so models with very large scopes are better run in the Alloy desktop
+        application.</p>
         ]]></description>
-    <depends>com.intellij.modules.lsp</depends>
+    <depends>com.intellij.modules.platform</depends>
     <resource-bundle>messages.AlloyBundle</resource-bundle>
     <extensions defaultExtensionNs="com.intellij">
         <fileType name="Alloy" language="Alloy" extensions="als"
@@ -31,7 +39,19 @@
         <lang.foldingBuilder language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyFoldingBuilder"/>
         <completion.contributor language="Alloy"
                                 implementationClass="com.serranofp.alloy.editor.AlloyKeywordCompletionContributor"/>
-        <platform.lsp.integrationProvider implementation="com.serranofp.alloy.lsp.AlloyLspIntegrationProvider"/>
+        <stubElementTypeHolder class="com.serranofp.alloy.psi.AlloyTypes" externalIdPrefix="alloy."/>
+        <stubIndex implementation="com.serranofp.alloy.psi.stubs.AlloyNameIndex"/>
+        <lang.findUsagesProvider language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyFindUsagesProvider"/>
+        <usageTypeProvider implementation="com.serranofp.alloy.semantics.AlloyUsageTypeProvider"/>
+        <renamePsiElementProcessor implementation="com.serranofp.alloy.semantics.AlloyRenameProcessor"/>
+        <lang.refactoringSupport language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyRefactoringSupportProvider"/>
+        <lang.documentationProvider language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyDocumentationProvider"/>
+        <lang.psiStructureViewFactory language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyStructureViewFactory"/>
+        <breadcrumbsInfoProvider implementation="com.serranofp.alloy.editor.AlloyBreadcrumbsProvider"/>
+        <gotoSymbolContributor implementation="com.serranofp.alloy.semantics.AlloySymbolContributor"/>
+        <toolWindow id="Alloy Instance" anchor="right" icon="/icons/alloy.svg" doNotActivateOnStart="true"
+                    factoryClass="com.serranofp.alloy.viewer.AlloyInstanceToolWindowFactory"/>
+        <externalAnnotator language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyExternalAnnotator"/>
         <codeInsight.declarativeInlayProvider language="Alloy" group="OTHER_GROUP" isEnabledByDefault="true"
                                               providerId="alloy.command.results"
                                               bundle="messages.AlloyBundle"

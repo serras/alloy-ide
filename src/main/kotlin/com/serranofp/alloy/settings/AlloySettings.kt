@@ -6,6 +6,8 @@ import com.intellij.openapi.components.SimplePersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
+import edu.mit.csail.sdg.translator.A4Options
+import kodkod.engine.satlab.SATFactory
 import java.util.concurrent.atomic.AtomicLong
 
 /** The analyzer options, with the defaults of Alloy 6.2.0. */
@@ -49,21 +51,20 @@ class AlloySettings : SimplePersistentStateComponent<AlloySettingsState>(AlloySe
     }
 
     /**
-     * The options as `A4Preferences` id to value, in its encoding: choices as their integer, booleans as `y`/`n`,
-     * and the solver as its `SATFactory` id. A solver that is not [available] is replaced by `sat4j`.
+     * The analyzer options of a run, as the desktop application sets them (`SimpleGUI.doRun`) from its own
+     * preferences. A solver that is not [available] is replaced by `sat4j`.
      */
-    fun analyzerPreferences(available: () -> Collection<String>): Map<String, String> {
+    fun analyzerOptions(available: () -> Collection<String>): A4Options {
         val state = state
-        return mapOf(
-            "SatSolver2" to effectiveSolver(available),
-            "SkolemDepth3" to state.skolemDepth.coerceIn(AlloySettingsState.SKOLEM_DEPTHS).toString(),
-            "NoOverflow" to yesNo(state.preventOverflows),
-            "CoreMinimization" to state.coreMinimization.coerceIn(0, 2).toString(),
-            "CoreGranularity" to state.coreGranularity.coerceIn(0, 3).toString(),
-            "WarningNonfatal" to yesNo(state.nonFatalWarnings),
-            "RecordKodkod" to yesNo(state.recordKodkod),
-            "InferPartialInstance" to yesNo(state.inferPartialInstance),
-        )
+        return A4Options().apply {
+            solver = AlloySolvers.factory(effectiveSolver(available)) ?: SATFactory.DEFAULT
+            skolemDepth = state.skolemDepth.coerceIn(AlloySettingsState.SKOLEM_DEPTHS)
+            noOverflow = state.preventOverflows
+            coreMinimization = state.coreMinimization.coerceIn(0, 2)
+            coreGranularity = state.coreGranularity.coerceIn(0, 3)
+            recordKodkod = state.recordKodkod
+            inferPartialInstance = state.inferPartialInstance
+        }
     }
 
     /** The saved solver, or `sat4j` when it is not available. `sat4j` is always available. */
@@ -79,8 +80,6 @@ class AlloySettings : SimplePersistentStateComponent<AlloySettingsState>(AlloySe
         if (effectiveSolver(available) == solver) return null
         return "The solver $solver is not available, using ${AlloySettingsState.DEFAULT_SOLVER} instead\n"
     }
-
-    private fun yesNo(value: Boolean) = if (value) "y" else "n"
 
     companion object {
         fun getInstance(): AlloySettings = service()

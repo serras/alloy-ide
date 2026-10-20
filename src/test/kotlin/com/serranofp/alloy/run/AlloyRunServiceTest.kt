@@ -1,9 +1,8 @@
 package com.serranofp.alloy.run
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.serranofp.alloy.lsp.AlloyExecutionMessage
-import com.serranofp.alloy.lsp.AlloyMessageType
-import com.serranofp.alloy.lsp.AlloyServerNotifications
+import com.serranofp.alloy.analysis.AlloyAnalysisEvent
+import com.serranofp.alloy.analysis.AlloyFailure
 
 class AlloyRunServiceTest : BasePlatformTestCase() {
     private val service get() = AlloyRunService.getInstance(project)
@@ -31,6 +30,9 @@ class AlloyRunServiceTest : BasePlatformTestCase() {
 
     private fun result(command: AlloyCommandRef = show) = results.get(file, command)
 
+    /** The events of `run show for 3`, as the engine reports them. */
+    private val showRun by lazy { analysisEvents("sig Node {}\npred show { some Node }\nrun show for 3") }
+
     fun testStartRecordsRunning() {
         val execution = newExecution()
         assertTrue(service.startRun(execution))
@@ -50,9 +52,9 @@ class AlloyRunServiceTest : BasePlatformTestCase() {
     fun testBusyRefusalLeavesAnEarlierResult() {
         val earlier = newExecution(noCycles)
         service.startRun(earlier)
-        capturedOutput().subList(8, 16).forEach(service::executionOutput)
+        showRun.forEach(earlier::accept)
         val before = result(noCycles)
-        assertEquals(CommandState.CounterexampleFound, before!!.state)
+        assertEquals(CommandState.InstanceFound, before!!.state)
 
         service.startRun(newExecution())
         assertFalse(service.startRun(newExecution(noCycles)))
@@ -67,57 +69,43 @@ class AlloyRunServiceTest : BasePlatformTestCase() {
         assertTrue(service.startRun(newExecution()))
     }
 
-    fun testOutputGoesToTheActiveExecution() {
-        service.startRun(newExecution())
-        AlloyServerNotifications.publisher(project).executionOutput(AlloyExecutionMessage(AlloyMessageType.RunInProgress.ordinal, "   Solving...\n"))
-        assertEquals(CommandState.Running, result()!!.state)
-        assertEquals(listOf("   Solving..."), result()!!.details.log.map { it.text })
-    }
-
-    fun testCapturedRunRecordsItsResult() {
+    fun testProgressIsRecordedAsRunning() {
         val execution = newExecution()
         service.startRun(execution)
-        capturedOutput().take(8).forEach(service::executionOutput)
+        showRun.takeWhile { it !is AlloyAnalysisEvent.End }.forEach(execution::accept)
+        assertEquals(CommandState.Running, result()!!.state)
+        assertEquals("   Solving...", result()!!.details.log.last().text)
+    }
+
+    fun testAnalysisRecordsItsResult() {
+        val execution = newExecution()
+        service.startRun(execution)
+        showRun.forEach(execution::accept)
         assertTrue(execution.isFinished())
         assertNull(service.activeExecution)
         val result = result()!!
         assertEquals(CommandState.InstanceFound, result.state)
-        assertEquals("Instance found · 4 ms", result.summary)
-        assertEquals("XML: /tmp/alloy-tmp-user/tmp/526174/0.cnf.xml", result.link)
-        assertEquals("   Instance found. Predicate is consistent. 4ms.", result.details.log.last().text)
+        assertTrue(result.summary, result.summary.startsWith("Instance found · "))
+        assertSame((showRun.last() as AlloyAnalysisEvent.Sat).solution, (result.link as CommandLink.Solution).solution)
+        assertTrue(result.details.log.last().text.startsWith("   Instance found. Predicate is consistent. "))
     }
 
-    fun testOutputWithNoActiveExecutionIsIgnored() {
+    fun testEventsAfterTheEndAreIgnored() {
         val execution = newExecution()
         service.startRun(execution)
-        service.executionOutput(AlloyExecutionMessage(AlloyMessageType.RunCompleted.ordinal, "Stopped"))
-        assertTrue(execution.isFinished())
-        assertNull(service.activeExecution)
-        val stopped = result()
-
-        // A late message of the finished execution reaches no one
-        AlloyServerNotifications.publisher(project).executionOutput(AlloyExecutionMessage(AlloyMessageType.RunInProgress.ordinal, "late\n"))
-        assertSame(stopped, result())
-        assertEquals(CommandState.Stopped, stopped!!.state)
+        showRun.forEach(execution::accept)
+        val finished = result()
+        execution.accept(AlloyAnalysisEvent.Stopped(0))
+        assertSame(finished, result())
     }
 
-    fun testCompletionWithoutResultIsAFailure() {
-        service.startRun(newExecution())
-        service.executionOutput(AlloyExecutionMessage(AlloyMessageType.RunResult.ordinal, "There were errors/warnings!"))
-        service.executionOutput(AlloyExecutionMessage(AlloyMessageType.RunCompleted.ordinal, ""))
+    fun testFailureShowsItsCause() {
+        val execution = newExecution()
+        service.startRun(execution)
+        execution.accept(AlloyAnalysisEvent.Failed(AlloyFailure.MemoryExhausted, 0))
         assertEquals(CommandState.Failed, result()!!.state)
         assertEquals("Analysis failed", result()!!.summary)
-    }
-
-    fun testServerStoppingEndsTheActiveExecution() {
-        val execution = newExecution()
-        service.startRun(execution)
-        service.serverStopped()
-        assertTrue(execution.isFinished())
-        assertNull(service.activeExecution)
-        assertEquals(CommandState.Failed, result()!!.state)
-        assertEquals("Server unavailable", result()!!.summary)
-        assertEquals("The Alloy language server is unavailable", result()!!.details.failure)
+        assertEquals("The analysis ran out of memory", result()!!.details.failure)
     }
 
     fun testDisposeEndsTheActiveExecution() {
@@ -132,7 +120,7 @@ class AlloyRunServiceTest : BasePlatformTestCase() {
         val execution = newExecution()
         service.startRun(execution)
         myFixture.type("x")
-        capturedOutput().take(8).forEach(service::executionOutput)
-        assertTrue(results.isOutdated(result()!!, myFixture.editor.document))
+        showRun.forEach(execution::accept)
+        assertEquals(Outdated.FileChanged, results.outdated(result()!!, myFixture.editor.document))
     }
 }
