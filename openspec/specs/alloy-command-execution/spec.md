@@ -2,35 +2,24 @@
 
 ## Purpose
 
-Lets users execute Alloy `run` and `check` commands from the IDE through standard run gutter icons and run configurations, follow analyzer progress in the Run console, stop analyses, and open the resulting instances, counterexamples and unsat cores.
+Lets users execute Alloy `run` and `check` commands from the editor gutter, see each command's result as an inline hint with the analyzer output in its tooltip, follow progress in the status bar, stop analyses, and open the resulting instances, counterexamples and unsat cores.
 
 ## Requirements
 
 ### Requirement: Run gutter markers
-The editor SHALL show a run gutter icon next to every top-level `run` and `check` command in an Alloy file, offering to run that command and to create or edit a run configuration for it.
+The editor SHALL show a run gutter icon next to every top-level `run` and `check` command in an Alloy file, and clicking it SHALL execute that command directly. While the command is executing, its icon SHALL be a spinner.
 
 #### Scenario: Markers on commands
 - **WHEN** a file contains `run show for 3` and `check noCycles for 5`
 - **THEN** each of those lines has a run gutter icon, and no other line does
 
 #### Scenario: Running from the gutter
-- **WHEN** the user clicks the gutter icon of `check noCycles` and chooses Run
-- **THEN** a temporary "Alloy command" run configuration for that command is created and started
+- **WHEN** the user clicks the gutter icon of `check noCycles`
+- **THEN** `check noCycles` is executed and its line shows the running hint, and no run configuration is created
 
-### Requirement: Alloy command run configuration
-The plugin SHALL provide an "Alloy command" run configuration type that stores the model file and the command to execute, and that can be created, edited, saved and re-run like other run configurations.
-
-#### Scenario: Re-running a saved configuration
-- **WHEN** the user saves a configuration for `run show` in `model.als` and later starts it from the run toolbar
-- **THEN** the `run show` command in `model.als` is executed
-
-#### Scenario: Command no longer exists
-- **WHEN** the user starts a configuration whose command was removed or renamed in the file
-- **THEN** the run fails before analysis begins with an error saying the command was not found in the file
-
-#### Scenario: File no longer exists
-- **WHEN** the user starts a configuration whose model file was deleted
-- **THEN** the configuration reports an error naming the missing file and does not start
+#### Scenario: Spinner while running
+- **WHEN** `check noCycles` is executing
+- **THEN** its gutter icon is a spinner, and it turns back into the run icon when the analysis ends
 
 ### Requirement: Execution uses current editor contents
 Executing a command SHALL analyze the model as it currently appears in the editor, including unsaved changes.
@@ -39,56 +28,156 @@ Executing a command SHALL analyze the model as it currently appears in the edito
 - **WHEN** the user changes a scope from `for 3` to `for 4` without saving and then runs the command
 - **THEN** the analysis uses scope 4
 
-### Requirement: Streaming analyzer output
-The Run console SHALL show the analyzer's messages as they arrive, preserving bold emphasis, line breaks, and in-place updates of progress lines, and SHALL end the run when the analyzer reports completion.
-
-#### Scenario: Progress and result
-- **WHEN** a command is executed
-- **THEN** the console shows the start message, progress lines that update in place rather than accumulating, the result, and the run is shown as finished when the analysis completes
-
-#### Scenario: Warnings
-- **WHEN** the analyzer reports warnings during a run
-- **THEN** the warnings are printed in the console in warning style
-
-#### Scenario: Model with errors
-- **WHEN** the user runs a command in a file that has a syntax or type error
-- **THEN** the console reports that there were errors, the run finishes, and the errors appear as editor diagnostics
-
 ### Requirement: Stopping an analysis
-The Stop action of a running Alloy command SHALL ask the server to abort the analysis, and the run SHALL then finish with a "Stopped" message.
+The user SHALL be able to stop a running analysis by clicking its running hint or by cancelling its background progress indicator. The server is asked to abort the analysis, and the hint SHALL then say that the analysis was stopped.
 
 #### Scenario: Stopping a long analysis
-- **WHEN** the user presses Stop while a command is being solved
-- **THEN** the analysis is aborted, the console shows "Stopped", and the run is shown as terminated
+- **WHEN** the user clicks the running hint of a command that is being solved
+- **THEN** the analysis is aborted, the progress indicator disappears, and the hint says that the analysis was stopped
+
+#### Scenario: Cancelling the progress indicator
+- **WHEN** the user cancels the background progress indicator of a running command
+- **THEN** the analysis is aborted and the hint says that the analysis was stopped
+
+#### Scenario: Server does not confirm
+- **WHEN** the user stops an analysis and the server does not confirm within a few seconds
+- **THEN** the hint says that the analysis was stopped, and its tooltip says that the server did not confirm
 
 ### Requirement: One analysis at a time per project
 While a command is executing in a project, the plugin SHALL refuse to start another Alloy command in the same project and SHALL tell the user why, rather than starting it silently or queueing it.
 
 #### Scenario: Second run while busy
-- **WHEN** a command is executing and the user starts another Alloy command in the same project
-- **THEN** the second run does not start and the user is told that an Alloy analysis is already running
+- **WHEN** a command is executing and the user clicks the gutter icon of another command in the same project
+- **THEN** the second command does not start, its hint does not change, and the editor shows a message saying that an Alloy analysis is already running
 
 ### Requirement: Opening instances and counterexamples
-When an analysis produces an instance or counterexample, the console SHALL show it as a clickable link that opens it in the Alloy visualizer.
+When an analysis produces an instance or counterexample, its result hint SHALL be clickable and clicking it SHALL open the instance or counterexample in the Alloy visualizer.
 
 #### Scenario: Opening an instance
-- **WHEN** `run show` finds an instance and the user clicks the "Instance" link in the console
+- **WHEN** `run show` found an instance and the user clicks its hint
 - **THEN** the Alloy visualizer window opens showing that instance
 
 #### Scenario: Opening a counterexample
-- **WHEN** `check noCycles` finds a counterexample and the user clicks the "Counterexample" link
+- **WHEN** `check noCycles` found a counterexample and the user clicks its hint
 - **THEN** the Alloy visualizer window opens showing that counterexample
 
 ### Requirement: Opening unsat cores
-When a check is valid or a run is unsatisfiable and an unsat core is available, the console SHALL show a clickable link that highlights the core in the editor.
+When a check is valid or a run is unsatisfiable and an unsat core is available, its result hint SHALL be clickable and clicking it SHALL highlight the core in the editor. A result without a core is not clickable.
 
 #### Scenario: Showing a core
-- **WHEN** core minimization is enabled, a check succeeds, and the user clicks the core link
+- **WHEN** core minimization is enabled, a check finds no counterexample, and the user clicks its hint
 - **THEN** the model locations in the core are highlighted in the editor as warnings marked as (possibly) part of the unsat core
 
+#### Scenario: No core available
+- **WHEN** a check finds no counterexample and the analyzer reports that no unsat core is available
+- **THEN** the hint is not clickable, and its tooltip says that no core is available
+
 ### Requirement: Execution requires a running server
-If the language server is not running when a command is started, the run SHALL fail with a message explaining that the Alloy language server is unavailable.
+If the language server is not running when a command is started, the execution SHALL fail, and its hint SHALL say that the Alloy language server is unavailable.
 
 #### Scenario: Server down
 - **WHEN** the language server has failed and the user clicks a run gutter icon
-- **THEN** the Run console reports that the Alloy language server is unavailable and the run finishes without analysis
+- **THEN** the hint of that command says that the Alloy language server is unavailable, and no analysis runs
+
+#### Scenario: Server stops during a run
+- **WHEN** the language server process ends while a command is running
+- **THEN** the hint of that command says that the Alloy language server is unavailable, and the progress indicator disappears
+
+### Requirement: Inline command result
+After a command is started, the editor SHALL show its state as an inlay hint at the end of the line where the command starts. The hint SHALL name the outcome: running, instance found, no instance found, counterexample found, no counterexample found, stopped, or a failure. Only the most recent result of each command is shown. Commands that were never executed have no hint.
+
+#### Scenario: Instance found
+- **WHEN** the user runs `run show for 3` and the analyzer finds an instance
+- **THEN** the end of the `run show for 3` line shows a hint saying an instance was found
+
+#### Scenario: Counterexample found
+- **WHEN** the user runs `check noCycles for 3` and the analyzer finds a counterexample
+- **THEN** the end of the `check noCycles for 3` line shows a hint saying a counterexample was found
+
+#### Scenario: Nothing found
+- **WHEN** a `check` finds no counterexample, or a `run` finds no instance
+- **THEN** the hint says that no counterexample, or no instance, was found
+
+#### Scenario: Running
+- **WHEN** a command has been started and the analysis has not completed
+- **THEN** its hint says that it is running
+
+#### Scenario: Unexpected outcome
+- **WHEN** a command declares `expect 1` and the analyzer finds no instance
+- **THEN** the hint also says that the outcome is contrary to the expectation
+
+#### Scenario: Command spanning several lines
+- **WHEN** a command written over several lines is executed
+- **THEN** its hint is at the end of the first line of the command
+
+#### Scenario: Other commands untouched
+- **WHEN** the file has three commands and only `run show` was executed
+- **THEN** only the `run show` line has a hint
+
+#### Scenario: Re-running replaces the result
+- **WHEN** a command that already has a result is executed again
+- **THEN** its hint shows the running state and then the new result, never the old one next to it
+
+#### Scenario: Results last for the IDE session
+- **WHEN** the user closes the file and opens it again in the same session
+- **THEN** the hints of its executed commands are shown again
+
+### Requirement: Result details tooltip
+Hovering a result hint SHALL show a tooltip with everything the analyzer reported for that execution: the executed command, solver and scope settings, translation statistics, timings, expectation, unsat core size, warnings and failure details. Messages that the analyzer later replaced, such as progress lines, are not repeated.
+
+#### Scenario: Details of a finished run
+- **WHEN** the user hovers the hint of `run show for 3` after an instance was found
+- **THEN** the tooltip shows the executed command `Run show for 3`, the solver and bitwidth line, the variable and clause counts, and the result with its time
+
+#### Scenario: Warnings
+- **WHEN** the analyzer reports warnings during an execution
+- **THEN** the tooltip of that command's hint lists the warnings
+
+#### Scenario: Details while running
+- **WHEN** the user hovers the hint of a running command
+- **THEN** the tooltip shows the analyzer output received so far
+
+### Requirement: Outdated results
+When an Alloy file is edited after one of its commands was executed, every result hint in that file SHALL be marked as outdated: it is shown dimmed, it is labelled as outdated, and its tooltip says that the file changed after the analysis. A result becomes current again only when its command is executed again.
+
+#### Scenario: Edit after a run
+- **WHEN** `run show` has a result and the user types anywhere in the file
+- **THEN** the hints of all commands in the file, including `run show`, are shown as outdated
+
+#### Scenario: Edit during a run
+- **WHEN** the user edits the file while `run show` is running
+- **THEN** the result of `run show` is shown as outdated as soon as it arrives
+
+#### Scenario: Re-running clears the mark
+- **WHEN** the user executes an outdated command again
+- **THEN** its new result is shown as current, while the other outdated hints in the file stay outdated
+
+#### Scenario: Undoing the edit
+- **WHEN** the user edits the file and then undoes the edit
+- **THEN** the results stay outdated
+
+#### Scenario: Outdated instance can still be opened
+- **WHEN** the user clicks the outdated hint of a command that found an instance
+- **THEN** the visualizer opens the instance that was found by that earlier analysis
+
+### Requirement: Analysis progress
+While a command is executing, the IDE SHALL show a cancellable background progress indicator naming the command and showing the analyzer's latest progress step. No tool window is opened.
+
+#### Scenario: Progress in the status bar
+- **WHEN** the user runs `run big for 30 but 7 int`
+- **THEN** the status bar shows a background task for that command whose text follows the analyzer's steps (such as generating CNF and solving), and it disappears when the analysis completes
+
+#### Scenario: No tool window
+- **WHEN** a command is executed
+- **THEN** no Run or other tool window is opened or brought to front
+
+### Requirement: Failures reported inline
+When an execution cannot produce a result, the hint SHALL show a short failure state, and its tooltip SHALL explain the cause. This covers a model with errors, a command the analyzer does not list, and an analyzer that does not answer in time.
+
+#### Scenario: Model with errors
+- **WHEN** the user runs a command in a file that has a syntax or type error
+- **THEN** the hint says that the model has errors, the errors appear as editor diagnostics, and no analysis is started
+
+#### Scenario: Command unknown to the analyzer
+- **WHEN** a command shown with a gutter icon is not among the commands that the analyzer lists for the file
+- **THEN** the hint shows a failure and its tooltip says that the command was not found
