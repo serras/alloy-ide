@@ -1,0 +1,14 @@
+<html>
+<body>
+Reports a fact over mutable state that, without <code>always</code>, constrains only the start of the trace.
+<p>A fact that constrains the next state, with <code>'</code>, <code>after</code> or a call to an event predicate,
+outside every <code>always</code>, <code>eventually</code>, <code>until</code> and <code>releases</code>, constrains
+only the transition out of the first state. In this example, <code>inbox</code> may change freely afterwards:</p>
+<pre><code>fact { all n: Node | n.inbox' = n.inbox }</code></pre>
+<p>A fact that mentions a <code>var</code> field or <code>var sig</code> but uses no temporal operator at all
+constrains only the first state. This is often deliberate, as in <code>fact init { no inbox }</code>, so it is
+reported only as information, without highlighting.</p>
+<p>Signature facts are not reported, since the analyzer applies them in every state.</p>
+<p>The quick-fix wraps the body of the fact in <code>always { … }</code>.</p>
+</body>
+</html>

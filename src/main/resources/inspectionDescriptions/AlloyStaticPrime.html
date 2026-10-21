@@ -1,0 +1,12 @@
+<html>
+<body>
+Reports <code>e'</code> where <code>e</code> mentions no <code>var</code> field or <code>var sig</code>, directly or
+through the functions it calls, so that <code>e'</code> is the same as <code>e</code>.
+<p>Quantified variables and the parameters of predicates and functions also keep their value across states. In
+these examples, <code>succ</code> is a static field:</p>
+<pre><code>pred step { inbox' = inbox + succ' }
+pred unchanged[r: Node -&gt; Node] { r' = r }</code></pre>
+<p>To prime an argument, declare a macro instead: <code>let unchanged[r] { r' = r }</code>.</p>
+<p>The quick-fix removes the prime.</p>
+</body>
+</html>

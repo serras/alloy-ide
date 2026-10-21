@@ -1,0 +1,12 @@
+<html>
+<body>
+Reports an integer literal larger than the largest integer of a command that depends on it, which the analyzer
+silently wraps around.
+<p>A command uses the bitwidth of its <code>int</code> scope, or 4 by default, for integers from
+<code>-8</code> to <code>7</code>. It depends on the literals of its body, of every fact, and of the predicates and
+functions they call. In this example, <code>8</code> is read as <code>-8</code>:</p>
+<pre><code>fact { #Node =&lt; 8 }
+run example {} for 3</code></pre>
+<p>The quick-fixes raise the bitwidth of an affected command to the smallest one that fits the literal.</p>
+</body>
+</html>

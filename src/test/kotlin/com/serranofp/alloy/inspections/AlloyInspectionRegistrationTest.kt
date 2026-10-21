@@ -12,6 +12,9 @@ class AlloyInspectionRegistrationTest : BasePlatformTestCase() {
         "AlloyExactParameterScope" to "Exact scope forced by a module parameter",
         "AlloySeqBoundTooSmall" to "Sequence bound smaller than its elements' scope",
         "AlloyMissingFrameCondition" to "Missing frame condition",
+        "AlloyFactOnlyAtStart" to "Fact constrains only the start of the trace",
+        "AlloyStaticPrime" to "Prime on an expression that never changes",
+        "AlloyIntLiteralRange" to "Integer literal outside the command's bitwidth",
     )
 
     fun testInspectionsAreListedInTheAlloyGroup() {

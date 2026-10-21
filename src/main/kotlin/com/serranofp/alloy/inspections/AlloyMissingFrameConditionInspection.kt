@@ -2,7 +2,6 @@ package com.serranofp.alloy.inspections
 
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement
 import com.intellij.codeInspection.ProblemsHolder
-import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
@@ -11,6 +10,8 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.serranofp.alloy.inspections.AlloyCommandInspection.Companion.isUser
 import com.serranofp.alloy.inspections.AlloyCommandInspection.Companion.name
+import com.serranofp.alloy.inspections.AlloyTextEdits.bodyIndent
+import com.serranofp.alloy.inspections.AlloyTextEdits.indentOf
 import com.serranofp.alloy.psi.AlloyPredDecl
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.Sig
@@ -89,16 +90,4 @@ class AlloyFrameConditionFix(
         }
         documents.commitDocument(document)
     }
-
-    /** The indentation of the last non-blank line strictly between the lines of [open] and [close]. */
-    private fun bodyIndent(document: Document, open: Int, close: Int): String? {
-        val lines = (document.getLineNumber(open) + 1 until document.getLineNumber(close)).reversed()
-        val line = lines.firstOrNull { line ->
-            document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line))).isNotBlank()
-        } ?: return null
-        return indentOf(document, line)
-    }
-
-    private fun indentOf(document: Document, line: Int): String =
-        document.getText(TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line))).takeWhile { it == ' ' || it == '\t' }
 }

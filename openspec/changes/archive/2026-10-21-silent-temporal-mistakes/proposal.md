@@ -14,7 +14,7 @@ These are the same kind of mistake as the ones `alloy-inspections` already repor
 
 - **Three new inspections** in the existing "Alloy" group of *Settings | Editor | Inspections*. Each one runs only while the model type-checks and can be suppressed with `// noinspection`.
   - **Fact constrains only the start of the trace.** There are two levels of confidence:
-    - A fact, or signature fact, that constrains the next state outside `always`, `eventually`, `until` and `releases` gets a weak warning, placed on that occurrence. The occurrence can be a prime, an `after`, or a call to an event predicate, since each of these constrains only the first transition.
+    - A fact that constrains the next state outside `always`, `eventually`, `until` and `releases` gets a weak warning, placed on that occurrence. The occurrence can be a prime, an `after`, or a call to an event predicate, since each of these constrains only the first transition.
     - A fact that mentions mutable state but uses no temporal operator at all is reported only as information. Such a fact is most often a deliberate initial-state fact such as `fact init { no inbox }`, so it is not highlighted.
 
     Both offer a quick-fix that wraps the body in `always { … }`.

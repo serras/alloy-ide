@@ -16,10 +16,17 @@ import edu.mit.csail.sdg.ast.VisitQuery
 class AlloyFrameAnalysis {
     /**
      * The mutable relations (`var` fields and `var sig`s) a body [mentions], those it [constrains] in the next
-     * state, under `'` or `after`, whether it constrains the [next] state at all, and whether it uses an
-     * operator about the whole [future] of the trace.
+     * state, under `'` or `after`, whether it constrains the [next] state at all, whether it uses an
+     * operator about the whole [future] of the trace, and whether it uses any [temporal] operator, past
+     * ones included.
      */
-    data class Summary(val mentions: Set<Expr>, val constrains: Set<Expr>, val next: Boolean, val future: Boolean)
+    data class Summary(
+        val mentions: Set<Expr>,
+        val constrains: Set<Expr>,
+        val next: Boolean,
+        val future: Boolean,
+        val temporal: Boolean,
+    )
 
     private val summaries = HashMap<Func, Summary>()
     private val visiting = ArrayList<Func>()
@@ -45,6 +52,9 @@ class AlloyFrameAnalysis {
         }
     }
 
+    /** The summary of [body], such as a fact's, through the funcs it calls. It is not memoized. */
+    fun summary(body: Expr): Summary = walk(body)
+
     /**
      * A predicate that constrains the next state, but no later ones: past operators are guards, while
      * `always`, `eventually`, `until`, `releases` and `;` describe a property or a scenario.
@@ -56,6 +66,7 @@ class AlloyFrameAnalysis {
         val constrains = LinkedHashSet<Expr>()
         var next = false
         var future = false
+        var temporal = false
         // How many `'` or `after` the current expression is under
         var depth = 0
         fun mention(relation: Expr) {
@@ -69,6 +80,7 @@ class AlloyFrameAnalysis {
             override fun visit(x: ExprUnary): Unit? {
                 when (x.op) {
                     ExprUnary.Op.PRIME, ExprUnary.Op.AFTER -> {
+                        temporal = true
                         if (x.op == ExprUnary.Op.AFTER) {
                             if (isSequence(x)) future = true else next = true
                         }
@@ -79,14 +91,25 @@ class AlloyFrameAnalysis {
                             depth--
                         }
                     }
-                    ExprUnary.Op.ALWAYS, ExprUnary.Op.EVENTUALLY -> future = true
+                    ExprUnary.Op.ALWAYS, ExprUnary.Op.EVENTUALLY -> {
+                        future = true
+                        temporal = true
+                    }
+                    ExprUnary.Op.BEFORE, ExprUnary.Op.HISTORICALLY, ExprUnary.Op.ONCE -> temporal = true
                     else -> {}
                 }
                 return super.visit(x)
             }
 
             override fun visit(x: ExprBinary): Unit? {
-                if (x.op == ExprBinary.Op.UNTIL || x.op == ExprBinary.Op.RELEASES) future = true
+                when (x.op) {
+                    ExprBinary.Op.UNTIL, ExprBinary.Op.RELEASES -> {
+                        future = true
+                        temporal = true
+                    }
+                    ExprBinary.Op.SINCE, ExprBinary.Op.TRIGGERED -> temporal = true
+                    else -> {}
+                }
                 return super.visit(x)
             }
 
@@ -97,6 +120,7 @@ class AlloyFrameAnalysis {
                 mentions += callee.mentions
                 next = next || callee.next
                 future = future || callee.future
+                temporal = temporal || callee.temporal
                 return super.visit(x)
             }
 
@@ -110,11 +134,11 @@ class AlloyFrameAnalysis {
                 return super.visit(x)
             }
         })
-        return Summary(mentions, constrains, next, future)
+        return Summary(mentions, constrains, next, future, temporal)
     }
 
-    private companion object {
-        val EMPTY = Summary(emptySet(), emptySet(), next = false, future = false)
+    companion object {
+        private val EMPTY = Summary(emptySet(), emptySet(), next = false, future = false, temporal = false)
 
         /**
          * The analyzer desugars `a ; b` into `a and after b`, with the `after` at the one column of `;`; a

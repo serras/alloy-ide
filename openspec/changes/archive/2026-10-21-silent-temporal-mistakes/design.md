@@ -35,7 +35,7 @@
 
 ### 2. Fact checks (`AlloyFactOnlyAtStartInspection`, ID `AlloyFactOnlyAtStart`)
 
-The roots are the file's facts from `getAllFacts()` and the facts of the file's user signatures from `Sig.getFacts()`. A root's PSI is the `AlloyFactDecl`, or the signature's appended `block`, that contains the start of its span.
+The roots are the file's facts from `getAllFacts()`. A root's PSI is the `AlloyFactDecl` that contains the start of its span. Signature facts are not roots: the analyzer puts those over mutable state under `always` (see Risks).
 
 **Weak warning.** A `VisitQuery` keeps a depth counter of enclosing `ALWAYS`, `EVENTUALLY`, `UNTIL` and `RELEASES` (either operand). At depth 0, the occurrences are:
 - an `ExprUnary.PRIME`;
@@ -47,7 +47,7 @@ A `;` (a sequence `AFTER`) increases the depth instead, because it describes a s
 - The message names the occurrence and says it constrains only the transition out of the first state.
 - If the occurrence is under an `after` at depth 0, the problem goes on that `after` instead, and the message names the shifted transition.
 
-**Information.** If there is no weak warning, and the root's summary has `temporal == false` and a non-empty `mentions`, the fact gets a `ProblemHighlightType.INFORMATION` problem on its header. This uses the same mechanism as `AlloyExactParameterScope`'s overall-scope problem. The header is the `fact` keyword and name, or, for a signature fact, the signature's name. Calls are followed through the summary, so `fact { init }` with `pred init { no inbox }` counts.
+**Information.** If there is no weak warning, and the root's summary has `temporal == false` and a non-empty `mentions`, the fact gets a `ProblemHighlightType.INFORMATION` problem on its header. This uses the same mechanism as `AlloyExactParameterScope`'s overall-scope problem. The header is the `fact` keyword and name. Calls are followed through the summary, so `fact { init }` with `pred init { no inbox }` counts.
 
 Both levels belong to one inspection, so a user can turn them off together. Its default level is WEAK WARNING.
 
@@ -87,9 +87,9 @@ The message is chosen by the operand:
 
 ### 5. Integer literals (`AlloyIntLiteralRangeInspection`, ID `AlloyIntLiteralRange`)
 
-This is an `AlloyCommandInspection`. For each command:
+It goes through the commands as `AlloyCommandInspection` does (`AlloyCommandInspection.commands`), since its problems are grouped across commands. For each command:
 - **Range.** `bw = command.bitwidth.takeIf { it >= 0 } ?: 4` and `max = Util.max(bw)`. A command with `0 int` has no integers; it is skipped, since every literal is then meaningless and the analyzer's behavior there is not worth modelling.
-- **Reachability.** The command depends on `command.formula`, every expression of `getAllReachableFacts()`, and the bodies of every `Func` called from those, transitively. The calls are found with a visited set of funcs.
+- **Reachability.** The command depends on `command.formula`, which already holds the facts of every reachable module and the body of the command's predicate, on the facts of every reachable signature, which `getAllReachableFacts()` leaves out, and on the bodies of every `Func` called from those, transitively. The calls are found with a visited set of funcs.
 - **Collection.** It collects written `ExprConstant.NUMBER` nodes in the file with `num > max`, where the PSI leaf at `pos` must be a `NUMBER` token.
 
 After all commands are checked, the results are grouped by literal, and each literal gets one weak warning:
@@ -107,7 +107,7 @@ There are three `localInspection` entries in the "Alloy" group, enabled as `WEAK
 
 ## Risks / Trade-offs
 
-- **[Risk] Signature facts may be implicitly under `always` in Alloy 6.** In that case the fact checks would be wrong for them. → A test runs the analyzer on `sig A { var f: set A } { lone f }` to check that a later state can violate it, before signature facts are included. If they turn out to be implicitly temporal, they are dropped from the roots, and the spec's mention of signature facts goes with them.
+- **[Resolved] Signature facts are implicitly under `always` in Alloy 6.** The translator wraps a signature fact in `always` whenever its formula is temporal, so a later state cannot violate `sig A { var f: set A } { lone f }` (`AlloySignatureFactTemporalityTest`). Signature facts are therefore not roots of the fact checks, and the spec says so.
 - **[Risk] A deliberately non-temporal fact over mutable state** (an invariant of the first state only) is shown at information level. → It is not highlighted. Alt+Enter offers the fix only on request, and suppression works.
 - **[Trade-off] One warning per fact.** A fact with several next-state occurrences shows only the first one. After wrapping, all of them are fixed at once.
 - **[Risk] Literal reachability misses funcs used only through macros.** → Macros are expanded in the bodies, so their calls and literals are seen at the expansion. A literal written inside a macro is reported at its written position, and grouped across expansions.

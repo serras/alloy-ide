@@ -143,11 +143,12 @@ Use the lasso of the trace path strip checklist, and the model of the inline com
 - [ ] Applying a change while `run big` is running lets it go on; its result is shown as outdated when it arrives.
 - [ ] Turning off *Check vacuity of passing checks* and applying shows earlier results as outdated; a check that then finds no counterexample ends right away, without "checking vacuity…" in its hint and without a *Vacuity check* section in its tooltip. Turning it back on brings the vacuity check back.
 - [ ] A saved solver that is no longer available is shown as "(unavailable)", and the next run uses sat4j and shows a warning about it in the tooltip of its hint.
+
 ### Inspections
 
 Instead of the two files, open copies of the book's models from `src/test/testData/practicalalloy/protocol-design`, as noted in each item.
 
-- [ ] *Settings | Editor | Inspections* has an "Alloy" group listing "Signature in mutable state left at the default scope", "Exact scope forced by a module parameter", "Sequence bound smaller than its elements' scope" and "Missing frame condition", each enabled, as a weak warning, and with a description.
+- [ ] *Settings | Editor | Inspections* has an "Alloy" group listing "Signature in mutable state left at the default scope", "Exact scope forced by a module parameter", "Sequence bound smaller than its elements' scope", "Missing frame condition", "Fact constrains only the start of the trace", "Prime on an expression that never changes" and "Integer literal outside the command's bitwidth", each enabled, as a weak warning, and with a description.
 - [ ] In `explicit-messages-as-signatures/leaderelection.als`, the scope `for 3 but exactly 3 Node` of `bad_all_initiate` is highlighted as a weak warning, and hovering it says that `Message` gets the command's default scope of 3 and is used by the mutable field `inbox`. No other command is highlighted.
 - [ ] Alt+Enter there offers "Add a scope for Message": the command then reads `for 3 but exactly 3 Node, 3 Message`, the inserted `3` is selected so that typing replaces it, Enter or Tab leaves it, and the warning goes away.
 - [ ] Disabling "Signature in mutable state left at the default scope" in the settings removes that warning, while the other Alloy inspections still report theirs; enabling it brings it back.
@@ -157,6 +158,10 @@ Instead of the two files, open copies of the book's models from `src/test/testDa
 - [ ] In a model with `sig Node { succ: one Node, var inbox: set Node, var outbox: set Node }` and `pred send[n: Node] { some i: n.outbox | inbox' = inbox + n.succ->i }` (the body on its own indented line), the name `send` is highlighted as a weak warning saying that it does not constrain the next value of `outbox`; `pred initiate_enabled[n: Node] { historically no n.inbox }` and a predicate using `always` are not.
 - [ ] Alt+Enter on `send` offers "Add outbox' = outbox" and "Add all missing frame conditions"; either adds `outbox' = outbox` on its own line before the closing `}`, with the body's indentation, and the warning goes away. Undo restores the predicate.
 - [ ] Alt+Enter on `send`, then the submenu of a fix, offers "Suppress for predicate": it writes `// noinspection AlloyMissingFrameCondition` on the line before `pred send`, and `send` is no longer reported while another predicate missing a frame condition still is. Deleting the comment brings the warning back.
+- [ ] In the model of `send`, adding `fact { all n: Node | n.inbox' = n.inbox }` highlights `n.inbox'` as a weak warning saying that it constrains only the transition out of the first state, because the fact is not under always. Alt+Enter offers "Wrap in always", which turns the fact into `fact { always { all n: Node | n.inbox' = n.inbox } }`, and the warning goes away.
+- [ ] In `verifying-the-expected-properties/leaderelection.als`, `fact init` is not highlighted, but Alt+Enter with the caret on it offers "Wrap in always", whose preview puts the body of the fact in `always { … }` on lines of its own, indented one more level.
+- [ ] In the model of `send`, `pred step { inbox' = inbox + succ' }` highlights `succ'` as a weak warning saying that `succ` is static, so `succ'` is the same as `succ`; "Remove the prime" leaves `succ`. `pred unchanged[r: Node -> Node] { r' = r }` highlights `r'`, saying that parameters keep their value across states and suggesting the macro `let unchanged[r] { r' = r }`.
+- [ ] In the model of `send`, adding `fact { #Node =< 8 }` and `run example {} for 3` highlights `8` as a weak warning saying that `example` uses 4-bit integers (-8..7), so `8` is read as `-8`. "Set the bitwidth of example to 5 int" writes `for 3 but 5 int`, with the `5` selected so that typing replaces it, and the warning goes away.
 - [ ] Introducing a type error in any of these files removes the inspections' warnings until it is fixed; only the analyzer's error is shown.
 
 ### Simplifications

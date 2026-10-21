@@ -86,4 +86,27 @@ class AlloyFrameAnalysisTest : TestCase() {
         val module = model("sig N { var f: set N }\nfun later: set N { N.f' }")
         assertFalse(analysis.isEvent(module.allFunc.single { it.label == "this/later" }))
     }
+
+    fun testTemporalOperators() {
+        val module = model(
+            """
+            sig N { var f: set N }
+            pred init { no f }
+            pred guard { historically some f }
+            pred trigger { some f triggered no f }
+            pred step { f' = f }
+            pred calls { init and guard }
+            pred scenario { init ; init }
+            """.trimIndent(),
+        )
+        assertFalse(analysis.summary(module.pred("init")).temporal)
+        assertTrue(analysis.summary(module.pred("guard")).temporal)
+        assertTrue(analysis.summary(module.pred("trigger")).temporal)
+        assertTrue(analysis.summary(module.pred("step")).temporal)
+        // Through the call to `guard`
+        assertTrue(analysis.summary(module.pred("calls")).temporal)
+        assertTrue(analysis.summary(module.pred("scenario")).temporal)
+        // Past operators are guards, not effects
+        assertFalse(analysis.isEvent(module.pred("guard")))
+    }
 }

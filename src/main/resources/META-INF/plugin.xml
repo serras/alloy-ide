@@ -74,6 +74,18 @@
                          bundle="messages.AlloyBundle" key="inspection.missing.frame.condition.name"
                          enabledByDefault="true" level="WEAK WARNING"
                          implementationClass="com.serranofp.alloy.inspections.AlloyMissingFrameConditionInspection"/>
+        <localInspection language="Alloy" shortName="AlloyFactOnlyAtStart" groupName="Alloy"
+                         bundle="messages.AlloyBundle" key="inspection.fact.only.at.start.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.inspections.AlloyFactOnlyAtStartInspection"/>
+        <localInspection language="Alloy" shortName="AlloyStaticPrime" groupName="Alloy"
+                         bundle="messages.AlloyBundle" key="inspection.static.prime.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.inspections.AlloyStaticPrimeInspection"/>
+        <localInspection language="Alloy" shortName="AlloyIntLiteralRange" groupName="Alloy"
+                         bundle="messages.AlloyBundle" key="inspection.int.literal.range.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.inspections.AlloyIntLiteralRangeInspection"/>
         <localInspection language="Alloy" shortName="AlloySimplifiableBoolean" groupPath="Alloy" groupName="Simplifications"
                          bundle="messages.AlloyBundle" key="inspection.simplifiable.boolean.name"
                          enabledByDefault="true" level="WEAK WARNING"

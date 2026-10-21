@@ -16,7 +16,7 @@ The plugin SHALL register its inspections in an "Alloy" group of *Settings | Edi
 ## ADDED Requirements
 
 ### Requirement: Fact that constrains the next state only at the start
-A fact or signature fact SHALL get a weak warning when it constrains the next state outside every `always`, `eventually`, `until` and `releases`. Constraining the next state means using a `'` or a written `after`, or calling an event predicate (see "Event predicates are recognized"). The warning SHALL be placed on the first such occurrence, and one SHALL be reported per fact.
+A fact SHALL get a weak warning when it constrains the next state outside every `always`, `eventually`, `until` and `releases`. Constraining the next state means using a `'` or a written `after`, or calling an event predicate (see "Event predicates are recognized"). The warning SHALL be placed on the first such occurrence, and one SHALL be reported per fact. Signature facts SHALL NOT be checked, since the analyzer applies those over mutable state in every state.
 
 #### Scenario: Frame without always
 - **WHEN** a model with `var inbox` has `fact { all n: Node | n.inbox' = n.inbox }`
@@ -38,8 +38,12 @@ A fact or signature fact SHALL get a weak warning when it constrains the next st
 - **WHEN** a fact reads `no inbox ; some inbox`
 - **THEN** nothing is reported for it, since `;` describes a scenario
 
+#### Scenario: Signature fact
+- **WHEN** a model has `sig Node { var inbox: set Node } { lone inbox }`
+- **THEN** nothing is reported for the signature fact
+
 ### Requirement: Fact over mutable state without temporal operators
-A fact or signature fact that mentions a `var` field or `var sig`, but uses no temporal operator at all, SHALL get an information-level problem on its `fact` keyword and name, without highlighting. Temporal operators here include past operators, `after`, `'` and `;`, used directly or through the predicates, functions and macros the fact calls.
+A fact that mentions a `var` field or `var sig`, but uses no temporal operator at all, SHALL get an information-level problem on its `fact` keyword and name, without highlighting. Temporal operators here include past operators, `after`, `'` and `;`, used directly or through the predicates, functions and macros the fact calls.
 
 #### Scenario: Intended invariant
 - **WHEN** a model with `var inbox` has `fact inbox_bound { all n: Node | lone n.inbox }`

@@ -48,6 +48,10 @@ class AlloyScopeText private constructor(private val forToken: PsiElement, priva
     /** The item that bounds sequences, `N seq`. */
     val seqItem: List<PsiElement>? get() = items.firstOrNull { item -> item.any { it.node.elementType == AlloyTypes.SEQ } }
 
+    /** The item that sets the bitwidth, `N int` or `N Int`. */
+    val intItem: List<PsiElement>?
+        get() = items.firstOrNull { item -> item.any { it.node.elementType == AlloyTypes.INT || it.node.elementType == AlloyTypes.SIGINT } }
+
     companion object {
         private val ENDS = setOf(AlloyTypes.EXPECT, AlloyTypes.IMPLIES, AlloyTypes.IMPLIES_ARROW, AlloyTypes.RUN, AlloyTypes.CHECK)
 
@@ -57,13 +61,21 @@ class AlloyScopeText private constructor(private val forToken: PsiElement, priva
 
         /** The scope of the [part]th command of [decl]; null if it has no `for`. */
         fun of(decl: AlloyCommandDecl, part: Int): AlloyScopeText? {
-            val keyword = keywords(decl).getOrNull(part) ?: return null
-            val rest = generateSequence(keyword.nextSibling) { it.nextSibling }
+            val rest = rest(decl, part)
+            val forToken = rest.firstOrNull { it.node.elementType == AlloyTypes.FOR } ?: return null
+            return AlloyScopeText(forToken, rest.dropWhile { it !== forToken }.drop(1))
+        }
+
+        /** Where the [part]th command of [decl] ends, before any `expect`: after its scope, body or name. */
+        fun endOf(decl: AlloyCommandDecl, part: Int): Int? = rest(decl, part).lastOrNull()?.textRange?.endOffset
+
+        /** The tokens of the [part]th command of [decl] after its `run` or `check`, up to its `expect` or the next command. */
+        private fun rest(decl: AlloyCommandDecl, part: Int): List<PsiElement> {
+            val keyword = keywords(decl).getOrNull(part) ?: return emptyList()
+            return generateSequence(keyword.nextSibling) { it.nextSibling }
                 .filter { it !is PsiWhiteSpace && it !is PsiComment }
                 .takeWhile { it.node.elementType !in ENDS }
                 .toList()
-            val forToken = rest.firstOrNull { it.node.elementType == AlloyTypes.FOR } ?: return null
-            return AlloyScopeText(forToken, rest.dropWhile { it !== forToken }.drop(1))
         }
 
         private fun keywords(decl: AlloyCommandDecl): List<PsiElement> =
@@ -76,6 +88,9 @@ class AlloyScopeText private constructor(private val forToken: PsiElement, priva
 /** A change to the scope of a command, which returns the number it writes, if any, for the user to edit. */
 sealed interface AlloyScopeEdit {
     fun apply(scope: AlloyScopeText, document: Document): TextRange?
+
+    /** The edit for a command without `for`, which ends at [end]; most edits need a scope. */
+    fun applyWithoutScope(end: Int, document: Document): TextRange? = null
 
     /** Adds `N S` (after [prefix], such as `exactly `) as the last item; `for N` becomes `for N but N S`. */
     data class AddItem(val n: Int, val name: String, val prefix: String = "") : AlloyScopeEdit {
@@ -116,6 +131,21 @@ sealed interface AlloyScopeEdit {
             return TextRange.from(number.textRange.startOffset, n.toString().length)
         }
     }
+
+    /** Sets the number of the `int` item, or adds one; a command without `for` gets ` for N int`. */
+    data class SetBitwidth(val n: Int) : AlloyScopeEdit {
+        override fun apply(scope: AlloyScopeText, document: Document): TextRange {
+            val number = scope.intItem?.firstOrNull { it.node.elementType == AlloyTypes.NUMBER }
+                ?: return AddItem(n, "int").apply(scope, document)
+            document.replaceString(number.textRange.startOffset, number.textRange.endOffset, n.toString())
+            return TextRange.from(number.textRange.startOffset, n.toString().length)
+        }
+
+        override fun applyWithoutScope(end: Int, document: Document): TextRange {
+            document.insertString(end, " for $n int")
+            return TextRange.from(end + " for ".length, n.toString().length)
+        }
+    }
 }
 
 /**
@@ -134,10 +164,13 @@ class AlloyScopeFix(
 
     override fun invoke(project: Project, file: PsiFile, editor: Editor?, startElement: PsiElement, endElement: PsiElement) {
         val decl = startElement as? AlloyCommandDecl ?: return
-        val scope = AlloyScopeText.of(decl, part) ?: return
         val documents = PsiDocumentManager.getInstance(project)
         val document = documents.getDocument(file) ?: return
-        val number = edit.apply(scope, document)
+        val scope = AlloyScopeText.of(decl, part)
+        val number = when {
+            scope != null -> edit.apply(scope, document)
+            else -> edit.applyWithoutScope(AlloyScopeText.endOf(decl, part) ?: return, document) ?: return
+        }
         documents.commitDocument(document)
         if (number == null || editor == null || IntentionPreviewUtils.isIntentionPreviewActive()) return
         val container = PsiTreeUtil.getParentOfType(file.findElementAt(number.startOffset), AlloyCommandDecl::class.java) ?: return
