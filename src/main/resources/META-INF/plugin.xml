@@ -13,6 +13,9 @@
               visible as inlay hints, and the full analyzer output as a tooltip</li>
           <li>The <em>Alloy Instance</em> tool window: instances and counterexamples as a graph, text or table,
               with dedicated support for traces and state changes</li>
+          <li>An evaluator for expressions and formulas over the shown instance, at the selected state of a trace,
+              with completion of the model's names, atoms and skolems, and watches that follow the state, as in
+              the debugger</li>
         </ul>
         <p>Solvers: the pure-Java SAT4J variants, and Yices, Plingeling and Electrod when their executables are on
         the <code>PATH</code>. Known limitations: solvers that need a native library are not available, and
@@ -35,6 +38,8 @@
                                 implementationClass="com.serranofp.alloy.editor.AlloyKeywordCompletionContributor"/>
         <completion.contributor language="Alloy"
                                 implementationClass="com.serranofp.alloy.editor.AlloyCompletionContributor"/>
+        <completion.contributor language="Alloy"
+                                implementationClass="com.serranofp.alloy.viewer.AlloyEvaluatorCompletionContributor"/>
         <stubElementTypeHolder class="com.serranofp.alloy.psi.AlloyTypes" externalIdPrefix="alloy."/>
         <stubIndex implementation="com.serranofp.alloy.psi.stubs.AlloyNameIndex"/>
         <lang.findUsagesProvider language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyFindUsagesProvider"/>
@@ -49,6 +54,7 @@
         <toolWindow id="Alloy Instance" anchor="right" icon="/icons/alloy.svg" doNotActivateOnStart="true"
                     factoryClass="com.serranofp.alloy.viewer.AlloyInstanceToolWindowFactory"/>
         <externalAnnotator language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyExternalAnnotator"/>
+        <highlightErrorFilter implementation="com.serranofp.alloy.viewer.AlloyEvaluatorErrorFilter"/>
         <codeInsight.declarativeInlayProvider language="Alloy" group="OTHER_GROUP" isEnabledByDefault="true"
                                               providerId="alloy.command.results"
                                               bundle="messages.AlloyBundle"

@@ -6,7 +6,6 @@ import com.serranofp.alloy.run.AlloyCommandExecution
 import com.serranofp.alloy.run.AlloyCommandRef
 import com.serranofp.alloy.run.AlloyCommandResults
 import com.serranofp.alloy.run.AlloyRunService
-import com.serranofp.alloy.run.CommandLink
 import com.serranofp.alloy.run.CommandResult
 import com.serranofp.alloy.run.CommandState
 import com.serranofp.alloy.run.newExecution
@@ -40,7 +39,7 @@ class AlloyNewSolutionTest : BasePlatformTestCase() {
     private fun open(model: String) {
         val results = AlloyCommandResults.getInstance(project)
         val result = CommandResult(
-            CommandState.InstanceFound, "found", link = CommandLink.Solution(solve(model)),
+            CommandState.InstanceFound, "found", link = link(model),
             documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation,
         )
         viewer.open(myFixture.file.virtualFile, show, result)
@@ -75,6 +74,19 @@ class AlloyNewSolutionTest : BasePlatformTestCase() {
         assertFalse(before.model.text == after.model.text)
         assertEquals(before.origin, after.origin)
         assertNull(viewer.status)
+    }
+
+    fun testOpenedSolutionHasTheModule() {
+        open(STATIC)
+        assertNotNull(viewer.session!!.model.module)
+    }
+
+    fun testNewSolutionKeepsTheModule() {
+        open(STATIC)
+        val before = viewer.session!!.model
+        val after = request(SolutionKind.Config).model
+        assertNotSame(before, after)
+        assertSame(before.module, after.module)
     }
 
     fun testNewSolutionKeepsTheThemeAndProjections() {

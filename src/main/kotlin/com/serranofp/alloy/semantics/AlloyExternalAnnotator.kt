@@ -11,6 +11,7 @@ import com.intellij.xml.util.XmlStringUtil
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloyModuleDecl
 import com.serranofp.alloy.psi.AlloyOpenDecl
+import com.serranofp.alloy.viewer.isAlloyEvaluatorFragment
 import edu.mit.csail.sdg.alloy4.Err
 import java.io.File
 
@@ -22,7 +23,9 @@ data class AlloyDiagnostic(val severity: HighlightSeverity, val message: String,
  * error in an opened project module is shown in that module's own file, and at the `open` that leads to it.
  */
 class AlloyExternalAnnotator : ExternalAnnotator<AlloyFile, List<AlloyDiagnostic>>() {
-    override fun collectInformation(file: PsiFile): AlloyFile? = (file as? AlloyFile)?.takeIf { it.virtualFile != null }
+    // The evaluator's fragment is an expression, not a module
+    override fun collectInformation(file: PsiFile): AlloyFile? =
+        (file as? AlloyFile)?.takeIf { it.virtualFile != null && !it.isAlloyEvaluatorFragment }
 
     override fun doAnnotate(file: AlloyFile): List<AlloyDiagnostic> = ReadAction.computeBlocking<List<AlloyDiagnostic>, Throwable> {
         if (file.isValid) diagnostics(file) else emptyList()

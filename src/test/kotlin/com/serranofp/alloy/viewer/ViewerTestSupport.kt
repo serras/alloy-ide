@@ -1,5 +1,6 @@
 package com.serranofp.alloy.viewer
 
+import com.serranofp.alloy.run.CommandLink
 import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.parser.CompUtil
 import edu.mit.csail.sdg.translator.A4Options
@@ -7,9 +8,12 @@ import edu.mit.csail.sdg.translator.A4Solution
 import edu.mit.csail.sdg.translator.TranslateAlloyToKodkod
 
 /** The solution of the first command of [model], solved here (the engine's own tests cover the engine). */
-fun solve(model: String): A4Solution {
+fun solve(model: String): A4Solution = link(model).solution
+
+/** The solution of the first command of [model] with the module it was parsed into, as a run links them. */
+fun link(model: String): CommandLink.Solution {
     val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, model)
-    return TranslateAlloyToKodkod.execute_command(A4Reporter.NOP, module.allReachableSigs, module.allCommands.first(), A4Options())
+    return CommandLink.Solution(TranslateAlloyToKodkod.execute_command(A4Reporter.NOP, module.allReachableSigs, module.allCommands.first(), A4Options()), module)
 }
 
 const val STATIC = "sig Node { succ: set Node }\nrun { some succ } for 2"

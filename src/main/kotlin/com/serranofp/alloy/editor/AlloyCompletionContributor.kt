@@ -37,6 +37,7 @@ import com.serranofp.alloy.semantics.AlloyModelService
 import com.serranofp.alloy.semantics.AlloyPositions
 import com.serranofp.alloy.semantics.AlloyReference
 import com.serranofp.alloy.semantics.AlloyScopes
+import com.serranofp.alloy.viewer.isAlloyEvaluatorFragment
 
 /** What completion offers at a position, decided from the PSI around it. */
 sealed interface AlloyCompletionContext {
@@ -97,6 +98,8 @@ class AlloyCompletionContributor : CompletionContributor() {
 
     private object NameProvider : CompletionProvider<CompletionParameters>() {
         override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
+            // See AlloyEvaluatorCompletionContributor
+            if (parameters.originalFile.isAlloyEvaluatorFragment) return
             val position = parameters.position
             val accepts: (AlloyNamedDeclaration) -> Boolean
             val qualifier: String?

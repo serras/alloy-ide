@@ -47,7 +47,7 @@ class AlloyCommandExecution(
         if (finished) return
         log.accept(event)
         when (event) {
-            is AlloyAnalysisEvent.Sat -> finish(state(), log.summary, link = CommandLink.Solution(event.solution))
+            is AlloyAnalysisEvent.Sat -> finish(state(), log.summary, link = CommandLink.Solution(event.solution, event.module))
             is AlloyAnalysisEvent.Unsat -> finish(state(), log.summary)
             is AlloyAnalysisEvent.Failed -> finish(CommandState.Failed, AlloyRunLog.FAILED, failure = event.failure.message)
             is AlloyAnalysisEvent.Stopped -> finish(CommandState.Stopped, AlloyRunLog.STOPPED)

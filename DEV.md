@@ -97,6 +97,18 @@ Also use a lasso of three states that loops back to state 1: `abstract sig V {}`
 - [ ] With `run { some X and after no X } for 3 but 15..20 steps` in the temporal model, in a narrow tool window, the strip is below the toolbar and scrolls horizontally, without a vertical scroll bar, and the horizontal one does not hide the circles; clicking a circle keeps the highlighted pair in view, and at the last state, when the loop target is far away, the selected state.
 - [ ] Under a light theme, highlighted circles are white, dimmed ones grey, and numbers and arrows black. Under a dark theme (*Dark* or *Darcula*), the strip shows the toolbar's background, the arrows, outlines and numbers are light, dimmed circles have the toolbar's background, and highlighted circles are lighter. Switching the theme in *Settings | Appearance* redraws the strip in the new colors right away.
 
+#### Evaluator
+
+Use the lasso of the trace path strip checklist, and the model of the inline command results checklist.
+
+- [ ] With a result shown, the toolbar's *Evaluator* toggle shows a panel below the tabs, with the caption "Evaluating at state 0", the expression field, *Add to Watches* and the watches list; turning it off hides it. Dragging the divider resizes both parts, and the panel's visibility and size stay for the next result and after restarting the IDE. Before any result is opened, there is no panel.
+- [ ] Typing `succ` in the field and pressing Enter shows `succ = {n tuples}` under the field, which expands to one row per tuple; `some succ` shows `true`, and `Undefined` shows the analyzer's message in red. Pressing Ctrl+Shift+Enter (Cmd+Shift+Enter on macOS) in the field adds the expression to the end of the watches.
+- [ ] After evaluating `succ` and then `#Node`, pressing Up in the field brings back `#Node`, then `succ`, and Down goes forward again.
+- [ ] With the lasso and a watch `Cur`, clicking circle 1 in the trace path strip makes the caption "Evaluating at state 1" and the watch `{1 tuple}` with the debugger's changed-value color, under both a light and a dark theme (*Dark* or *Darcula*); a watch `V1` keeps the normal color. Clicking circle 1 again removes the highlight.
+- [ ] The watches toolbar adds, removes, edits (also with a double-click or F2) and moves watches up and down. After restarting the IDE, opening a result of the same file shows its watches, evaluated; a result of another file shows that file's own watches.
+- [ ] Typing in the file adds "(outdated result)" to the caption, and evaluating still shows the values of the shown result.
+- [ ] With `sig R { r: R -> R }` and `run many { #R = 30 } for 30`, a watch `all a, b, c, d, e: R | a->b->c in r implies c->d->e in r` shows "Evaluating…" for a while, and the IDE stays responsive meanwhile. With the lasso and a slow watch, clicking another state during the evaluation ends with the values of that state.
+
 ### Analyzer settings
 
 - [ ] *Settings | Languages & Frameworks | Alloy* shows the eight options with their defaults (solver sat4j, skolem depth 1, prevent overflows on, core minimization Fast, core granularity Top-level, the rest off), and the skolem depth only offers 0 to 4. The solver list offers the SAT4J variants, and no native (JNI) solver.

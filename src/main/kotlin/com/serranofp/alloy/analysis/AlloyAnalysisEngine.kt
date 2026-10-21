@@ -10,6 +10,7 @@ import edu.mit.csail.sdg.alloy4.ErrorFatal
 import edu.mit.csail.sdg.alloy4.ErrorWarning
 import edu.mit.csail.sdg.ast.Command
 import edu.mit.csail.sdg.ast.Sig
+import edu.mit.csail.sdg.parser.CompModule
 import edu.mit.csail.sdg.parser.CompUtil
 import edu.mit.csail.sdg.translator.A4Options
 import edu.mit.csail.sdg.translator.A4Solution
@@ -77,7 +78,7 @@ class AlloyAnalysisEngine {
     ): AlloyAnalysis = start(name, parent, options, listener) { reporter, stoppable ->
         val module = CompUtil.parseEverything_fromFile(reporter, LinkedHashMap(contents), filename)
         val command = module.allCommands[commandIndex]
-        (reporter as AlloyAnalysis.Reporter).executing(command)
+        (reporter as AlloyAnalysis.Reporter).executing(command, module)
         TranslateAlloyToKodkod.execute_command(reporter, module.allReachableSigs, command, stoppable)
     }
 
@@ -106,6 +107,10 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
 
     @Volatile
     private var stopRequested = false
+
+    /** The module the analysis parsed, if it parsed one; see [AlloyAnalysisEvent.Sat]. */
+    @Volatile
+    private var module: CompModule? = null
 
     @get:Synchronized
     var state: State = State.Running
@@ -138,7 +143,7 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
             val solution = body(reporter, options)
             when {
                 solution == null -> failed(IllegalStateException("The analyzer returned no solution"))
-                solution.satisfiable() -> AlloyAnalysisEvent.Sat(solution, reporter.resultTime ?: System.currentTimeMillis())
+                solution.satisfiable() -> AlloyAnalysisEvent.Sat(solution, module, reporter.resultTime ?: System.currentTimeMillis())
                 else -> AlloyAnalysisEvent.Unsat(solution, solution.highLevelCore(), reporter.resultTime ?: System.currentTimeMillis())
             }
         } catch (e: Throwable) {
@@ -183,8 +188,10 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
         @Volatile
         var resultTime: Long? = null
 
-        fun executing(command: Command) {
+        /** [module] is the one [command] was parsed from, if the analysis parsed it. */
+        fun executing(command: Command, module: CompModule? = null) {
             checkpoint()
+            this@AlloyAnalysis.module = module
             emit(AlloyAnalysisEvent.Executing(command, now()))
         }
 

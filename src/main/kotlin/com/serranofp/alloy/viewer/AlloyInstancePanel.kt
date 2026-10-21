@@ -1,5 +1,6 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
@@ -7,6 +8,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsListener
@@ -18,7 +20,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.ui.Splitter
 import com.intellij.openapi.wm.WindowManager
+import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -68,7 +72,8 @@ class AlloyInstanceToolWindowFactory : ToolWindowFactory, DumbAware {
  * status line, over the Visualization, Text and Table tabs. Rebuilt when the session changes; stepping
  * through a trace and projecting update it in place. A trace shows the selected state and its successor, side by
  * side or stacked, and the trace path strip, after the toolbar, which highlights both and selects the state
- * clicked; under a projection, one atom selector per projected signature applies to both graphs.
+ * clicked; under a projection, one atom selector per projected signature applies to both graphs. The Evaluator
+ * panel, which a toolbar toggle shows, sits under the tabs and follows the session and its selected state.
  */
 class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPanel(CardLayout()) {
     private val viewer = AlloyInstanceViewer.getInstance(project)
@@ -84,6 +89,8 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
     private val tables = AlloyStatePanes()
     private val strip = AlloyTraceStrip(parent, onSelect = ::goTo)
     private val toolbar: ActionToolbar
+    private val evaluator = AlloyEvaluatorPanel(project, parent)
+    private val splitter = OnePixelSplitter(true, viewer.evaluatorProportion)
 
     /** The atom shown for each projected signature, kept while that atom exists. */
     private val chosenAtoms = mutableMapOf<AlloyType, AlloyAtom>()
@@ -93,6 +100,8 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
 
         val actions = DefaultActionGroup().apply {
             SolutionKind.entries.forEach { add(NewSolutionAction(it)) }
+            addSeparator()
+            add(EvaluatorToggle())
         }
         toolbar = ActionManager.getInstance().createActionToolbar("AlloyInstance", actions, true)
         toolbar.targetComponent = this
@@ -124,7 +133,11 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         tabs.addTab(AlloyInstanceViewer.TEXT, JBScrollPane(text))
         tabs.addTab(AlloyInstanceViewer.TABLE, tables)
         tabs.addChangeListener { tabs.selectedIndex.takeIf { it >= 0 }?.let { viewer.selectedTab = tabs.getTitleAt(it) } }
-        add(JPanel(BorderLayout()).apply { add(north, BorderLayout.NORTH); add(tabs, BorderLayout.CENTER) }, SESSION)
+        splitter.firstComponent = tabs
+        splitter.secondComponent = evaluator
+        evaluator.isVisible = viewer.evaluatorVisible
+        splitter.addPropertyChangeListener(Splitter.PROP_PROPORTION) { viewer.evaluatorProportion = splitter.proportion }
+        add(JPanel(BorderLayout()).apply { add(north, BorderLayout.NORTH); add(splitter, BorderLayout.CENTER) }, SESSION)
 
         viewer.addListener(parent, ::rebuild)
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
@@ -173,6 +186,15 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         header.text = viewer.header(session)
         header.isEnabled = true
         header.foreground = if (viewer.outdated(session) != null) UIUtil.getInactiveTextColor() else null
+        evaluator.updateCaption()
+    }
+
+    /** Shows or hides the Evaluator panel, for this and the next results. */
+    fun setEvaluatorVisible(visible: Boolean) {
+        viewer.evaluatorVisible = visible
+        evaluator.isVisible = visible
+        splitter.revalidate()
+        splitter.repaint()
     }
 
     /** Shows the selected state in every tab and in the trace path strip, after it changed. */
@@ -190,6 +212,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
             else listOf(model.caption to tablePane(model.table), model.nextCaption to tablePane(next)),
         )
         redrawGraph()
+        evaluator.refresh(viewer.session)
     }
 
     /** Selects [state], clicked in the trace path strip. */
@@ -282,9 +305,19 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         }
     }
 
-    private companion object {
-        const val EMPTY = "empty"
-        const val SESSION = "session"
+    private inner class EvaluatorToggle : ToggleAction(EVALUATOR, "Show or hide the evaluator", AllIcons.Debugger.EvaluateExpression), DumbAware {
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun isSelected(e: AnActionEvent) = viewer.evaluatorVisible
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) = setEvaluatorVisible(state)
+    }
+
+    companion object {
+        const val EVALUATOR = "Evaluator"
+
+        private const val EMPTY = "empty"
+        private const val SESSION = "session"
     }
 }
 

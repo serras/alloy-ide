@@ -12,6 +12,7 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.StoragePathMacros
 import com.intellij.openapi.components.service
+import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -72,6 +73,8 @@ enum class SolutionKind(val label: String, val description: String, val icon: Ic
 
 class AlloyInstanceViewerState : BaseState() {
     var selectedTab by string(AlloyInstanceViewer.VISUALIZATION)
+    var evaluatorVisible by property(false)
+    var evaluatorProportion by property(AlloyInstanceViewer.EVALUATOR_PROPORTION)
 }
 
 /**
@@ -111,6 +114,20 @@ class AlloyInstanceViewer(private val project: Project) :
             state.selectedTab = value
         }
 
+    /** Whether the Evaluator panel is shown, kept across results and IDE sessions. */
+    var evaluatorVisible: Boolean
+        get() = state.evaluatorVisible
+        set(value) {
+            state.evaluatorVisible = value
+        }
+
+    /** The part of the tool window's height above the Evaluator panel. */
+    var evaluatorProportion: Float
+        get() = state.evaluatorProportion
+        set(value) {
+            state.evaluatorProportion = value
+        }
+
     /** Calls [listener] on the EDT whenever the session or status changes, until [parent] is disposed. */
     fun addListener(parent: Disposable, listener: () -> Unit) {
         listeners += listener
@@ -123,9 +140,9 @@ class AlloyInstanceViewer(private val project: Project) :
 
     /** Shows the solution of [result], the latest result of [command] in [file], and brings the tool window up. */
     fun open(file: VirtualFile, command: AlloyCommandRef, result: CommandResult) {
-        val solution = (result.link as? CommandLink.Solution)?.solution ?: return
+        val link = result.link as? CommandLink.Solution ?: return
         val origin = ReadAction.computeBlocking<SolutionOrigin?, RuntimeException> { origin(file, command, result) } ?: return
-        show(ViewerSession(origin, result, AlloySolutionModel(solution), anchor(file, command)))
+        show(ViewerSession(origin, result, AlloySolutionModel(link.solution, module = link.module), anchor(file, command)))
         ToolWindowManager.getInstance(project).getToolWindow(TOOL_WINDOW_ID)?.show()
     }
 
@@ -150,10 +167,15 @@ class AlloyInstanceViewer(private val project: Project) :
         document.createRangeMarker(element.textRange.startOffset, element.textRange.startOffset)
     }
 
-    /** Why the session no longer describes the file or the settings, or null if it is current. */
+    /**
+     * Why the session no longer describes the file or the settings, or null if it is current. Callable from any
+     * thread: it is asked from UI listeners, such as a click in the trace path strip, which hold no read access.
+     */
     fun outdated(session: ViewerSession? = this.session): Outdated? {
         if (session == null) return null
-        val document = FileDocumentManager.getInstance().getDocument(session.origin.file) ?: return null
+        val document = ReadAction.computeBlocking<Document?, RuntimeException> {
+            FileDocumentManager.getInstance().getDocument(session.origin.file)
+        } ?: return null
         return AlloyCommandResults.getInstance(project).outdated(session.result, document)
     }
 
@@ -240,7 +262,7 @@ class AlloyInstanceViewer(private val project: Project) :
         when (end) {
             is AlloyAnalysisEvent.Sat ->
                 if (end.solution === previous) status = NO_MORE_SOLUTIONS
-                else show(ViewerSession(session.origin, session.result, AlloySolutionModel(end.solution, session.model.vizState), null).withAnchorOf(session))
+                else show(ViewerSession(session.origin, session.result, AlloySolutionModel(end.solution, session.model.vizState, session.model.module), null).withAnchorOf(session))
             // `fork` gives an unsatisfiable solution, or the same one, when there is nothing new
             is AlloyAnalysisEvent.Unsat -> status = NO_MORE_SOLUTIONS
             is AlloyAnalysisEvent.Stopped -> status = STOPPED
@@ -269,6 +291,8 @@ class AlloyInstanceViewer(private val project: Project) :
         const val VISUALIZATION = "Visualization"
         const val TEXT = "Text"
         const val TABLE = "Table"
+
+        const val EVALUATOR_PROPORTION = 0.7f
 
         const val EMPTY_TEXT = "Instances and counterexamples appear here when you click the hint of a command that found one"
         const val OUTDATED_SUFFIX = " (outdated)"

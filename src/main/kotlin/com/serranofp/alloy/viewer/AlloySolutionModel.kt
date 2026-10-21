@@ -1,13 +1,18 @@
 package com.serranofp.alloy.viewer
 
 import com.intellij.openapi.diagnostic.thisLogger
+import edu.mit.csail.sdg.alloy4.Err
 import edu.mit.csail.sdg.alloy4viz.AlloyIdeMagic
 import edu.mit.csail.sdg.alloy4viz.AlloyInstance
 import edu.mit.csail.sdg.alloy4viz.AlloyType
 import edu.mit.csail.sdg.alloy4viz.StaticInstanceReader
 import edu.mit.csail.sdg.alloy4viz.VizState
 import edu.mit.csail.sdg.ast.Func
+import edu.mit.csail.sdg.parser.CompModule
+import edu.mit.csail.sdg.parser.CompUtil
 import edu.mit.csail.sdg.translator.A4Solution
+import edu.mit.csail.sdg.translator.A4TupleSet
+import kodkod.engine.fol2sat.HigherOrderDeclException
 import java.io.PrintWriter
 import java.io.StringReader
 import java.io.StringWriter
@@ -18,8 +23,9 @@ import java.io.StringWriter
  * solution gets the magic layout; a solution enumerated from a shown one gets a copy of its [theme], with its
  * projections. Stepping through the trace keeps the theme and projections, and reloads the instance. A trace
  * also shows the [successor] of the selected state, in [nextVizState], a copy of the theme kept in step with it.
+ * [module] is the one the analysis parsed, shared by the solutions enumerated from it; null if there is none.
  */
-class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? = null) {
+class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? = null, val module: CompModule? = null) {
     /** The solution as the visualizer reads it, written once; each state is parsed from it when first shown. */
     private val xml: String = StringWriter().also { solution.writeXML(PrintWriter(it), emptyList<Func>(), null) }.toString()
 
@@ -117,4 +123,37 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
     }
 
     fun clearProjections() = listOfNotNull(vizState, nextVizState).forEach { it.deprojectAll() }
+
+    /**
+     * Evaluates [text] at [state], as the desktop evaluator does: the solution's atoms and skolems become names
+     * of the [module], the text is parsed in it, and the solution evaluates the expression. The module's names
+     * are those of the analysis, even when the file was edited since. Solutions enumerated from one another
+     * share their module, and each evaluation sets its names, so evaluations of one module run one at a time.
+     */
+    fun evaluate(text: String, state: Int = this.state): EvaluationResult {
+        val module = module ?: return EvaluationResult.Error(EVALUATION_UNAVAILABLE)
+        return synchronized(module) {
+            try {
+                module.clearGlobals()
+                for (atom in solution.allAtoms) module.addGlobal(atom.label, atom)
+                for (skolem in solution.allSkolems) module.addGlobal(skolem.label, skolem)
+                when (val value = solution.eval(CompUtil.parseOneExpression_fromString(module, text), state)) {
+                    is A4TupleSet -> EvaluationResult.Tuples(value.map { it.toString() })
+                    is Boolean -> EvaluationResult.Bool(value)
+                    else -> EvaluationResult.IntValue(value.toString())
+                }
+            } catch (_: HigherOrderDeclException) {
+                EvaluationResult.Error(HIGHER_ORDER)
+            } catch (e: Err) {
+                EvaluationResult.Error(e.msg)
+            }
+        }
+    }
+
+    companion object {
+        const val EVALUATION_UNAVAILABLE = "Evaluation is not available for this result"
+
+        /** The desktop evaluator's message. */
+        const val HIGHER_ORDER = "Higher-order quantification is not allowed in the evaluator."
+    }
 }

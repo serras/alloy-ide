@@ -39,10 +39,10 @@ class AlloyRunLogTest : TestCase() {
     private fun start(command: String) = listOf(executing(command, 0), translating(0))
 
     /** `run show for 3`, as in the recording: 29 ms to translate, 4 ms to solve. */
-    private val showRun = start("show") + listOf(Solving(0, 12, 103, 149, 29), Sat(SAT, 33))
+    private val showRun = start("show") + listOf(Solving(0, 12, 103, 149, 29), Sat(SAT, null, 33))
 
     /** `check noCycles for 3`: 5 ms to translate, 2 ms to solve. */
-    private val noCyclesRun = start("noCycles") + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, 7))
+    private val noCyclesRun = start("noCycles") + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 7))
 
     /** `run big for 30 but 7 int`, stopped while solving. */
     private val bigRun = listOf(executing("big", 0), translating(0, bitwidth = 7, maxSeq = 30), Solving(0, 930, 153632, 244106, 175), Stopping(500), Stopped(510))
@@ -188,7 +188,7 @@ class AlloyRunLogTest : TestCase() {
     }
 
     fun testInstanceContraryToExpectation() {
-        val log = log(start("p", run = true, expects = 0) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, 9)))
+        val log = log(start("p", run = true, expects = 0) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 9)))
         assertEquals(Outcome.InstanceFound, log.outcome)
         assertTrue(log.unexpected)
         assertEquals("Instance found, contrary to expectation · 4 ms", log.summary)
@@ -209,7 +209,7 @@ class AlloyRunLogTest : TestCase() {
             Solving(1, 10, 100, 200, 20),
             Solving(2, 12, 150, 300, 40),
             Solving(3, 14, 200, 400, 60),
-            Sat(SAT, 65),
+            Sat(SAT, null, 65),
         )
         val lines = log(temporal).lines.map { it.text }
         assertEquals("   Solver=sat4j Steps=1..10 Bitwidth=4 MaxSeq=3 SkolemDepth=1 Symmetry=20 Mode=batch", lines[3])

@@ -16,6 +16,7 @@ import com.intellij.openapi.util.UserDataHolderEx
 import com.intellij.openapi.vfs.VirtualFile
 import com.serranofp.alloy.AlloyFileType
 import com.serranofp.alloy.settings.AlloySettings
+import edu.mit.csail.sdg.parser.CompModule
 import edu.mit.csail.sdg.translator.A4Solution
 import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.atomic.AtomicLong
@@ -31,8 +32,11 @@ data class CommandDetails(
 
 /** What a click on a result opens. */
 sealed interface CommandLink {
-    /** The instance or counterexample, as the analyzer returned it. */
-    class Solution(val solution: A4Solution) : CommandLink
+    /**
+     * The instance or counterexample, as the analyzer returned it, and the [module] the analysis parsed (see
+     * [com.serranofp.alloy.analysis.AlloyAnalysisEvent.Sat]).
+     */
+    class Solution(val solution: A4Solution, val module: CompModule? = null) : CommandLink
 }
 
 /**

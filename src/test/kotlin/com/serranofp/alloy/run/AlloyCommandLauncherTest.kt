@@ -61,6 +61,7 @@ class AlloyCommandLauncherTest : BasePlatformTestCase() {
         assertEquals("Executing \"Check noCycles for 3\"", result.executed())
         assertEquals(CommandState.CounterexampleFound, result.state)
         assertInstanceOf(result.link, CommandLink.Solution::class.java)
+        assertTrue((result.link as CommandLink.Solution).module!!.allCommands.any { it.label == "noCycles" })
         assertNull(service.activeExecution)
     }
 

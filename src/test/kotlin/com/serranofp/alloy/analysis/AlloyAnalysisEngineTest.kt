@@ -62,6 +62,19 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
         assertSame(end, events.last())
     }
 
+    fun testParsedModuleIsKeptWithTheSolution() {
+        val model = "sig Node { succ: lone Node }\npred show { some succ }\nrun show for 3"
+        val end = engine.execute("test", testRootDisposable, mapOf("/m.als" to model), "/m.als", 0, options()) { events += it }.finish()
+        assertInstanceOf(end, Sat::class.java)
+        val module = (end as Sat).module!!
+        assertTrue(module.allFunc.any { it.label == "this/show" })
+    }
+
+    fun testGivenSigsHaveNoModule() {
+        val end = execute("sig Node {}\nrun { some Node } for 3").finish()
+        assertNull((end as Sat).module)
+    }
+
     fun testValidCheckCompletesWithoutCounterexample() {
         val end = execute("sig Node { succ: lone Node }\ncheck functional { all n: Node | lone n.succ } for 3").finish()
         assertInstanceOf(end, Unsat::class.java)

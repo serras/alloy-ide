@@ -1,6 +1,7 @@
 package com.serranofp.alloy.viewer
 
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.components.DropDownLink
@@ -139,8 +140,8 @@ class AlloyStateStepperTest : BasePlatformTestCase() {
         val panel = panelFor(LASSO)
         assertEmpty(UIUtil.findComponentsOfType(panel, JBLabel::class.java).filter { it.text.matches(Regex("State \\d+ of \\d+|Loops back.*")) })
         val group = UIUtil.findComponentOfType(panel, ActionToolbarImpl::class.java)!!.actionGroup as DefaultActionGroup
-        val actions = group.childActionsOrStubs.map { it.templateText }
-        assertEquals(SolutionKind.entries.map { it.label }, actions)
+        val actions = group.childActionsOrStubs.filter { it !is Separator }.map { it.templateText }
+        assertEquals(SolutionKind.entries.map { it.label } + AlloyInstancePanel.EVALUATOR, actions)
     }
 
     fun testPanelShowsTheStripOnlyForTraces() {

@@ -10,6 +10,7 @@ import com.intellij.patterns.PlatformPatterns.psiElement
 import com.intellij.util.ProcessingContext
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.lexer.AlloyTokenSets
+import com.serranofp.alloy.viewer.isAlloyEvaluatorFragment
 
 class AlloyKeywordCompletionContributor : CompletionContributor() {
     init {
@@ -22,6 +23,8 @@ class AlloyKeywordCompletionContributor : CompletionContributor() {
             context: ProcessingContext,
             result: CompletionResultSet,
         ) {
+            // The evaluator offers the names of its model only
+            if (parameters.originalFile.isAlloyEvaluatorFragment) return
             when (AlloyCompletionContext.of(parameters.position)) {
                 AlloyCompletionContext.None, AlloyCompletionContext.ModulePath, is AlloyCompletionContext.Qualified -> return
                 else -> {}

@@ -5,6 +5,7 @@ import edu.mit.csail.sdg.alloy4.ErrorWarning
 import edu.mit.csail.sdg.alloy4.Pair
 import edu.mit.csail.sdg.alloy4.Pos
 import edu.mit.csail.sdg.ast.Command
+import edu.mit.csail.sdg.parser.CompModule
 import edu.mit.csail.sdg.translator.A4Solution
 
 /**
@@ -47,8 +48,12 @@ sealed interface AlloyAnalysisEvent {
 
     sealed interface End : AlloyAnalysisEvent
 
-    /** [timeMillis] is when the analyzer reported the result, before the solution was handed back. */
-    data class Sat(val solution: A4Solution, override val timeMillis: Long) : End
+    /**
+     * [module] is the one the analysis parsed, where the solution's names are declared; null when the analysis
+     * was given its sigs rather than a model to parse. [timeMillis] is when the analyzer reported the result,
+     * before the solution was handed back.
+     */
+    data class Sat(val solution: A4Solution, val module: CompModule?, override val timeMillis: Long) : End
 
     /** [core] is `A4Solution.highLevelCore()`: empty when no core is available. */
     data class Unsat(val solution: A4Solution, val core: Pair<Set<Pos>, Set<Pos>>, override val timeMillis: Long) : End
