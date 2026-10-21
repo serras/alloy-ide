@@ -1,0 +1,14 @@
+<html>
+<body>
+Reports an event predicate that leaves some <code>var</code> field or <code>var sig</code> unconstrained in the
+next state, so that it can change freely when the event occurs.
+<p>A predicate is an event when it constrains the next state, with <code>'</code> or <code>after</code>, directly or
+through the predicates and macros it calls, and uses no <code>always</code>, <code>eventually</code>,
+<code>until</code>, <code>releases</code> or <code>;</code>. A relation is constrained when it is mentioned under
+<code>'</code> or <code>after</code> in any branch of the body. In this example, <code>outbox</code> is not:</p>
+<pre><code>pred send[n: Node] {
+  some i: n.outbox | inbox' = inbox + n.succ->i
+}</code></pre>
+<p>The quick-fixes add <code>f' = f</code> for one relation or for all of them.</p>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<html>
+<body>
+Reports a command scope that reads as an upper bound for a signature whose scope a module parameter declared
+<code>exactly</code> makes exact, as <code>util/ordering[X]</code> does for <code>X</code>.
+<p>In this example, <code>2 Id</code> means exactly 2 <code>Id</code> atoms, so configurations with fewer of them
+are not analyzed:</p>
+<pre><code>open util/ordering[Id]
+check safe for 3 but 2 Id</code></pre>
+<p>When the signature takes the command's overall scope, as in <code>for 4</code>, the problem is reported without
+highlighting. The quick-fix writes the scope as <code>exactly</code>.</p>
+</body>
+</html>

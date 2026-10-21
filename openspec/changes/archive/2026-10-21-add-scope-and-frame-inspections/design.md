@@ -48,7 +48,7 @@ A unit test checks the calculator against the analyzer's own bounds. It translat
 The three checks differ in severity.
 - **Mutable-state signature: WEAK_WARNING.** It fires only when the command already scopes some signature explicitly. A plain `for N` or `run {}` treats every signature alike, which is a deliberate choice; once one signature is singled out, leaving the one that feeds the mutable state at the default is the book's exact pitfall.
   - "Used by mutable state" is read from the analyzer's types: the field's `type()` columns other than the first, folded to top-level signatures, plus the top-level ancestors of every `var sig`.
-  - In the book this also flags `run example3 {} for exactly 3 Node`, where `Message` stays at 3. That is intended: it is the same mistake.
+  - A command without an overall scope, such as the book's `run example3 {} for exactly 3 Node`, is not reported: `Message` then has no scope at all, and the analyzer refuses to run the command, so it reports the mistake itself.
 - **Exact parameter: WEAK_WARNING or INFORMATION.** The analyzer's behavior is certain, but whether it matters is not.
   - A written `2 Id` is clearly read as "up to 2", so it gets a WEAK_WARNING.
   - An implicit overall `for 4` that applies to `Id` gets `ProblemHighlightType.INFORMATION`: the quick-fix stays available on Alt+Enter, but nothing is drawn. Otherwise every command of an ordering-based model would be highlighted.
@@ -74,6 +74,8 @@ Macros (`let unchanged[x] { x = (x)' }`) need nothing special, because the analy
 - **Union over branches.** Taking the union over all branches keeps false positives low: `processCandidate`'s three `implies … else` branches all constrain `inbox`.
 
 Past operators (`historically`, `once`, `before`) are guards and do not make a predicate an event.
+
+The analyzer's meta signatures (`File$`, `var$`, ...) are not mutable relations of the model. A predicate that frames through them, as in `all v : var$ - uploaded$ | v.value = v.value'`, may be about any relation, so it is not reported. The `;` operator is told from a written `after` by its position: the analyzer gives the `after` it desugars `;` into the one column of `;`.
 
 *Alternative considered:* counting only `f' = …` equalities as frame conditions. Rejected, because it misreports pointwise effects (`all n | n.inbox' = …`) and `no trashed'`.
 

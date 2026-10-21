@@ -1,0 +1,10 @@
+<html>
+<body>
+Reports a command whose bound on sequences (the written <code>seq</code> scope, or the analyzer's default) is
+smaller than the scope of the elements of a <code>var</code> field declared with <code>seq T</code>.
+<p>In this example, an inbox holds at most 2 identifiers, fewer than the 3 nodes that could send one:</p>
+<pre><code>sig Node { var inbox : seq Node }
+check at_least_one_leader_fair for 3 but 2 seq</code></pre>
+<p>The quick-fix raises the <code>seq</code> bound to the scope of the elements.</p>
+</body>
+</html>

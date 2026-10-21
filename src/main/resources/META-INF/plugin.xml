@@ -58,6 +58,23 @@
                     factoryClass="com.serranofp.alloy.viewer.AlloyInstanceToolWindowFactory"/>
         <externalAnnotator language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyExternalAnnotator"/>
         <highlightErrorFilter implementation="com.serranofp.alloy.viewer.AlloyEvaluatorErrorFilter"/>
+        <localInspection language="Alloy" shortName="AlloyUnscopedMutableSignature" groupName="Alloy"
+                         bundle="messages.AlloyBundle" key="inspection.unscoped.mutable.signature.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.inspections.AlloyUnscopedMutableSignatureInspection"/>
+        <localInspection language="Alloy" shortName="AlloyExactParameterScope" groupName="Alloy"
+                         bundle="messages.AlloyBundle" key="inspection.exact.parameter.scope.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.inspections.AlloyExactParameterScopeInspection"/>
+        <localInspection language="Alloy" shortName="AlloySeqBoundTooSmall" groupName="Alloy"
+                         bundle="messages.AlloyBundle" key="inspection.seq.bound.too.small.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.inspections.AlloySeqBoundTooSmallInspection"/>
+        <localInspection language="Alloy" shortName="AlloyMissingFrameCondition" groupName="Alloy"
+                         bundle="messages.AlloyBundle" key="inspection.missing.frame.condition.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.inspections.AlloyMissingFrameConditionInspection"/>
+        <lang.inspectionSuppressor language="Alloy" implementationClass="com.serranofp.alloy.inspections.AlloyInspectionSuppressor"/>
         <codeInsight.declarativeInlayProvider language="Alloy" group="OTHER_GROUP" isEnabledByDefault="true"
                                               providerId="alloy.command.results"
                                               bundle="messages.AlloyBundle"

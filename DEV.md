@@ -143,3 +143,18 @@ Use the lasso of the trace path strip checklist, and the model of the inline com
 - [ ] Applying a change while `run big` is running lets it go on; its result is shown as outdated when it arrives.
 - [ ] Turning off *Check vacuity of passing checks* and applying shows earlier results as outdated; a check that then finds no counterexample ends right away, without "checking vacuity…" in its hint and without a *Vacuity check* section in its tooltip. Turning it back on brings the vacuity check back.
 - [ ] A saved solver that is no longer available is shown as "(unavailable)", and the next run uses sat4j and shows a warning about it in the tooltip of its hint.
+### Inspections
+
+Instead of the two files, open copies of the book's models from `src/test/testData/practicalalloy/protocol-design`, as noted in each item.
+
+- [ ] *Settings | Editor | Inspections* has an "Alloy" group listing "Signature in mutable state left at the default scope", "Exact scope forced by a module parameter", "Sequence bound smaller than its elements' scope" and "Missing frame condition", each enabled, as a weak warning, and with a description.
+- [ ] In `explicit-messages-as-signatures/leaderelection.als`, the scope `for 3 but exactly 3 Node` of `bad_all_initiate` is highlighted as a weak warning, and hovering it says that `Message` gets the command's default scope of 3 and is used by the mutable field `inbox`. No other command is highlighted.
+- [ ] Alt+Enter there offers "Add a scope for Message": the command then reads `for 3 but exactly 3 Node, 3 Message`, the inserted `3` is selected so that typing replaces it, Enter or Tab leaves it, and the warning goes away.
+- [ ] Disabling "Signature in mutable state left at the default scope" in the settings removes that warning, while the other Alloy inspections still report theirs; enabling it brings it back.
+- [ ] In `verifying-the-expected-properties/leaderelection.als`, adding `check at_most_one_leader for 3 but 2 Id` highlights `2 Id` as a weak warning saying that `util/ordering` makes the scope of `Id` exactly 2; "Write the scope of Id as exact" turns it into `exactly 2 Id`.
+- [ ] In the same file, `for 4 but 20 steps` is not highlighted, but Alt+Enter with the caret on it offers "Write the scope of Id as exact", which writes `for 4 but exactly 4 Id, 20 steps` with the `4` selected for editing.
+- [ ] In `refining-the-network-model/leaderelection.als`, `2 seq` in `for 3 but 2 seq` is highlighted as a weak warning saying that sequences in `inbox` hold at most 2 elements, and "Raise the seq bound to 3" turns it into `3 seq`, selected for editing.
+- [ ] In a model with `sig Node { succ: one Node, var inbox: set Node, var outbox: set Node }` and `pred send[n: Node] { some i: n.outbox | inbox' = inbox + n.succ->i }` (the body on its own indented line), the name `send` is highlighted as a weak warning saying that it does not constrain the next value of `outbox`; `pred initiate_enabled[n: Node] { historically no n.inbox }` and a predicate using `always` are not.
+- [ ] Alt+Enter on `send` offers "Add outbox' = outbox" and "Add all missing frame conditions"; either adds `outbox' = outbox` on its own line before the closing `}`, with the body's indentation, and the warning goes away. Undo restores the predicate.
+- [ ] Alt+Enter on `send`, then the submenu of a fix, offers "Suppress for predicate": it writes `// noinspection AlloyMissingFrameCondition` on the line before `pred send`, and `send` is no longer reported while another predicate missing a frame condition still is. Deleting the comment brings the warning back.
+- [ ] Introducing a type error in any of these files removes the inspections' warnings until it is fixed; only the analyzer's error is shown.

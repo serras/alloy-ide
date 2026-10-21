@@ -1,0 +1,13 @@
+<html>
+<body>
+Reports a command that sets the scope of some signatures, but leaves a signature used by the mutable state
+at the overall or default scope: one that occurs in the type of a <code>var</code> field, other than as its
+owner, or that is or has a <code>var sig</code>.
+<p>Such a signature usually needs a scope as large as the others, or the command analyzes fewer behaviors than
+it seems to. In this example, <code>Message</code> gets the default scope of 3:</p>
+<pre><code>sig Node { var inbox : set Message }
+sig Message {}
+run bad_all_initiate {...} for 3 but exactly 3 Node</code></pre>
+<p>The quick-fix adds an explicit scope for the signature.</p>
+</body>
+</html>
