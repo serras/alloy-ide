@@ -2,6 +2,13 @@
 
 Run `./gradlew runIde` to start a sandbox IDE with the plugin, and `./gradlew check` to run the tests.
 
+## Releasing
+
+The plugin is distributed as the ZIP built by `./gradlew buildPlugin`, `build/distributions/alloy-ide-<version>.zip`, whose `lib/` directory holds the plugin's JAR together with the Alloy analyzer and its dependencies. Do not upload `build/libs/alloy-ide-<version>.jar`: it only has the plugin's own classes, so the Marketplace reports every analyzer class (such as `edu.mit.csail.sdg.alloy4.Util`) as missing.
+
+1. Run `./gradlew verifyPlugin`, which checks that ZIP against the supported IDEs.
+2. Upload it with `PUBLISH_TOKEN=<Marketplace token> ./gradlew publishPlugin`, or upload the ZIP by hand in the Marketplace.
+
 ## Specification-based
 
 This project uses [OpenSpec](https://openspec.dev/) and [SpecBuddy](https://specbuddy.dev/) to guide the implementation.

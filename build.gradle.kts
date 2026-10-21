@@ -63,6 +63,11 @@ intellijPlatform {
             changelog.renderItem(changelog.getOrNull(version.toString()) ?: changelog.getUnreleased(), Changelog.OutputType.HTML)
         }
     }
+    // The Marketplace needs the ZIP of buildPlugin, whose lib/ holds the analyzer's JARs; the JAR in build/libs
+    // has only the plugin's own classes. publishPlugin uploads that ZIP
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+    }
     pluginVerification {
         ides {
             recommended()
