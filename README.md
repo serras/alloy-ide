@@ -1,5 +1,7 @@
 # [Alloy Analyzer](https://alloytools.org/) plug-in for IntelliJ-based IDEs
 
+> Available in [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35343-alloy-analyzer)
+
 The plugin includes the Alloy 6.2.0 analyzer and runs it inside the IDE, on its own Java runtime: no separate process, no system Java installation and no IntelliJ Platform LSP support are needed. It installs in any IntelliJ-based IDE from 2026.2.
 
 - **File type**: `.als` files are recognized as Alloy models and shown with the Alloy icon. Alloy models embedded in Markdown (`.md`) files are not supported.
