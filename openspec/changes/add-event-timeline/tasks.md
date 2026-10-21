@@ -20,14 +20,14 @@
   - on file sharing, `upload[File$k]` holds where `uploaded` grows by `File$k`;
   - an injected failing predicate leaves the others intact and records its error.
 - [ ] 3.2 Add the label rule: at most 3 instances, then "+k more"; "no event"; full list for the tooltip. Verify with unit tests in `TraceEventsTest`.
-- [ ] 3.3 Compute `TraceEvents` in the background in `AlloySolutionModel`, cached by the chosen predicate set and cancelled on a new session (design §4). Verify with an `AlloyInstanceViewerTest` case: the session is shown before the events are known, and stepping after they are known performs no new evaluation (counted through a test hook).
+- [ ] 3.3 Compute `TraceEvents` in the background in `AlloySolutionModel`, cached by the chosen predicate set and cancelled on a new session (design §4). Verify with an `AlloyInstanceViewerTest` case: the session is shown before the events are known, and selecting another state after they are known performs no new evaluation (counted through a test hook).
 
 ## 4. Timeline and captions
 
-- [ ] 4.1 Check whether `add-trace-loop-indicator` has landed. If it has, attach `TransitionLabel`s to its strip's transitions. Otherwise, add `TraceTimeline` under the controls row: one cell per transition, the selected transition highlighted, clicking a cell calls `goTo`, and event names navigate through `Func.pos` and `AlloyPositions` (design §6). Verify with `AlloyInstanceTabsTest` cases:
+- [ ] 4.1 Check whether `add-trace-loop-indicator` has landed. If it has, attach `TransitionLabel`s to its strip's transitions. Otherwise, add `TraceTimeline` under the toolbar line: one cell per transition, the selected transition highlighted, clicking a cell calls `goTo`, and event names navigate through `Func.pos` and `AlloyPositions` (design §6). Verify with `AlloyInstanceTabsTest` cases:
   - a 4-state lasso shows 4 cells with their labels;
   - clicking cell 2 selects state 2;
-  - next state moves the highlight;
+  - selecting another state (`goTo` and `stateChanged()`, as a click in the trace path strip does) moves the highlight;
   - a static result and a model without events show no strip;
   - the "…" placeholder is shown before the events arrive.
 - [ ] 4.2 Append ", after <events>" to the successor caption of the Visualization and Table panes when the transition has events. Verify with `AlloyInstanceTabsTest`: at state 3 of a leader election trace, the second caption ends with the label of transition 3; with no events it equals "State 4" exactly, and the existing caption tests still pass.

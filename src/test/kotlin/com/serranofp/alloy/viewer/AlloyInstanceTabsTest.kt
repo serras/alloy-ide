@@ -124,7 +124,7 @@ class AlloyInstanceTabsTest : BasePlatformTestCase() {
         val panel = panel()
         open(LASSO)
         val model = viewer.session!!.model
-        // As the stepper's actions do
+        // As clicking the successor in the trace path strip does
         model.next()
         panel.stateChanged()
         val table = panel.textAreas().first()

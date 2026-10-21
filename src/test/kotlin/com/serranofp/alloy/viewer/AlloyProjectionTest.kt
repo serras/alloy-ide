@@ -14,6 +14,7 @@ import com.serranofp.alloy.run.CommandState
 import com.serranofp.alloy.settings.AlloySettings
 import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import edu.mit.csail.sdg.alloy4viz.AlloyProjection
+import java.awt.event.MouseEvent
 import javax.swing.JComponent
 
 /** Two atoms in every state, one of them in `X` only in the first state. */
@@ -151,5 +152,24 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         model.next()
         panel.stateChanged()
         assertEquals(atoms[1], panel.atomSelectors().single().selectedItem)
+    }
+
+    fun testClickingTheStripKeepsTheProjectionAndTheAtom() {
+        val panel = panelFor(TWO_NODES)
+        val model = session.model
+        val node = model.type("Node")
+        model.setProjected(node, true)
+        panel.stateChanged()
+        val atoms = model.vizState.originalInstance.type2atoms(node).sorted()
+        panel.atomSelectors().single().selectedItem = atoms[1]
+
+        val strip = UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!
+        val circle = strip.geometry!!.circles[1]
+        strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_CLICKED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
+        assertEquals(1, model.state)
+        for (viz in listOf(model.vizState, model.nextVizState!!)) assertEquals(listOf(node), viz.projectedTypes.toList())
+        assertEquals(atoms[1], panel.atomSelectors().single().selectedItem)
+        val choice = AlloyProjection(mapOf(node to atoms[1]))
+        assertEquals(listOf(model.vizState.getGraph(null, choice), model.nextVizState!!.getGraph(null, choice)), panel.graphs())
     }
 }

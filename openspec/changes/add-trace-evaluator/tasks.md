@@ -13,7 +13,7 @@
   - on `LASSO`, `Cur`, `Cur'`, `after Cur = V2` and `always Cur in V2 + V3` give the spec scenarios' values at states 0 and 1;
   - a predicate call and a skolem evaluate;
   - after `New Config`, an atom that no longer exists is reported as not found.
-- [ ] 2.2 Add the evaluator's runner: a single-thread executor with generation numbers, whose stale results are dropped on the EDT (design §3). Verify with a test that queues an evaluation at state 0, steps to state 1 before it completes (with an injected slow evaluator), and checks that only the state 1 value is delivered.
+- [ ] 2.2 Add the evaluator's runner: a single-thread executor with generation numbers, whose stale results are dropped on the EDT (design §3). Verify with a test that queues an evaluation at state 0, selects state 1 before it completes (with an injected slow evaluator), and checks that only the state 1 value is delivered.
 
 ## 3. Evaluator panel and watches
 
@@ -25,7 +25,7 @@
   - the caption names the state and says "outdated" after editing the file.
 - [ ] 3.3 Add the watches toolbar (Add, Remove, Edit, Move Up, Move Down) and change highlighting. Wire `rebuild()` and `stateChanged()` to `refresh(session)` (design §4, §7). Verify with `AlloyEvaluatorPanelTest`:
   - adding, editing, removing and reordering update both the tree and the file's stored watches;
-  - on `LASSO`, stepping re-evaluates `Cur` and marks it changed, and an unchanged watch is not marked;
+  - on `LASSO`, selecting state 1 (`goTo` and `stateChanged()`, as a click in the trace path strip does) re-evaluates `Cur` and marks it changed, and an unchanged watch is not marked;
   - New Fork re-evaluates every watch;
   - opening a result of another file shows that file's watches;
   - a watch naming a removed field stays and shows its error.

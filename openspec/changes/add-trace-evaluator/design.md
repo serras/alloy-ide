@@ -4,7 +4,7 @@
 
 - The tool window (`AlloyInstancePanel`) shows one `ViewerSession` at a time. Its `AlloySolutionModel` keeps the `A4Solution` and the selected `state`.
   - The panel is told of a new session through `AlloyInstanceViewer.addListener`, which calls `rebuild()`.
-  - It is told of stepping directly, in `StepAction`, which calls `stateChanged()`.
+  - It is told of a newly selected state directly: a click in the trace path strip (from `add-trace-loop-indicator`, which replaced the previous and next actions and the "State i of n" label) calls `goTo` and then `stateChanged()`.
 - The desktop evaluator (`SimpleGUI`'s `Computer`) re-parses the model, adds every atom and skolem of the solution to the root module with `addGlobal`, parses the expression with `CompUtil.parseOneExpression_fromString(root, text)`, and evaluates it with `A4Solution.eval(expr, state)`. That call returns an `A4TupleSet`, a `Boolean`, or an integer as a `String` with an optional ` (OF)`.
 - Today the plugin keeps the solution but not the module.
   - `AlloyAnalysisEngine.execute` parses its own `CompModule` for each analysis, and only `Sat(solution)` reaches `CommandLink.Solution`.
@@ -100,7 +100,7 @@ Alternative considered: a plain `TextFieldWithAutoCompletion`. It is simpler, bu
 
 ### 7. Wiring to state changes
 
-`AlloyInstancePanel.rebuild()` (new session) and `stateChanged()` (stepping) call the evaluator panel's `refresh(session)`. This re-evaluates the last single expression and every watch at `model.state`. No viewer API changes beyond exposing the module.
+`AlloyInstancePanel.rebuild()` (new session) and `stateChanged()` (a newly selected state) call the evaluator panel's `refresh(session)`. This re-evaluates the last single expression and every watch at `model.state`. No viewer API changes beyond exposing the module.
 
 ## Risks / Trade-offs
 

@@ -1,6 +1,5 @@
 package com.serranofp.alloy.viewer
 
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
@@ -37,20 +36,25 @@ import edu.mit.csail.sdg.alloy4viz.VizState
 import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
+import java.awt.Component
+import java.awt.Container
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.LayoutManager
 import java.awt.Rectangle
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.BoxLayout
-import javax.swing.Icon
 import javax.swing.JComponent
 import javax.swing.JLayer
 import javax.swing.JPanel
+import javax.swing.JScrollPane
 import javax.swing.JViewport
 import javax.swing.Scrollable
 import javax.swing.SwingConstants
+import javax.swing.SwingUtilities
+import kotlin.math.max
 
 class AlloyInstanceToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -63,15 +67,14 @@ class AlloyInstanceToolWindowFactory : ToolWindowFactory, DumbAware {
  * The tool window: the empty state, or the session's header (which navigates to its command), toolbar and
  * status line, over the Visualization, Text and Table tabs. Rebuilt when the session changes; stepping
  * through a trace and projecting update it in place. A trace shows the selected state and its successor, side by
- * side or stacked; under a projection, one atom selector per projected signature applies to both graphs.
+ * side or stacked, and the trace path strip, after the toolbar, which highlights both and selects the state
+ * clicked; under a projection, one atom selector per projected signature applies to both graphs.
  */
 class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPanel(CardLayout()) {
     private val viewer = AlloyInstanceViewer.getInstance(project)
 
     private val header = ActionLink("") { viewer.navigateToOrigin() }
     private val status = JBLabel().apply { foreground = UIUtil.getContextHelpForeground() }
-    private val stepper = JBLabel()
-    private val loop = JBLabel().apply { foreground = UIUtil.getContextHelpForeground() }
     private val projection = AlloyProjectionChooser { redrawGraph() }
     private val tabs = JBTabbedPane()
     private val graphs = AlloyStatePanes()
@@ -79,6 +82,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
     private val darkGraphs = DarkGraphLayerUI()
     private val text = AlloyTextPane()
     private val tables = AlloyStatePanes()
+    private val strip = AlloyTraceStrip(parent, onSelect = ::goTo)
     private val toolbar: ActionToolbar
 
     /** The atom shown for each projected signature, kept while that atom exists. */
@@ -89,25 +93,26 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
 
         val actions = DefaultActionGroup().apply {
             SolutionKind.entries.forEach { add(NewSolutionAction(it)) }
-            addSeparator()
-            add(StepAction("Previous State", AllIcons.Actions.Back) { it.previous() })
-            add(StepAction("Next State", AllIcons.Actions.Forward) { it.next() })
         }
         toolbar = ActionManager.getInstance().createActionToolbar("AlloyInstance", actions, true)
         toolbar.targetComponent = this
 
         val controls = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
             add(toolbar.component)
-            add(stepper)
-            add(loop)
             add(JBLabel("Projection:"))
             add(projection.link)
+        }
+        val toolbarLine = JPanel().apply {
+            layout = ToolbarLineLayout(controls, strip.scrollPane)
+            isOpaque = false
+            add(controls.apply { isOpaque = false })
+            add(strip.scrollPane)
         }
         val north = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = JBUI.Borders.empty(4, 8)
             add(header.apply { alignmentX = LEFT_ALIGNMENT })
-            add(controls.apply { alignmentX = LEFT_ALIGNMENT })
+            add(toolbarLine.apply { alignmentX = LEFT_ALIGNMENT })
             add(status.apply { alignmentX = LEFT_ALIGNMENT })
         }
         val visualization = JPanel(BorderLayout()).apply {
@@ -170,13 +175,14 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         header.foreground = if (viewer.outdated(session) != null) UIUtil.getInactiveTextColor() else null
     }
 
-    /** Shows the selected state in every tab, after the stepper changed it. */
+    /** Shows the selected state in every tab and in the trace path strip, after it changed. */
     fun stateChanged() {
         val model = viewer.session?.model ?: return
-        stepper.isVisible = model.hasStates
-        loop.isVisible = model.hasStates
-        stepper.text = model.stepperText
-        loop.text = model.loopText
+        strip.scrollPane.isVisible = model.hasStates
+        if (model.hasStates) {
+            strip.show(model.traceLength, model.loopState, model.state)
+            strip.reveal()
+        }
         showText()
         val next = model.nextTable
         tables.show(
@@ -184,6 +190,13 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
             else listOf(model.caption to tablePane(model.table), model.nextCaption to tablePane(next)),
         )
         redrawGraph()
+    }
+
+    /** Selects [state], clicked in the trace path strip. */
+    private fun goTo(state: Int) {
+        val model = viewer.session?.model ?: return
+        model.goTo(state)
+        stateChanged()
     }
 
     /** Rebuilds the atom selectors and the graphs, of one state or of a trace state and its successor. */
@@ -269,22 +282,69 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         }
     }
 
-    private inner class StepAction(text: String, icon: Icon, private val step: (AlloySolutionModel) -> Unit) : AnAction(text, null, icon), DumbAware {
-        override fun getActionUpdateThread() = ActionUpdateThread.EDT
-
-        override fun update(e: AnActionEvent) {
-            e.presentation.isVisible = viewer.session?.model?.hasStates == true
-        }
-
-        override fun actionPerformed(e: AnActionEvent) {
-            val model = viewer.session?.model ?: return
-            step(model)
-            stateChanged()
-        }
-    }
-
     private companion object {
         const val EMPTY = "empty"
         const val SESSION = "session"
+    }
+}
+
+/**
+ * The toolbar line: the [controls], then the trace path [strip] beside them when it fits entirely, and otherwise
+ * below them, as wide as the line, where it scrolls. The preferred height is that of the line's current width; when
+ * a new width moves the strip, the line is laid out again for its new height.
+ */
+private class ToolbarLineLayout(private val controls: JComponent, private val strip: JScrollPane) : LayoutManager {
+    private var beside: Boolean? = null
+
+    private fun width(parent: Container) = parent.width - parent.insets.left - parent.insets.right
+
+    /** Whether the strip goes beside the controls in [width]; before the first layout, there is no width yet. */
+    private fun fitsBeside(width: Int) = width <= 0 || controls.preferredSize.width + JBUI.scale(GAP) + strip.preferredSize.width <= width
+
+    /** The strip's height below the controls, with room for its scroll bar when the bar takes space and is needed. */
+    private fun heightBelow(width: Int): Int {
+        val bar = strip.horizontalScrollBar
+        val scrolls = strip.preferredSize.width > width && bar.isOpaque
+        return strip.preferredSize.height + if (scrolls) bar.preferredSize.height else 0
+    }
+
+    override fun preferredLayoutSize(parent: Container): Dimension {
+        val insets = parent.insets
+        val c = controls.preferredSize
+        val size = when {
+            !strip.isVisible -> c
+            fitsBeside(width(parent)) -> Dimension(c.width + JBUI.scale(GAP) + strip.preferredSize.width, max(c.height, strip.preferredSize.height))
+            else -> Dimension(c.width, c.height + heightBelow(width(parent)))
+        }
+        return Dimension(size.width + insets.left + insets.right, size.height + insets.top + insets.bottom)
+    }
+
+    override fun minimumLayoutSize(parent: Container) = Dimension(0, preferredLayoutSize(parent).height)
+
+    override fun layoutContainer(parent: Container) {
+        val insets = parent.insets
+        val width = width(parent)
+        val c = controls.preferredSize
+        if (!strip.isVisible) return controls.setBounds(insets.left, insets.top, c.width, c.height)
+        val s = strip.preferredSize
+        val fits = fitsBeside(width)
+        if (fits) {
+            val height = max(c.height, s.height)
+            controls.setBounds(insets.left, insets.top + (height - c.height) / 2, c.width, c.height)
+            strip.setBounds(insets.left + c.width + JBUI.scale(GAP), insets.top + (height - s.height) / 2, s.width, s.height)
+        } else {
+            controls.setBounds(insets.left, insets.top, c.width, c.height)
+            strip.setBounds(insets.left, insets.top + c.height, width, heightBelow(width))
+        }
+        if (beside != null && beside != fits) SwingUtilities.invokeLater(parent::revalidate)
+        beside = fits
+    }
+
+    override fun addLayoutComponent(name: String?, comp: Component) {}
+
+    override fun removeLayoutComponent(comp: Component) {}
+
+    private companion object {
+        const val GAP = 8
     }
 }

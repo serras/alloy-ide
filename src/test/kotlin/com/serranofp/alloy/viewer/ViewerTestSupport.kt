@@ -21,5 +21,10 @@ const val LASSO = "abstract sig V {}\none sig V1, V2, V3 extends V {}\nvar one s
     "fact { Cur = V1 and after Cur = V2 and always (Cur = V2 implies after Cur = V3) and always (Cur = V3 implies after Cur = V2) }\n" +
     "run {} for 3 but 1..3 steps"
 
+/** Exactly one trace: states 0 and 1, then state 1 forever. */
+const val SELF_LOOP = "abstract sig V {}\none sig V1, V2 extends V {}\nvar one sig Cur in V {}\n" +
+    "fact { Cur = V1 and after always Cur = V2 }\n" +
+    "run {} for 2 but 1..2 steps"
+
 /** Many traces of up to 4 states. */
 const val TRACES = "sig A {}\nvar sig X in A {}\nrun { some X and after no X } for 3 but 1..4 steps"

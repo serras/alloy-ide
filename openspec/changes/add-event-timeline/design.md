@@ -4,8 +4,8 @@
 
 - The viewer only gets an `A4Solution`. `AlloyAnalysisEngine.execute` parses its own `CompModule` and drops it, and `CommandLink.Solution` keeps only the solution. Finding the predicates and facts therefore needs the compiled module to travel with the solution.
 - The PSI (`AlloyFile`, stubs) knows declarations by name, but it does not resolve calls inside fact bodies the way the analyzer does (overloading, `let`, opened modules). It is used only to navigate to a predicate.
-- `AlloySolutionModel` already owns trace state (`state`, `successor`, captions), and `AlloyInstancePanel` builds the toolbar row (stepper, loop label, projection chooser) and the `AlloyStatePanes` captions.
-- The sibling change `add-trace-loop-indicator` adds a state strip with the loop arc. Neither change depends on the other (see Decision 6).
+- `AlloySolutionModel` already owns trace state (`state`, `successor`, captions), and `AlloyInstancePanel` builds the toolbar line (the New solution actions and the projection chooser) and the `AlloyStatePanes` captions. A click in the trace path strip calls `goTo` and then `stateChanged()`.
+- The sibling change `add-trace-loop-indicator` adds the trace path strip, a state strip with the loop arc, placed on the toolbar line when it fits and below it otherwise. It replaces the stepper: the previous and next actions, the "State i of n" label and the loop label are removed, and clicking a state's circle is the way to select a state. Its `Transition` list is the extension point for labels. Neither change depends on the other (see Decision 6).
 
 ## Goals / Non-Goals
 
@@ -53,7 +53,7 @@ A `TraceEvents` value (transition index → event instances, plus per-predicate 
 - *Alternative: store the choice in the `.als` file.* Rejected. It edits the user's model.
 
 ### 6. Timeline UI and composition with the loop indicator
-- A `TraceTimeline` component sits in the panel's `north` box, under the controls row. It has one cell per transition, each with the label ("send[Node$1, Id$2]", "+k more", "no event" or "…") and a tooltip with the full list and errors.
+- A `TraceTimeline` component sits in the panel's `north` box, under the toolbar line. It has one cell per transition, each with the label ("send[Node$1, Id$2]", "+k more", "no event" or "…") and a tooltip with the full list and errors.
 - Event names are `ActionLink`-like segments that navigate. The `Func.pos` of the predicate is converted with `AlloyPositions` to a file and an offset; library modules open read-only, as go-to-declaration does.
 - The component exposes `labels: (transition) -> TransitionLabel`.
 - Composition with the sibling change:

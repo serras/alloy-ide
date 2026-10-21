@@ -32,7 +32,7 @@ For a result with more than one state, the Visualization and Table tabs SHALL ea
 ## ADDED Requirements
 
 ### Requirement: Timeline of transitions
-For a trace whose model has event predicates, the tool window SHALL show a timeline under the toolbar with one entry per transition, including the one into the loop target. Each entry is labelled with its events. The entry of the selected state's transition is highlighted. A trace state strip, if shown, SHALL carry these labels on its transitions instead of a separate timeline.
+For a trace whose model has event predicates, the tool window SHALL show a timeline under the toolbar with one entry per transition, including the one into the loop target. Each entry is labelled with its events. The entry of the selected state's transition is highlighted. The trace path strip, if shown, SHALL carry these labels on its transitions instead of a separate timeline.
 
 #### Scenario: Timeline of a trace
 - **WHEN** a leader election trace with 4 states that loops back to state 3 is shown
@@ -40,10 +40,10 @@ For a trace whose model has event predicates, the tool window SHALL show a timel
 
 #### Scenario: Selecting a transition
 - **WHEN** the user clicks the transition 2→3 in the timeline
-- **THEN** the trace is shown at state 2, followed by state 3, and the stepper says "State 2 of 4"
+- **THEN** the trace is shown at state 2, followed by state 3, and the first pane is captioned "State 2"
 
-#### Scenario: Following the stepper
-- **WHEN** the user clicks next state
+#### Scenario: Following the selection
+- **WHEN** the user selects another state, by clicking its circle in the trace path strip
 - **THEN** the highlighted entry of the timeline moves to the transition from the new state
 
 #### Scenario: Navigating to an event

@@ -47,9 +47,11 @@ class DarkPalette(val canvas: Color, val foreground: Color, val label: Color, va
         private val BLACK = Color.BLACK.rgb
         private val LIGHT_GRAY = Color.LIGHT_GRAY.rgb
 
-        /** The current IDE theme's colors, where a selection is a surface a little lighter than the canvas. */
-        fun ide(): DarkPalette {
-            val canvas = UIUtil.getPanelBackground()
+        /**
+         * The current IDE theme's colors on [canvas] (by default, the panel background), where a selection is a
+         * surface a little lighter than the canvas.
+         */
+        fun ide(canvas: Color = UIUtil.getPanelBackground()): DarkPalette {
             val (h, s, l) = DarkColors.hsl(canvas)
             val foreground = UIUtil.getLabelForeground()
             return DarkPalette(canvas, foreground, foreground, DarkColors.color(h, s, (l + 0.15).coerceAtMost(1.0)))

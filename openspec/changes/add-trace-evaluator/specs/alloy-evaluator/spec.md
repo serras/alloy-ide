@@ -119,10 +119,10 @@ The user SHALL be able to add the current expression of the field to a list of w
 - **THEN** the list shows `c` and then `b`
 
 ### Requirement: Watches follow the shown state
-All watches SHALL be evaluated again whenever the selected state changes, by stepping through the trace, and whenever a new solution is shown. A new solution can be shown from a command hint or from New Config, New Trace, New Init or New Fork. A watch whose value differs from its previous evaluation SHALL be highlighted as changed.
+All watches SHALL be evaluated again whenever the selected state changes, by clicking a state in the trace path strip, and whenever a new solution is shown. A new solution can be shown from a command hint or from New Config, New Trace, New Init or New Fork. A watch whose value differs from its previous evaluation SHALL be highlighted as changed.
 
-#### Scenario: Stepping
-- **WHEN** a watch `Cur` shows `{V1$0}` at state 0 and the user clicks next state
+#### Scenario: Selecting another state
+- **WHEN** a watch `Cur` shows `{V1$0}` at state 0 and the user clicks the circle of state 1 in the trace path strip
 - **THEN** the watch shows `{V2$0}`, highlighted as changed
 
 #### Scenario: New solution
@@ -130,7 +130,7 @@ All watches SHALL be evaluated again whenever the selected state changes, by ste
 - **THEN** every watch shows its value in the new solution at its selected state
 
 #### Scenario: Unchanged value
-- **WHEN** a watch has the same value after stepping
+- **WHEN** a watch has the same value after another state is selected
 - **THEN** it is not highlighted as changed
 
 ### Requirement: Watches kept per model file
@@ -158,6 +158,6 @@ An outdated result SHALL still be evaluated against the model as it was analyzed
 ### Requirement: Evaluation keeps the IDE responsive
 Evaluating SHALL not block the IDE's user interface. While an evaluation runs, the panel SHALL show that it is evaluating. A newer state, solution or evaluation SHALL supersede the results of evaluations still running, so that the panel only shows values of the current state.
 
-#### Scenario: Stepping during an evaluation
-- **WHEN** watches are being evaluated at state 0 and the user steps to state 1
+#### Scenario: Selecting during an evaluation
+- **WHEN** watches are being evaluated at state 0 and the user clicks the circle of state 1 in the trace path strip
 - **THEN** the watches end up showing their values at state 1, never those of state 0

@@ -19,7 +19,7 @@ A trace in the Alloy Instance tool window shows states, but not which event led 
 - **Timeline.** A timeline strip under the toolbar has one entry per transition, labelled with its events, including the loop-back transition.
   - Clicking an entry selects its state.
   - Clicking an event's name opens the editor at the predicate.
-  - Coordination with the sibling change `add-trace-loop-indicator`, which adds an Analyzer-style state strip with the loop arc: the two are independent but composable. Whichever lands first owns the strip, and the other attaches to it. If the state strip exists, event labels go on its transitions rather than in a second strip.
+  - Coordination with the sibling change `add-trace-loop-indicator`, which adds an Analyzer-style state strip with the loop arc and replaces the stepper and its "State i of n" label: the two are independent but composable. Whichever lands first owns the strip, and the other attaches to it. If the state strip exists, event labels go on its transitions rather than in a second strip.
 - **Pane caption.** In the Visualization and Table tabs, the successor pane's caption also names the events that lead to it, for example "State 3, after send[Node$1, Id$2]".
 - Static (single-state) results are unchanged, and so are models without detectable events and with no events chosen (no timeline, no "after" in the caption).
 

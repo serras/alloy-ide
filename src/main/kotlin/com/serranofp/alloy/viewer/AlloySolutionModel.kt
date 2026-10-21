@@ -69,6 +69,9 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
         nextVizState?.loadInstance(instance(successor(state)))
     }
 
+    /** The transitions of the lasso, the loop last; none for a static result. */
+    val transitions: List<Transition> = if (isTemporal) Transition.lasso(traceLength, loopState) else emptyList()
+
     /** The state after [state], which after the last one is the loop target. */
     fun successor(state: Int = this.state): Int = if (state + 1 < traceLength) state + 1 else loopState
 
@@ -77,10 +80,6 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
     fun previous() {
         if (state > 0) goTo(state - 1)
     }
-
-    val stepperText: String get() = "State $state of $traceLength"
-
-    val loopText: String get() = "Loops back to state $loopState"
 
     /** The caption of the selected state's pane. */
     val caption: String get() = "State $state"
