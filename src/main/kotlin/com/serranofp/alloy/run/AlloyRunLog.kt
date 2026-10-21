@@ -76,6 +76,11 @@ class AlloyRunLog {
     var timeMillis: Long? = null
         private set
 
+    /** The size of the unsat core reported with a result without instance, 0 when none is available. */
+    @get:Synchronized
+    var coreSize: Int? = null
+        private set
+
     @get:Synchronized
     var completed: Boolean = false
         private set
@@ -156,6 +161,7 @@ class AlloyRunLog {
                         else -> append("   core reduced from ${counts.before} to ${counts.after} top-level formulas. ${coreMillis}ms.\n\n")
                     }
                 }
+                coreSize = if (event.core.a.isEmpty() && event.core.b.isEmpty()) 0 else minimized?.after ?: event.core.a.size
                 found(if (check) Outcome.NoCounterexample else Outcome.NoInstance, millis, unexpected = expects == 1)
                 completed(COMPLETED)
             }
@@ -235,30 +241,37 @@ class AlloyRunLog {
 
     /** The text of the result hint. */
     val summary: String
-        @Synchronized get() {
-            val found = when (outcome) {
-                Outcome.InstanceFound -> "Instance found"
-                Outcome.CounterexampleFound -> "Counterexample found"
-                Outcome.NoInstance -> "No instance found"
-                Outcome.NoCounterexample -> "No counterexample found"
-                Outcome.None -> return when {
-                    !completed -> RUNNING
-                    completionText == STOPPED -> STOPPED
-                    else -> FAILED
-                }
-            }
-            return buildString {
-                append(found)
-                if (unexpected) append(", contrary to expectation")
-                timeMillis?.let { append(" · $it ms") }
+        get() = summary(null)
+
+    /** The text of the result hint, marked "(vacuous)" or "checking vacuity…" after a vacuity check of [vacuity]. */
+    @Synchronized
+    fun summary(vacuity: Vacuity?): String {
+        val found = when (outcome) {
+            Outcome.InstanceFound -> "Instance found"
+            Outcome.CounterexampleFound -> "Counterexample found"
+            Outcome.NoInstance -> "No instance found"
+            Outcome.NoCounterexample -> "No counterexample found"
+            Outcome.None -> return when {
+                !completed -> RUNNING
+                completionText == STOPPED -> STOPPED
+                else -> FAILED
             }
         }
+        return buildString {
+            append(found)
+            if (unexpected) append(", contrary to expectation") else if (expects >= 0) append(", as expected")
+            if (vacuity is Vacuity.VacuousFacts || vacuity is Vacuity.VacuousPremise) append(" (vacuous)")
+            timeMillis?.let { append(" · $it ms") }
+            if (vacuity == Vacuity.Checking) append(", checking vacuity…")
+        }
+    }
 
     companion object {
         const val RUNNING = "Running…"
         const val STOPPING = "Stopping…"
         const val STOPPED = "Stopped before completion"
         const val FAILED = "Analysis failed"
+        const val CHECKING_VACUITY = "Checking vacuity…"
 
         /** What [completionText] says when the analysis ended with a result, or with a failure. */
         private const val COMPLETED = ""

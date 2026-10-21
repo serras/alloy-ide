@@ -123,4 +123,64 @@ class AlloyRunServiceTest : BasePlatformTestCase() {
         showRun.forEach(execution::accept)
         assertEquals(Outdated.FileChanged, results.outdated(result()!!, myFixture.editor.document))
     }
+
+    fun testSuiteCannotStartWhileAnExecutionRuns() {
+        service.startRun(newExecution())
+        assertNull(service.startSuite())
+    }
+
+    fun testSuiteCannotStartWhileAnEnumerationRuns() {
+        assertTrue(service.startEnumeration())
+        try {
+            assertNull(service.startSuite())
+        } finally {
+            service.enumerationFinished()
+        }
+    }
+
+    fun testOnlyOneSuiteAtATime() {
+        val suite = service.startSuite()!!
+        try {
+            assertNull(service.startSuite())
+        } finally {
+            service.suiteFinished(suite)
+        }
+    }
+
+    fun testSuiteRefusesOtherLaunchesAndEnumerations() {
+        val suite = service.startSuite()!!
+        try {
+            assertFalse(service.startRun(newExecution()))
+            assertNull(result())
+            assertFalse(service.launch(file, show, myFixture.editor))
+            assertNull(result())
+            assertFalse(service.startEnumeration())
+        } finally {
+            service.suiteFinished(suite)
+        }
+    }
+
+    fun testSuiteRunsItsOwnExecutionsOneAtATime() {
+        val suite = service.startSuite()!!
+        try {
+            val first = newExecution()
+            assertTrue(service.startRun(first, suite))
+            assertFalse(service.startRun(newExecution(noCycles), suite))
+            first.terminate()
+            assertTrue(service.startRun(newExecution(noCycles), suite))
+            service.activeExecution!!.terminate()
+        } finally {
+            service.suiteFinished(suite)
+        }
+        assertNotNull(service.startSuite()?.also(service::suiteFinished))
+        assertTrue(service.startRun(newExecution()))
+    }
+
+    fun testExecutionOfAFinishedSuiteIsRefused() {
+        val suite = service.startSuite()!!
+        service.suiteFinished(suite)
+        assertTrue(service.startEnumeration())
+        service.enumerationFinished()
+        assertFalse(service.startRun(newExecution(), AlloyRunService.Suite()))
+    }
 }

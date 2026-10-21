@@ -23,11 +23,15 @@ import java.util.concurrent.atomic.AtomicLong
 
 enum class CommandState { Running, InstanceFound, CounterexampleFound, NoInstance, NoCounterexample, Stopped, Failed }
 
-/** What the tooltip shows: the solver fallback warning, the analyzer's log and why the execution failed. */
+/**
+ * What the tooltip shows: the solver fallback warning, the analyzer's log, why the execution failed, and the
+ * log of the vacuity check's queries.
+ */
 data class CommandDetails(
     val warnings: List<String> = emptyList(),
     val log: List<AlloyRunLog.Line> = emptyList(),
     val failure: String? = null,
+    val vacuityLog: List<AlloyRunLog.Line> = emptyList(),
 )
 
 /** What a click on a result opens. */
@@ -37,6 +41,23 @@ sealed interface CommandLink {
      * [com.serranofp.alloy.analysis.AlloyAnalysisEvent.Sat]).
      */
     class Solution(val solution: A4Solution, val module: CompModule? = null) : CommandLink
+}
+
+/** Whether the outcome of a command with `expect` matched it; a failed execution does not. */
+enum class Expectation { Passed, Failed }
+
+/**
+ * What the vacuity check of a check without counterexample found, or that it is still running. A
+ * `premiseText` says that the assertion's premise was solved with the facts.
+ */
+sealed interface Vacuity {
+    data object Checking : Vacuity
+    data class NotVacuous(val millis: Long, val premiseText: String? = null) : Vacuity
+    /** The facts have no instance within the check's scope. */
+    data class VacuousFacts(val millis: Long, val coreSize: Int, val premiseText: String? = null) : Vacuity
+    /** The facts have instances, but none satisfies the assertion's premise. */
+    data class VacuousPremise(val premiseText: String, val millis: Long, val coreSize: Int) : Vacuity
+    data class Unknown(val reason: String) : Vacuity
 }
 
 /**
@@ -50,7 +71,21 @@ data class CommandResult(
     val link: CommandLink? = null,
     val documentStamp: Long,
     val settingsGeneration: Long,
+    /** Null for a command without `expect`, and while it runs or after it was stopped. */
+    val expectation: Expectation? = null,
+    val vacuity: Vacuity? = null,
 )
+
+/** How a result reads as a test: the gutter icon and the test tree both use [verdict]. */
+enum class Verdict { Run, Passed, Failed, Vacuous }
+
+fun verdict(result: CommandResult): Verdict = when {
+    result.state == CommandState.Running -> Verdict.Run
+    result.vacuity is Vacuity.VacuousFacts || result.vacuity is Vacuity.VacuousPremise -> Verdict.Vacuous
+    result.expectation == Expectation.Passed -> Verdict.Passed
+    result.expectation == Expectation.Failed -> Verdict.Failed
+    else -> Verdict.Run
+}
 
 enum class Outdated { FileChanged, SettingsChanged }
 

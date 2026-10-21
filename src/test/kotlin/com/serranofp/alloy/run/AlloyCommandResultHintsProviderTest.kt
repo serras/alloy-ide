@@ -178,4 +178,44 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
         assertNull(hint.action)
         assertEquals("<html>&nbsp;&nbsp;&nbsp;Solving...</html>", hint.tooltip)
     }
+
+    /** Records the result of a check without counterexample after a vacuity check of [vacuity], as an execution does. */
+    private fun recordVacuity(vacuity: Vacuity?) {
+        val log = AlloyRunLog()
+        analysisEvents("sig Node { succ: lone Node }\nfact { no n: Node | n in n.^succ }\nassert noCycles { no iden & ^succ }\ncheck noCycles for 5")
+            .forEach(log::accept)
+        results.record(
+            file,
+            noCycles,
+            CommandResult(
+                CommandState.NoCounterexample, log.summary(vacuity), CommandDetails(log = log.lines),
+                documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation, vacuity = vacuity,
+            ),
+        )
+    }
+
+    fun testHintOfEachVacuityState() {
+        val expected = mapOf(
+            Vacuity.Checking to Regex("No counterexample found · \\d+ ms, checking vacuity…"),
+            Vacuity.NotVacuous(1) to Regex("No counterexample found · \\d+ ms"),
+            Vacuity.VacuousFacts(1, 0) to Regex("No counterexample found \\(vacuous\\) · \\d+ ms"),
+            Vacuity.VacuousPremise("this/A", 1, 0) to Regex("No counterexample found \\(vacuous\\) · \\d+ ms"),
+            Vacuity.Unknown(AlloyCommandExecution.VACUITY_STOPPED) to Regex("No counterexample found · \\d+ ms"),
+        )
+        for ((vacuity, text) in expected) {
+            recordVacuity(vacuity)
+            val hint = hints().single()
+            assertTrue("$vacuity: ${hint.text}", hint.text.matches(text))
+            assertTrue("$vacuity: ${hint.tooltip}", hint.tooltip!!.contains("<b>Vacuity check</b>"))
+            assertTrue(hint.tooltip!!.contains(AlloyCommandResultTooltip.vacuity(vacuity).first().replace("'", "&#39;")))
+            assertNull(hint.action)
+        }
+    }
+
+    fun testHintWithoutVacuityCheck() {
+        recordVacuity(null)
+        val hint = hints().single()
+        assertTrue(hint.text, hint.text.matches(Regex("No counterexample found · \\d+ ms")))
+        assertFalse(hint.tooltip!!.contains("Vacuity check"))
+    }
 }

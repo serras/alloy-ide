@@ -198,8 +198,45 @@ class AlloyRunLogTest : TestCase() {
     fun testAsExpectedIsNotUnexpected() {
         val log = log(start("p", run = true, expects = 0) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7)))
         assertFalse(log.unexpected)
-        assertEquals("No instance found · 2 ms", log.summary)
+        assertEquals("No instance found, as expected · 2 ms", log.summary)
         assertEquals("   No instance found. Predicate may be inconsistent, as expected. 2ms.", log.lines.last().text)
+    }
+
+    fun testInstanceAsExpected() {
+        val log = log(start("p", run = true, expects = 1) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 9)))
+        assertFalse(log.unexpected)
+        assertEquals("Instance found, as expected · 4 ms", log.summary)
+    }
+
+    fun testNoInstanceContraryToExpectation() {
+        val log = log(start("p", run = true, expects = 1) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7)))
+        assertTrue(log.unexpected)
+        assertEquals("No instance found, contrary to expectation · 2 ms", log.summary)
+    }
+
+    fun testNoCounterexampleAsExpected() {
+        val log = log(start("a", run = false, expects = 0) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7)))
+        assertEquals("No counterexample found, as expected · 2 ms", log.summary)
+    }
+
+    fun testCounterexampleContraryToExpectation() {
+        val log = log(start("a", run = false, expects = 0) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 9)))
+        assertEquals("Counterexample found, contrary to expectation · 4 ms", log.summary)
+    }
+
+    fun testCounterexampleAsExpected() {
+        val log = log(start("a", run = false, expects = 1) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 9)))
+        assertEquals("Counterexample found, as expected · 4 ms", log.summary)
+    }
+
+    fun testNoCounterexampleContraryToExpectation() {
+        val log = log(start("a", run = false, expects = 1) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7)))
+        assertEquals("No counterexample found, contrary to expectation · 2 ms", log.summary)
+    }
+
+    fun testWithoutExpectTheSummaryHasNoExpectation() {
+        assertEquals("Instance found · 4 ms", log(start("p", run = true) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 9))).summary)
+        assertEquals("No counterexample found · 2 ms", log(start("a", run = false) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7))).summary)
     }
 
     fun testTemporalSolvingKeepsOneProgressLine() {
@@ -259,5 +296,30 @@ class AlloyRunLogTest : TestCase() {
 
         private val NO_CORE = Pair<Set<Pos>, Set<Pos>>(emptySet(), emptySet())
         private val CORE = Pair<Set<Pos>, Set<Pos>>(setOf(Pos("m.als", 1, 1), Pos("m.als", 1, 2)), emptySet())
+    }
+
+    private fun holding(expects: Int = -1) = log(start("a", run = false, expects = expects) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7)))
+
+    fun testSummaryWhileCheckingVacuity() {
+        assertEquals("No counterexample found · 2 ms, checking vacuity…", holding().summary(Vacuity.Checking))
+    }
+
+    fun testSummaryOfAVacuousPass() {
+        assertEquals("No counterexample found (vacuous) · 2 ms", holding().summary(Vacuity.VacuousFacts(3, 0)))
+        assertEquals("No counterexample found (vacuous) · 2 ms", holding().summary(Vacuity.VacuousPremise("this/A", 3, 2)))
+        assertEquals("No counterexample found, as expected (vacuous) · 2 ms", holding(expects = 0).summary(Vacuity.VacuousFacts(3, 0)))
+    }
+
+    fun testSummaryOfANonVacuousOrUnknownPassIsUnchanged() {
+        assertEquals("No counterexample found · 2 ms", holding().summary(Vacuity.NotVacuous(3)))
+        assertEquals("No counterexample found · 2 ms", holding().summary(Vacuity.Unknown(AlloyCommandExecution.VACUITY_STOPPED)))
+        assertEquals("No counterexample found · 2 ms", holding().summary(null))
+        assertEquals(holding().summary, holding().summary(null))
+    }
+
+    fun testCoreSizeOfAResultWithoutInstance() {
+        assertEquals(0, holding().coreSize)
+        assertEquals(2, log(start("a", run = false) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, CORE, 7))).coreSize)
+        assertNull(log(showRun).coreSize)
     }
 }

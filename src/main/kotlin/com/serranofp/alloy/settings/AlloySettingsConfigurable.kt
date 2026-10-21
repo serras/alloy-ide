@@ -27,6 +27,7 @@ class AlloySettingsConfigurable(
     internal val nonFatalWarnings = JBCheckBox("Allow warnings (non-fatal)")
     internal val recordKodkod = JBCheckBox("Record the Kodkod input/output")
     internal val inferPartialInstance = JBCheckBox("Infer partial instance")
+    internal val checkVacuity = JBCheckBox("Check vacuity of passing checks")
 
     override fun getDisplayName(): String = "Alloy"
 
@@ -47,6 +48,8 @@ class AlloySettingsConfigurable(
             row { cell(nonFatalWarnings) }
             row { cell(recordKodkod) }
             row { cell(inferPartialInstance) }
+            separator()
+            row { cell(checkVacuity) }
         }.also { reset() }
     }
 
@@ -85,6 +88,7 @@ class AlloySettingsConfigurable(
         nonFatalWarnings.isSelected = state.nonFatalWarnings
         recordKodkod.isSelected = state.recordKodkod
         inferPartialInstance.isSelected = state.inferPartialInstance
+        checkVacuity.isSelected = state.checkVacuity
     }
 
     private fun formState() = AlloySettingsState().also {
@@ -96,5 +100,6 @@ class AlloySettingsConfigurable(
         it.nonFatalWarnings = nonFatalWarnings.isSelected
         it.recordKodkod = recordKodkod.isSelected
         it.inferPartialInstance = inferPartialInstance.isSelected
+        it.checkVacuity = checkVacuity.isSelected
     }
 }

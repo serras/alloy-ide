@@ -2,6 +2,7 @@ package com.serranofp.alloy.run
 
 import com.intellij.psi.PsiFile
 import com.intellij.psi.tree.TokenSet
+import com.intellij.psi.util.PsiTreeUtil
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyQualifiedName
 import com.serranofp.alloy.psi.AlloyTypes
@@ -42,6 +43,25 @@ object AlloyCommands {
             child = child.nextSibling
         }
         return null
+    }
+
+    /**
+     * The `expect` of the command that a `=>` chain executes, its last part, as the analyzer reads it:
+     * 1 for a positive number, 0 for zero, and -1 without `expect`.
+     */
+    fun expects(command: AlloyCommandDecl): Int {
+        var expects = -1
+        var child = command.firstChild
+        while (child != null) {
+            when (child.node.elementType) {
+                AlloyTypes.RUN, AlloyTypes.CHECK -> expects = -1
+                AlloyTypes.NUMBER -> if (PsiTreeUtil.skipWhitespacesAndCommentsBackward(child)?.node?.elementType == AlloyTypes.EXPECT) {
+                    expects = if (child.text.any { it in "123456789" }) 1 else 0
+                }
+            }
+            child = child.nextSibling
+        }
+        return expects
     }
 
     fun sameLabel(a: String, b: String): Boolean = a.removePrefix("this/") == b.removePrefix("this/")

@@ -3,6 +3,7 @@ package com.serranofp.alloy.settings
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.util.concurrent.CountDownLatch
+import javax.swing.SwingUtilities
 import java.util.concurrent.TimeUnit
 
 class AlloySettingsConfigurableTest : BasePlatformTestCase() {
@@ -30,6 +31,7 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         assertFalse(page.nonFatalWarnings.isSelected)
         assertFalse(page.recordKodkod.isSelected)
         assertFalse(page.inferPartialInstance.isSelected)
+        assertTrue(page.checkVacuity.isSelected)
         assertFalse(page.isModified)
     }
 
@@ -53,7 +55,9 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
             "non-fatal warnings" to { page.nonFatalWarnings.isSelected = true },
             "record Kodkod" to { page.recordKodkod.isSelected = true },
             "infer partial instance" to { page.inferPartialInstance.isSelected = true },
+            "check vacuity" to { page.checkVacuity.isSelected = false },
         )
+        assertEquals(9, edits.size)
         for ((option, edit) in edits) {
             edit()
             assertTrue("$option is not detected as modified", page.isModified)
@@ -74,13 +78,28 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         assertTrue(saved.nonFatalWarnings)
         assertTrue(saved.recordKodkod)
         assertTrue(saved.inferPartialInstance)
+        assertFalse(saved.checkVacuity)
 
         // A fresh page shows what was saved
         val reopened = configurable(present)
         assertEquals("minisat", reopened.solver.selectedItem)
         assertEquals(3, reopened.skolemDepth.selectedItem)
         assertEquals("Expand quantifiers", reopened.coreGranularity.selectedItem)
+        assertFalse(reopened.checkVacuity.isSelected)
         assertFalse(reopened.isModified)
+    }
+
+    /** Every option of the page is one of its nine fields, shown on the panel. */
+    fun testShowsNineOptions() {
+        val page = AlloySettingsConfigurable(settings, AlloySolvers().apply { discover = { present } }) { changes++ }
+        val panel = page.createComponent()
+        val options = listOf(
+            page.solver, page.skolemDepth, page.preventOverflows, page.coreMinimization, page.coreGranularity,
+            page.nonFatalWarnings, page.recordKodkod, page.inferPartialInstance, page.checkVacuity,
+        )
+        assertEquals(9, options.size)
+        for (option in options) assertTrue("$option is not on the page", SwingUtilities.isDescendingFrom(option, panel))
+        assertEquals("Check vacuity of passing checks", page.checkVacuity.text)
     }
 
     fun testApplyWithoutChangesDoesNothing() {

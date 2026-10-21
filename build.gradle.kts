@@ -3,6 +3,7 @@ import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.models.ProductRelease
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
+import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 
 plugins {
@@ -48,6 +49,10 @@ dependencies {
         testFramework(TestFrameworkType.Platform)
         // For myFixture.testStructureView, whose component is in this module
         testBundledModule("intellij.platform.structureView")
+        // The SM test runner of the Alloy Commands run configuration, a module of the Test Runner plugin since 2026.2.
+        // plugin.xml only depends on smRunner: testRunner, which it depends on, is no module in 2026.1
+        bundledModule("intellij.platform.smRunner")
+        bundledModule("intellij.platform.testRunner")
 
         // Add plugin dependencies for compilation here, for example:
         // bundledPlugin("com.intellij.java")
@@ -78,6 +83,14 @@ intellijPlatform {
                 untilBuild = provider { null }
             }
         }
+        // Internal and override-only API usages are reported, without failing the build: the evaluator's watch
+        // state and the structure view's navigation use such APIs
+        failureLevel = listOf(
+            VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+            VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
+            VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+            VerifyPluginTask.FailureLevel.NON_EXTENDABLE_API_USAGES,
+        )
     }
 }
 

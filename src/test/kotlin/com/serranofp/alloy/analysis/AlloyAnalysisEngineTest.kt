@@ -73,6 +73,22 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
     fun testGivenSigsHaveNoModule() {
         val end = execute("sig Node {}\nrun { some Node } for 3").finish()
         assertNull((end as Sat).module)
+        assertNull((events.first() as Executing).module)
+    }
+
+    fun testExecutingCarriesTheParsedModule() {
+        val model = "sig Node { succ: lone Node }\nsig Leaf extends Node {}\nfact acyclic { no n: Node | n in n.^succ }\n" +
+            "assert noLoops { no n: Node | n = n.succ }\ncheck noLoops for 3"
+        val end = engine.execute("test", testRootDisposable, mapOf("/m.als" to model), "/m.als", 0, options()) { events += it }.finish()
+        assertInstanceOf(end, Unsat::class.java)
+        val executing = events.filterIsInstance<Executing>().single()
+        val module = executing.module!!
+        assertEquals(listOf("this/Node", "this/Leaf"), module.allReachableSigs.filter { !it.builtin }.map { it.label })
+        // The facts of the file, as a separate parse of it gives them
+        val parsed = CompUtil.parseEverything_fromString(A4Reporter.NOP, model)
+        assertEquals(parsed.allReachableFacts.toString(), module.allReachableFacts.toString())
+        assertTrue(module.allReachableFacts.toString(), module.allReachableFacts.toString().contains("^"))
+        assertSame(module.allCommands.single(), executing.command)
     }
 
     fun testValidCheckCompletesWithoutCounterexample() {

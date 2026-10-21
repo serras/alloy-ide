@@ -18,13 +18,17 @@
 - The *Alloy Instance* tool window, on the right of the editor, which shows the instance or counterexample of a command with a header that navigates to it: a graph with the magic layout, the analyzer's text and table forms, new configurations, traces, initial states and forks (which keep the graph's theme and projections), stepping through the states of a trace, and projection over any number of signatures.
 - Analyzer settings in *Settings | Languages & Frameworks | Alloy* (solver, skolem depth, overflow prevention, unsat core minimization and granularity, non-fatal warnings, recording the Kodkod input/output, partial instance inference), independent of the Alloy desktop application's preferences. Applied changes take effect with the next analysis. Besides the pure-Java SAT4J variants, the solver list offers Yices, Plingeling and Electrod (with NuSMV or nuXmv) when their executables are on the `PATH`, also for an IDE started from the desktop.
 
+- Expectations as test outcomes: a command with `expect 0` or `expect 1` gets a green passed or red failed gutter icon after its result, and its hint says "as expected" or "contrary to expectation".
+- Vacuity check of passing checks: a `check` without counterexample goes on to solve the model's facts, and the assertion's premise (`A implies B`, also under `all` and `always`), within its scope. A check whose facts or premise have no instance passed vacuously: its hint says "(vacuous)", its gutter icon is a yellow vacuous icon, and its tooltip explains why. It can be stopped without losing the check's result, and turned off with *Check vacuity of passing checks* in *Settings | Languages & Frameworks | Alloy*.
+- The *Alloy Commands* run configuration, created with *Run 'All commands in a.als'* from the context menu of an Alloy file, which runs every command of the file in the IDE's test runner: one node per command with its time and analyzer output, failures for unmet expectations, failed analyses and vacuous passes, navigation to the command, *Rerun Failed Tests* and *Stop*.
+
 ### Changed
 
 - The plugin no longer requires the IntelliJ Platform's LSP support module (`com.intellij.modules.lsp`): it installs in any IntelliJ-based IDE from 2026.2.
 
 ### Removed
 
-- The run configuration type for `run` and `check` commands, its configuration producer and its Run tool window output. Commands are executed from the gutter.
+- The run configuration type for single `run` and `check` commands, its configuration producer and its Run tool window output. Commands are executed from the gutter, and all the commands of a file with the *Alloy Commands* run configuration.
 
 ### Known limitations
 

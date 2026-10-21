@@ -65,7 +65,31 @@ Use a model with `sig Node { succ: lone Node }`, `pred show { some succ }`, `run
 - [ ] Closing the project while `run big` runs stops it.
 - [ ] Changing `for 3` to `for 4` without saving and running again makes the tooltip report the new scope.
 - [ ] Running a command in a file with a type error shows "Model has errors", and the error appears in the editor.
+- [ ] With `run show for 3 expect 1`, the hint says "Instance found, as expected · <n> ms" and the gutter icon becomes the green passed icon, whose tooltip says "Run show — passed last time". With `expect 0` instead, the hint says "contrary to expectation" and the icon is the red failed one. `check noCycles for 3 expect 0` (a counterexample) is red, and `expect 1` is green. Commands without `expect` keep the run icon after their result.
+- [ ] With a type error in the file, `run show for 3 expect 1` shows "Model has errors" and the red failed icon.
+- [ ] Stopping `run big for 40 expect 1` brings back the plain run icon.
+- [ ] Typing in the file keeps the green or red icons, and their tooltip adds "(outdated)". Clicking a green or red icon runs the command again, with the spinner while it runs.
+- [ ] After adding `fact acyclic { no n: Node | n in n.^succ }` and `assert noLoops { no iden & succ }` with `check noLoops for 3`, running it shows "No counterexample found · <n> ms" and the run icon; its tooltip ends with a *Vacuity check* section saying that the facts have an instance, so the check did not pass vacuously, with the time.
+- [ ] Adding `fact { no Node }` and `fact { some Node }` and running `check noLoops` again shows "No counterexample found (vacuous) · <n> ms" and the yellow vacuous icon, whose tooltip says "passed vacuously last time"; the hint's tooltip says that the facts have no instance within the scope. With `expect 0` added, the icon stays yellow and the hint says "as expected (vacuous)".
+- [ ] Practical Alloy's single-node ring (the leader election of the protocol design chapter, with `process` effects that contradict each other on one node, and `check liveness { fairness implies eventually some Elected } for exactly 1 Node`) shows the vacuous icon, and the tooltip says that the assertion's premise (`fairness`) has no instance within the scope.
+- [ ] While the vacuity check of a slow check runs (for example, a check on the pigeonhole model whose facts take long to solve), the hint already says "No counterexample found · <n> ms, checking vacuity…", the gutter icon is the spinner, and the status-bar task says "Checking vacuity…". Clicking another run icon shows "An Alloy analysis is already running".
+- [ ] Stopping that check from the spinner's *Stop* item, or cancelling its status-bar task, during the vacuity check keeps "No counterexample found · <n> ms" with the run icon, and the tooltip says "Vacuity was not determined. The vacuity check was stopped."
 - [ ] Turning off *Command results* in *Settings | Editor | Inlay Hints* hides the hints.
+
+### Test runner
+
+Use `a.als` with `sig Node { succ: lone Node }`, `fact acyclic { no n: Node | n in n.^succ }`, `pred show { some succ }`, `assert noSucc { no succ }`, `assert noLoops { no iden & succ }` and `assert vacuous { all n: Node | n in n.succ implies no Node }`, followed by `run show for 3 expect 1`, `check noSucc for 3 expect 0`, `run { some Node and no Node } for 2`, `check noLoops for 3` and `check vacuous for 3`. For stopping, add the pigeonhole model's `run big for 11` (with symmetry breaking off in the settings, or another slow command) between two fast commands.
+
+- [ ] Right-clicking `a.als` in the *Project* view offers *Run 'All commands in a.als'*; so does right-clicking anywhere in its editor. Choosing it creates a temporary *Alloy Commands* configuration, opens the Run tool window with the test tree, and shows no status-bar progress.
+- [ ] The tree has one node per command, in source order: `run show`, `check noSucc`, `run command 3`, `check noLoops`, `check vacuous`, each with its duration. Selecting a node shows the analyzer output of that command, the same as the tooltip of its hint, including the *Vacuity check* section of the checks.
+- [ ] `run show` and `check noLoops` passed, and so did `run command 3`, which has no `expect`, and whose output says that no instance was found. `check noSucc` failed with "Counterexample found, contrary to expectation"; `check vacuous` failed with a message saying that it passed vacuously because the assertion's premise has no instance.
+- [ ] Double-clicking `check noLoops` opens `a.als` with the caret on `check noLoops`; double-clicking `run command 3` goes to the unlabelled command.
+- [ ] *Rerun Failed Tests* executes only `check noSucc` and `check vacuous`, in that order, and the tree shows only their nodes.
+- [ ] After the suite, every command line shows its hint and verdict icon (green, red or yellow, or the run icon), as after gutter runs; clicking the hint of `run show` opens its instance.
+- [ ] Saving the temporary configuration (*Save Configuration*), adding a command to `a.als`, and running the configuration from the toolbar also executes the new command.
+- [ ] With a type error in `a.als`, every node failed with "Model has errors".
+- [ ] While a command runs from the gutter, running *All commands in a.als* executes no command, and the Run tool window says "An Alloy analysis is already running". While the suite runs, clicking a gutter icon shows "An Alloy analysis is already running" in the editor.
+- [ ] Clicking *Stop* while `run big` (the second of three commands) is solving aborts it: its hint says "Stopped before completion", the third command is not executed, and neither node is shown as passed. A gutter icon can be clicked right after.
 
 ### Instance viewer
 
@@ -111,10 +135,11 @@ Use the lasso of the trace path strip checklist, and the model of the inline com
 
 ### Analyzer settings
 
-- [ ] *Settings | Languages & Frameworks | Alloy* shows the eight options with their defaults (solver sat4j, skolem depth 1, prevent overflows on, core minimization Fast, core granularity Top-level, the rest off), and the skolem depth only offers 0 to 4. The solver list offers the SAT4J variants, and no native (JNI) solver.
+- [ ] *Settings | Languages & Frameworks | Alloy* shows the nine options with their defaults (solver sat4j, skolem depth 1, prevent overflows on, core minimization Fast, core granularity Top-level, *Check vacuity of passing checks* on below a separator, the rest off), and the skolem depth only offers 0 to 4. The solver list offers the SAT4J variants, and no native (JNI) solver.
 - [ ] With `yices` installed (for example with Homebrew) and the IDE started from the desktop, not from a shell, the solver list also offers `yices.external`; choosing it and running `run show` reports `Solver=yices.external` in the tooltip, and stopping a long run ends the `yices` process.
 - [ ] With skolem depth 3 set in the Alloy desktop application and the IDE settings left at their defaults, the tooltip of a run in the IDE shows `SkolemDepth=1`.
 - [ ] After changing the IDE settings and running commands, the desktop application still shows its own values (skolem depth 3).
 - [ ] Changing the skolem depth to 2 and applying leaves the diagnostics of open files in place, and the tooltip of the next run shows `SkolemDepth=2`. Results from before the change are shown as outdated.
 - [ ] Applying a change while `run big` is running lets it go on; its result is shown as outdated when it arrives.
+- [ ] Turning off *Check vacuity of passing checks* and applying shows earlier results as outdated; a check that then finds no counterexample ends right away, without "checking vacuity…" in its hint and without a *Vacuity check* section in its tooltip. Turning it back on brings the vacuity check back.
 - [ ] A saved solver that is no longer available is shown as "(unavailable)", and the next run uses sat4j and shows a warning about it in the tooltip of its hint.

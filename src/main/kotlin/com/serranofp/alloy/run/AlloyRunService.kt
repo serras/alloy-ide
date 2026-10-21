@@ -12,7 +12,8 @@ import com.intellij.psi.PsiDocumentManager
 import com.serranofp.alloy.settings.AlloySettings
 
 /**
- * The single Alloy execution of a project, or the instance viewer's enumeration. At most one runs at a time: an analysis uses the IDE's own memory,
+ * The single Alloy execution of a project, the instance viewer's enumeration, or a suite of executions run as
+ * tests. At most one runs at a time: an analysis uses the IDE's own memory,
  * and the hints and gutter icons share one running state. Analyses are children of this service, so closing
  * the project stops them.
  */
@@ -23,16 +24,22 @@ class AlloyRunService(private val project: Project) : Disposable {
     /** Whether the instance viewer is asking for a new solution, which also takes the project's one analysis. */
     private var enumerating = false
 
+    /** The suite holding the project's analysis: only its own executions may start. */
+    private var suite: Suite? = null
+
+    /** A run of several executions (see [startSuite]), passed to [startRun] by each of them. */
+    class Suite internal constructor()
+
     val activeExecution: AlloyCommandExecution?
         @Synchronized get() = active
 
     /**
      * Registers [execution] as the active one and records it as running, or refuses (returning false, with
-     * the results untouched) if another one is still running.
+     * the results untouched) if another one is still running, or a suite other than [suite] holds the analysis.
      */
-    fun startRun(execution: AlloyCommandExecution): Boolean {
+    fun startRun(execution: AlloyCommandExecution, suite: Suite? = null): Boolean {
         synchronized(this) {
-            if (active != null || enumerating) return false
+            if (active != null || enumerating || this.suite !== suite) return false
             active = execution
         }
         execution.started()
@@ -66,9 +73,24 @@ class AlloyRunService(private val project: Project) : Disposable {
     /** Takes the project's one analysis for an enumeration, or refuses (false) if another analysis runs. */
     @Synchronized
     fun startEnumeration(): Boolean {
-        if (active != null || enumerating) return false
+        if (active != null || enumerating || suite != null) return false
         enumerating = true
         return true
+    }
+
+    /**
+     * Takes the project's one analysis for a suite of executions until [suiteFinished], or refuses (null) if
+     * another analysis runs.
+     */
+    @Synchronized
+    fun startSuite(): Suite? {
+        if (active != null || enumerating || suite != null) return null
+        return Suite().also { suite = it }
+    }
+
+    @Synchronized
+    fun suiteFinished(suite: Suite) {
+        if (this.suite === suite) this.suite = null
     }
 
     @Synchronized

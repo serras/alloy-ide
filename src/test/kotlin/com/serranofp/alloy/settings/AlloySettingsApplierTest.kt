@@ -32,6 +32,28 @@ class AlloySettingsApplierTest : BasePlatformTestCase() {
         assertEquals(Outdated.SettingsChanged, results.outdated(result, myFixture.editor.document))
     }
 
+    /** Turning vacuity checks off outdates results like any analyzer option. */
+    fun testVacuitySettingOutdatesResults() {
+        val results = AlloyCommandResults.getInstance(project)
+        results.clear()
+        val file = myFixture.configureByText("model.als", "pred show {}\nrun show for 3\n").virtualFile
+        val execution = newExecution(project, file)
+        AlloyRunService.getInstance(project).startRun(execution)
+        analysisEvents("sig A {}\npred show { some A }\nrun show for 3").forEach(execution::accept)
+        val result = results.get(file, AlloyCommandRef("show", 0))!!
+        assertNull(results.outdated(result, myFixture.editor.document))
+
+        val discovery = AlloySolvers().apply { discover = { listOf(AlloySolver("sat4j", "sat4j")) } }
+        val page = AlloySettingsConfigurable(AlloySettings(), discovery, AlloySettingsApplier::settingsChanged)
+        page.createComponent()
+        discovery.load().get(10, TimeUnit.SECONDS)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        page.checkVacuity.isSelected = false
+        page.apply()
+        assertEquals(Outdated.SettingsChanged, results.outdated(result, myFixture.editor.document))
+        page.disposeUIResources()
+    }
+
     fun testGenerationIncreasesOnAChange() {
         val before = generation
         AlloySettingsApplier.settingsChanged()

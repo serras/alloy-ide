@@ -18,7 +18,11 @@ sealed interface AlloyAnalysisEvent {
     /** A phase of the analyzer, with what its `A4Reporter` callback carries. */
     sealed interface Step : AlloyAnalysisEvent
 
-    data class Executing(val command: Command, override val timeMillis: Long) : Step
+    /**
+     * [module] is the one the analysis parsed [command] from, as in [Sat]; null when the analysis was given
+     * its sigs. A follow-up analysis of the same execution can build its commands on it.
+     */
+    data class Executing(val command: Command, override val timeMillis: Long, val module: CompModule? = null) : Step
 
     data class Translating(
         val solver: String,

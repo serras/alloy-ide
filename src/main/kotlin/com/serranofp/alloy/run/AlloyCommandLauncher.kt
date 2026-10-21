@@ -28,6 +28,7 @@ class AlloyCommandLauncher(
         AlloySettings.getInstance().solverFallbackWarning { AlloySolvers.getInstance().ids() }
     },
     private val nonFatalWarnings: () -> Boolean = { AlloySettings.getInstance().state.nonFatalWarnings },
+    private val checkVacuity: () -> Boolean = { AlloySettings.getInstance().state.checkVacuity },
 ) {
     private sealed interface Found
 
@@ -57,18 +58,24 @@ class AlloyCommandLauncher(
             return
         }
         val options = options().apply { originalFilename = target.filename }
-        execution.begin {
-            engine.execute(
-                execution.command.displayName, parent, target.model.modules.contents, target.filename, target.index, options,
-                execution::accept,
-            )
+        val name = execution.command.displayName
+        val followUp = if (checkVacuity()) {
+            AlloyCommandExecution.FollowUp { sigs, query, listener -> engine.execute("$name (vacuity)", parent, sigs, query, options, listener) }
+        } else {
+            null
         }
+        execution.begin(
+            { engine.execute(name, parent, target.model.modules.contents, target.filename, target.index, options, execution::accept) },
+            followUp,
+        )
     }
 
     private fun find(execution: AlloyCommandExecution): Found {
         val fileName = execution.file.name
         val psiFile = PsiManager.getInstance(project).findFile(execution.file) as? AlloyFile
             ?: return NotFound(AlloyRunLog.FAILED, "$fileName is not an Alloy file")
+        val psiCommand = AlloyCommands.find(psiFile, execution.command)
+        psiCommand?.let { execution.expect(AlloyCommands.expects(it)) }
         val model = when (val result = AlloyModelService.getInstance(project).model(psiFile)) {
             is AlloyModelResult.Model -> result
             is AlloyModelResult.Errors ->
@@ -77,7 +84,7 @@ class AlloyCommandLauncher(
                 return NotFound(AlloyRunLog.FAILED, "The Alloy analyzer failed: ${result.cause.message ?: result.cause}")
         }
         val notFound = NotFound(AlloyCommandExecution.COMMAND_NOT_FOUND, "Command ${execution.command.displayName} was not found in $fileName")
-        val psiCommand = AlloyCommands.find(psiFile, execution.command) ?: return notFound
+        if (psiCommand == null) return notFound
         val filename = AlloyPositions.filename(execution.file)
         val text = model.modules.contents[filename] ?: return notFound
         val document = DocumentImpl(text)

@@ -21,7 +21,7 @@ class AlloyCommandTask(
         if (!indicator.isCanceled) launcher.launch(execution, parent)
         var stopRequested = false
         while (!execution.waitFor(POLL_MILLIS)) {
-            execution.log.progress?.let { indicator.text2 = it }
+            execution.progress?.let { indicator.text2 = it }
             if (indicator.isCanceled && !stopRequested) {
                 stopRequested = true
                 execution.stop()

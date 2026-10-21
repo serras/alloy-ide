@@ -16,6 +16,7 @@ class AlloySettingsTest : BasePlatformTestCase() {
         assertFalse(state.nonFatalWarnings)
         assertFalse(state.recordKodkod)
         assertFalse(state.inferPartialInstance)
+        assertTrue(state.checkVacuity)
     }
 
     fun testSerializationRoundTrip() {
@@ -28,6 +29,7 @@ class AlloySettingsTest : BasePlatformTestCase() {
             nonFatalWarnings = true
             recordKodkod = true
             inferPartialInstance = true
+            checkVacuity = false
         }
         val settings = AlloySettings()
         settings.loadState(XmlSerializer.deserialize(XmlSerializer.serialize(state), AlloySettingsState::class.java))

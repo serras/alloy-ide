@@ -192,7 +192,7 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
         fun executing(command: Command, module: CompModule? = null) {
             checkpoint()
             this@AlloyAnalysis.module = module
-            emit(AlloyAnalysisEvent.Executing(command, now()))
+            emit(AlloyAnalysisEvent.Executing(command, now(), module))
         }
 
         private fun checkpoint() {

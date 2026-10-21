@@ -10,7 +10,7 @@ import edu.mit.csail.sdg.translator.A4Options
 import kodkod.engine.satlab.SATFactory
 import java.util.concurrent.atomic.AtomicLong
 
-/** The analyzer options, with the defaults of Alloy 6.2.0. */
+/** The analyzer options, with the defaults of Alloy 6.2.0, and the plugin's own [checkVacuity]. */
 class AlloySettingsState : BaseState() {
     var solver by string(DEFAULT_SOLVER)
     var skolemDepth by property(1)
@@ -24,6 +24,9 @@ class AlloySettingsState : BaseState() {
     var nonFatalWarnings by property(false)
     var recordKodkod by property(false)
     var inferPartialInstance by property(false)
+
+    /** Whether a check without counterexample goes on to check that it did not pass vacuously. */
+    var checkVacuity by property(true)
 
     companion object {
         const val DEFAULT_SOLVER = "sat4j"
