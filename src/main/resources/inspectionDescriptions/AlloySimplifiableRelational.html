@@ -1,0 +1,12 @@
+<html>
+<body>
+Reports a relational expression that has a simpler form:
+<ul>
+  <li>a double transpose, <code>~~r</code>, which is <code>r</code>;</li>
+  <li>the union or intersection of an expression with itself: <code>r + r</code> and <code>r &amp; r</code> are
+    <code>r</code>;</li>
+  <li>a closure plus the identity: <code>^r + iden</code> is <code>*r</code>;</li>
+  <li>adjacent conjuncts <code>a in b</code> and <code>b in a</code>, which are <code>a = b</code>.</li>
+</ul>
+</body>
+</html>

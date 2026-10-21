@@ -74,6 +74,61 @@
                          bundle="messages.AlloyBundle" key="inspection.missing.frame.condition.name"
                          enabledByDefault="true" level="WEAK WARNING"
                          implementationClass="com.serranofp.alloy.inspections.AlloyMissingFrameConditionInspection"/>
+        <localInspection language="Alloy" shortName="AlloySimplifiableBoolean" groupPath="Alloy" groupName="Simplifications"
+                         bundle="messages.AlloyBundle" key="inspection.simplifiable.boolean.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.simplifications.AlloySimplifiableBooleanInspection"/>
+        <localInspection language="Alloy" shortName="AlloySimplifiableCardinality" groupPath="Alloy" groupName="Simplifications"
+                         bundle="messages.AlloyBundle" key="inspection.simplifiable.cardinality.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.simplifications.AlloySimplifiableCardinalityInspection"/>
+        <localInspection language="Alloy" shortName="AlloySimplifiableTemporal" groupPath="Alloy" groupName="Simplifications"
+                         bundle="messages.AlloyBundle" key="inspection.simplifiable.temporal.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.simplifications.AlloySimplifiableTemporalInspection"/>
+        <localInspection language="Alloy" shortName="AlloySimplifiableQuantifier" groupPath="Alloy" groupName="Simplifications"
+                         bundle="messages.AlloyBundle" key="inspection.simplifiable.quantifier.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.simplifications.AlloySimplifiableQuantifierInspection"/>
+        <localInspection language="Alloy" shortName="AlloySimplifiableRelational" groupPath="Alloy" groupName="Simplifications"
+                         bundle="messages.AlloyBundle" key="inspection.simplifiable.relational.name"
+                         enabledByDefault="true" level="WEAK WARNING"
+                         implementationClass="com.serranofp.alloy.simplifications.AlloySimplifiableRelationalInspection"/>
+        <intentionAction>
+            <language>Alloy</language>
+            <className>com.serranofp.alloy.simplifications.AlloyDeMorganIntention</className>
+            <category>Alloy</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Alloy</language>
+            <className>com.serranofp.alloy.simplifications.AlloyOrToImpliesIntention</className>
+            <category>Alloy</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Alloy</language>
+            <className>com.serranofp.alloy.simplifications.AlloyImpliesToOrIntention</className>
+            <category>Alloy</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Alloy</language>
+            <className>com.serranofp.alloy.simplifications.AlloyQuantifierNegationIntention</className>
+            <category>Alloy</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Alloy</language>
+            <className>com.serranofp.alloy.simplifications.AlloyTemporalNegationIntention</className>
+            <category>Alloy</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Alloy</language>
+            <className>com.serranofp.alloy.simplifications.AlloyTemporalDistributionIntention</className>
+            <category>Alloy</category>
+        </intentionAction>
+        <intentionAction>
+            <language>Alloy</language>
+            <className>com.serranofp.alloy.simplifications.AlloyTransposeJoinIntention</className>
+            <category>Alloy</category>
+        </intentionAction>
         <lang.inspectionSuppressor language="Alloy" implementationClass="com.serranofp.alloy.inspections.AlloyInspectionSuppressor"/>
         <codeInsight.declarativeInlayProvider language="Alloy" group="OTHER_GROUP" isEnabledByDefault="true"
                                               providerId="alloy.command.results"

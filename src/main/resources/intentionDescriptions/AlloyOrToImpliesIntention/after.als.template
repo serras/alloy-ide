@@ -1,0 +1,3 @@
+fact {
+  some inbox implies some outbox
+}

@@ -1,0 +1,12 @@
+<html>
+<body>
+Reports a temporal formula with redundant operators:
+<ul>
+  <li>a repeated <code>always</code>, <code>eventually</code>, <code>historically</code> or <code>once</code>:
+    <code>always always p</code> is <code>always p</code>;</li>
+  <li>an absorbed operator: <code>eventually always eventually p</code> is <code>always eventually p</code>, and
+    <code>always eventually always p</code> is <code>eventually always p</code>.</li>
+</ul>
+<p><code>after after p</code> and <code>before before p</code> are not reported: they are about two states away.</p>
+</body>
+</html>

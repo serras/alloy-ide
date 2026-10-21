@@ -1,0 +1,17 @@
+<html>
+<body>
+Reports a Boolean formula that has a simpler form with the same meaning:
+<ul>
+  <li>a double negation, <code>not not p</code>, which is <code>p</code>;</li>
+  <li>a negated disjunction or conjunction of negations: <code>not (not a or not b)</code> is <code>a and b</code>,
+    and <code>not (not a and not b)</code> is <code>a or b</code>;</li>
+  <li>a negated implication: <code>not (a implies b)</code> is <code>a and not b</code>;</li>
+  <li>a negated comparison: <code>not (x = y)</code> is <code>x != y</code>, <code>not (x in y)</code> is
+    <code>x not in y</code>, and <code>not (i &lt; j)</code> is <code>i &gt;= j</code>;</li>
+  <li>adjacent converse implications, <code>a implies b</code> and <code>b implies a</code>, which are
+    <code>a iff b</code>.</li>
+</ul>
+<p>The quick-fix rewrites the formula, keeping the text of its operands and the style of its operators
+(<code>!</code>, <code>&amp;&amp;</code> and <code>||</code>, or <code>not</code>, <code>and</code> and <code>or</code>).</p>
+</body>
+</html>

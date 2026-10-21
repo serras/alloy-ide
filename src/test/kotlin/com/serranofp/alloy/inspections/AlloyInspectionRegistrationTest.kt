@@ -31,4 +31,28 @@ class AlloyInspectionRegistrationTest : BasePlatformTestCase() {
             assertFalse("$id has no description", tool.loadDescription().isNullOrBlank())
         }
     }
+
+    private val simplifications = mapOf(
+        "AlloySimplifiableBoolean" to "Boolean formula can be simplified",
+        "AlloySimplifiableCardinality" to "Emptiness or cardinality test can be simplified",
+        "AlloySimplifiableTemporal" to "Temporal formula can be simplified",
+        "AlloySimplifiableQuantifier" to "Quantified formula can be simplified",
+        "AlloySimplifiableRelational" to "Relational expression can be simplified",
+    )
+
+    fun testSimplificationsAreListedInTheirSubgroup() {
+        val profile = runInInitMode { InspectionProfileImpl("Alloy test").apply { initInspectionTools(project) } }
+        val group = profile.getInspectionTools(null).filter { it.groupPath.toList() == listOf("Alloy", "Simplifications") }.associateBy { it.shortName }
+        assertEquals(simplifications.keys, group.keys)
+        for ((id, name) in simplifications) {
+            val tool = group.getValue(id)
+            assertEquals(name, tool.displayName)
+            assertTrue("$id is not enabled by default", tool.isEnabledByDefault)
+            assertEquals(HighlightDisplayLevel.WEAK_WARNING, tool.defaultLevel)
+            val key = HighlightDisplayKey.find(id)!!
+            assertTrue("$id is not enabled in the profile", profile.isToolEnabled(key))
+            assertEquals(HighlightDisplayLevel.WEAK_WARNING, profile.getErrorLevel(key, null))
+            assertFalse("$id has no description", tool.loadDescription().isNullOrBlank())
+        }
+    }
 }

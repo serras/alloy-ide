@@ -1,0 +1,15 @@
+<html>
+<body>
+Reports a test of emptiness or of a number of elements that a multiplicity says more simply:
+<ul>
+  <li><code>not some e</code>, <code>#e = 0</code> and <code>e = none</code> are <code>no e</code>;</li>
+  <li><code>not no e</code>, <code>#e &gt; 0</code>, <code>#e &gt;= 1</code>, <code>#e != 0</code> and
+    <code>e != none</code> are <code>some e</code>;</li>
+  <li><code>#e = 1</code> is <code>one e</code>;</li>
+  <li><code>#e =&lt; 1</code> and <code>#e &lt; 2</code> are <code>lone e</code>.</li>
+</ul>
+<p>Mirrored forms such as <code>0 = #e</code> count too. The multiplicity form is also safe from integer
+overflow: <code>#e</code> wraps around when <code>e</code> has more elements than the bitwidth can count, so that
+<code>#e = 0</code> may hold of a set that is not empty, while <code>no e</code> cannot.</p>
+</body>
+</html>

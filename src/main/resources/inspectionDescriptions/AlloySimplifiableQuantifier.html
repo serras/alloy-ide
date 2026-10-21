@@ -1,0 +1,17 @@
+<html>
+<body>
+Reports a quantified formula that has a simpler form:
+<ul>
+  <li>a negated quantifier: <code>not (some x: A | p)</code> is <code>no x: A | p</code>,
+    <code>not (no x: A | p)</code> is <code>some x: A | p</code>, and <code>not (all x: A | not p)</code> is
+    <code>some x: A | p</code>;</li>
+  <li><code>all x: A | not p</code>, which is <code>no x: A | p</code>;</li>
+  <li>a quantified membership, when <code>x</code> is the only variable and does not occur in <code>B</code>:
+    <code>all x: A | x in B</code> is <code>A in B</code>, <code>some x: A | x in B</code> is
+    <code>some A &amp; B</code>, and <code>no x: A | x in B</code> is <code>no A &amp; B</code>;</li>
+  <li>distinct variables tested by hand: <code>all x, y: A | x != y implies p</code> is
+    <code>all disj x, y: A | p</code>, and <code>some x, y: A | x != y and p</code> is
+    <code>some disj x, y: A | p</code>.</li>
+</ul>
+</body>
+</html>
