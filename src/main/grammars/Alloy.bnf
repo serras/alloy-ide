@@ -238,8 +238,9 @@ letDecl ::= IDENTIFIER {mixin="com.serranofp.alloy.psi.impl.AlloyLocalDeclaratio
 comprehension ::= LBRACE &comprehension_start binder_group (COMMA binder_group)* BAR binder_body RBRACE {pin=2}
 private comprehension_start ::= DISJ? IDENTIFIER (COMMA DISJ? IDENTIFIER)* COLON
 
-// An identifier use: `x`, `ord/first`, `this/A`
-ref ::= (THIS | SEQ) SLASH IDENTIFIER (SLASH IDENTIFIER)* | IDENTIFIER (SLASH IDENTIFIER)* {mixin="com.serranofp.alloy.psi.impl.AlloyRefMixin"}
+// An identifier use: `x`, `ord/first`, `this/A`, or a built-in by name, as in util/integer and util/ordering:
+// `n1 fun/add n2`, `pred/totalOrder[elem, first, next]`
+ref ::= (THIS | SEQ | FUN | PRED) SLASH IDENTIFIER (SLASH IDENTIFIER)* | IDENTIFIER (SLASH IDENTIFIER)* {mixin="com.serranofp.alloy.psi.impl.AlloyRefMixin"}
 
 block ::= LBRACE balanced_item* RBRACE {pin=1}
 private bracket_group ::= LBRACKET balanced_item* RBRACKET {pin=1}

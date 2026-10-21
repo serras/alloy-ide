@@ -71,7 +71,7 @@ object AlloyStubElementTypes {
 }
 
 object AlloyFileElementType : IStubFileElementType<PsiFileStub<AlloyFile>>("ALLOY_FILE", AlloyLanguage) {
-    override fun getStubVersion(): Int = 2
+    override fun getStubVersion(): Int = 3
 
     override fun getExternalId(): String = "alloy.FILE"
 

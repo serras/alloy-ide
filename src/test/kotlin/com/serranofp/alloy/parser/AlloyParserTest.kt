@@ -44,6 +44,9 @@ class AlloyParserTest : ParsingTestCase("parser", "als", AlloyParserDefinition()
     /** `x` and `f` in `some x.f`, qualified names, `this/A` and `@f`. */
     fun testReferences() = doTest(true, true)
 
+    /** Built-ins by name, as util/integer and util/ordering use them: `fun/add` and `pred/totalOrder`. */
+    fun testBuiltinReferences() = doTest(true, true)
+
     /** A binder without a bound still declares `x`, and its use is still a reference. */
     fun testBrokenBinder() = doTest(true, true)
 
