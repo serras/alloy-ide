@@ -33,39 +33,35 @@ class AlloyEvaluatorCompletionContributor : CompletionContributor() {
             var start = parameters.offset
             while (start > 0 && isNamePart(text[start - 1])) start--
             val names = result.withPrefixMatcher(text.substring(start, parameters.offset))
-            for (name in names(model)) names.addElement(name.lookup())
+            for (name in NamesProvider.names(model)) names.addElement(name.lookup())
             names.stopHere()
         }
 
         private fun isNamePart(c: Char) = Character.isJavaIdentifierPart(c) || c == '\'' || c == '"' || c == '/'
     }
 
-    /** A name an expression can use, with what it names. */
-    internal data class Name(val text: String, val kind: String, val icon: Icon) {
-        fun lookup(): LookupElement = LookupElementBuilder.create(text).withIcon(icon).withTypeText(kind)
-    }
-
-    internal companion object {
+    internal object NamesProvider {
         fun names(model: AlloySolutionModel): List<Name> {
             val module = model.module ?: return emptyList()
             // Every model opens util/integer, also when it opens it itself
             val opens = module.opens.filter { it.realModule != null && it.realModule !== module }.distinctBy { it.realModule }
             val declared = declarations(module).map { it to null } +
-                opens.flatMap { open -> declarations(open.realModule).map { it to open.alias } }
+                    opens.flatMap { open -> declarations(open.realModule).map { it to open.alias } }
             val counts = declared.groupingBy { it.first.text }.eachCount()
-            val names = declared.map { (name, alias) ->
-                if (alias != null && counts.getValue(name.text) > 1) name.copy(text = "$alias/${name.text}") else name
-            }
-            val atoms = model.solution.allAtoms.map { Name(it.label, "atom", AllIcons.Nodes.Constant) }
-            val skolems = model.solution.allSkolems.map { Name(it.label, "skolem", AllIcons.Nodes.Variable) }
-            return (names + atoms + skolems).distinct()
+            return buildList {
+                declared.mapTo(this) { (name, alias) ->
+                    if (alias != null && counts.getValue(name.text) > 1) name.copy(text = "$alias/${name.text}") else name
+                }
+                model.solution.allAtoms.mapTo(this) { Name(it.label, "atom", AllIcons.Nodes.Constant) }
+                model.solution.allSkolems.mapTo(this) { Name(it.label, "skolem", AllIcons.Nodes.Variable) }
+            }.distinct()
         }
 
         /** The signatures, fields, predicates and functions declared in [module]. */
         private fun declarations(module: CompModule): List<Name> {
             val sigs = module.allSigs.flatMap { sig ->
                 listOf(Name(simple(sig.label), "signature", AllIcons.Nodes.Class)) +
-                    sig.fields.map { Name(it.label, "field", AllIcons.Nodes.Field) }
+                        sig.fields.map { Name(it.label, "field", AllIcons.Nodes.Field) }
             }
             // Commands without a name get a function such as `run$1`
             val funcs = module.allFunc.filter { '$' !in it.label }.map(::func)
@@ -77,5 +73,10 @@ class AlloyEvaluatorCompletionContributor : CompletionContributor() {
 
         /** `this/Node` and `util/ordering/first` are `Node` and `first`. */
         private fun simple(label: String) = label.substringAfterLast('/')
+    }
+
+    /** A name an expression can use, with what it names. */
+    internal data class Name(val text: String, val kind: String, val icon: Icon) {
+        fun lookup(): LookupElement = LookupElementBuilder.create(text).withIcon(icon).withTypeText(kind)
     }
 }

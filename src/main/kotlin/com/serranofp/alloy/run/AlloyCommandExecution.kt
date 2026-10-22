@@ -6,7 +6,6 @@ import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 import com.serranofp.alloy.run.AlloyRunLog.Outcome
 import edu.mit.csail.sdg.ast.Command
 import edu.mit.csail.sdg.ast.Sig
-import edu.mit.csail.sdg.parser.CompModule
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 

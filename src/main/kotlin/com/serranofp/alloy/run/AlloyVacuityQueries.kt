@@ -23,15 +23,12 @@ class AlloyVacuityQueries(val premise: Expr?, val withPremise: Command?, val fac
          * The premise of an assertion: `A` for `A implies B` (without `else`), `some x: T | A` under
          * `all x: T |`, `eventually A` under `always`, also inside a one-element block. Null otherwise.
          */
-        fun premiseOf(assertion: Expr): Expr? {
-            val e = assertion.deNOP()
-            return when {
-                e is ExprList && e.op == ExprList.Op.AND && e.args.size == 1 -> premiseOf(e.args[0])
-                e is ExprQt && e.op == ExprQt.Op.ALL -> premiseOf(e.sub)?.let { ExprQt.Op.SOME.make(e.pos, null, e.decls, it) }
-                e is ExprUnary && e.op == ExprUnary.Op.ALWAYS -> premiseOf(e.sub)?.let { ExprUnary.Op.EVENTUALLY.make(e.pos, it) }
-                e is ExprBinary && e.op == ExprBinary.Op.IMPLIES -> e.left
-                else -> null
-            }
+        fun premiseOf(assertion: Expr): Expr? = when (val e = assertion.deNOP()) {
+            is ExprList if e.op == ExprList.Op.AND && e.args.size == 1 -> premiseOf(e.args[0])
+            is ExprQt if e.op == ExprQt.Op.ALL -> premiseOf(e.sub)?.let { ExprQt.Op.SOME.make(e.pos, null, e.decls, it) }
+            is ExprUnary if e.op == ExprUnary.Op.ALWAYS -> premiseOf(e.sub)?.let { ExprUnary.Op.EVENTUALLY.make(e.pos, it) }
+            is ExprBinary if e.op == ExprBinary.Op.IMPLIES -> e.left
+            else -> null
         }
 
         /**

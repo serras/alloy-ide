@@ -62,10 +62,10 @@ class AlloyFindUsagesProvider : FindUsagesProvider {
 class AlloyUsageTypeProvider : UsageTypeProvider {
     override fun getUsageType(element: PsiElement): UsageType? {
         val reference = element.reference as? AlloyReference ?: return null
-        return if (reference.isExact()) CONFIRMED else UNCONFIRMED
+        return if (reference.isExact()) Usages.CONFIRMED else Usages.UNCONFIRMED
     }
 
-    companion object {
+    object Usages {
         val CONFIRMED = UsageType { "Usages confirmed by the analyzer" }
         val UNCONFIRMED = UsageType { "Unconfirmed usages (the model has errors)" }
     }

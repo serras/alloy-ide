@@ -4,7 +4,6 @@ import com.intellij.codeInspection.InspectionSuppressor
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.SuppressQuickFix
 import com.intellij.codeInspection.SuppressionUtil
-import com.intellij.codeInspection.SuppressionUtilCore
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiComment
@@ -26,15 +25,15 @@ import com.serranofp.alloy.psi.AlloyTypes
  */
 class AlloyInspectionSuppressor : InspectionSuppressor {
     override fun isSuppressedFor(element: PsiElement, toolId: String): Boolean {
-        val paragraph = paragraph(element) ?: return false
-        return suppressionComments(paragraph).any { comment ->
+        val paragraph = Paragraph.paragraph(element) ?: return false
+        return Paragraph.suppressionComments(paragraph).any { comment ->
             val matcher = SuppressionUtil.SUPPRESS_IN_LINE_COMMENT_PATTERN.matcher(comment.text)
             matcher.matches() && SuppressionUtil.isInspectionToolIdMentioned(matcher.group(1), toolId)
         }
     }
 
     override fun getSuppressActions(element: PsiElement?, toolId: String): Array<SuppressQuickFix> {
-        val paragraph = element?.let(::paragraph) ?: return SuppressQuickFix.EMPTY_ARRAY
+        val paragraph = element?.let(Paragraph::paragraph) ?: return SuppressQuickFix.EMPTY_ARRAY
         val kind = when (paragraph) {
             is AlloyPredDecl -> "predicate"
             is AlloyCommandDecl -> "command"
@@ -47,16 +46,16 @@ class AlloyInspectionSuppressor : InspectionSuppressor {
     private class SuppressForParagraphFix(private val toolId: String, private val kind: String) : SuppressQuickFix {
         override fun getFamilyName(): String = "Suppress for $kind"
 
-        override fun isAvailable(project: Project, context: PsiElement): Boolean = paragraph(context) != null
+        override fun isAvailable(project: Project, context: PsiElement): Boolean = Paragraph.paragraph(context) != null
 
         override fun isSuppressAll(): Boolean = false
 
         override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
-            val paragraph = descriptor.psiElement?.let(::paragraph) ?: return
+            val paragraph = descriptor.psiElement?.let(Paragraph::paragraph) ?: return
             val file = paragraph.containingFile
             val documents = PsiDocumentManager.getInstance(project)
             val document = documents.getDocument(file) ?: return
-            val existing = suppressionComments(paragraph).firstOrNull { SuppressionUtil.SUPPRESS_IN_LINE_COMMENT_PATTERN.matcher(it.text).matches() }
+            val existing = Paragraph.suppressionComments(paragraph).firstOrNull { SuppressionUtil.SUPPRESS_IN_LINE_COMMENT_PATTERN.matcher(it.text).matches() }
             if (existing != null) {
                 val matcher = SuppressionUtil.SUPPRESS_IN_LINE_COMMENT_PATTERN.matcher(existing.text)
                 matcher.matches()
@@ -65,13 +64,13 @@ class AlloyInspectionSuppressor : InspectionSuppressor {
                 val start = paragraph.textRange.startOffset
                 val lineStart = document.getLineStartOffset(document.getLineNumber(start))
                 val indent = document.getText(TextRange(lineStart, start)).takeWhile { it == ' ' || it == '\t' }
-                document.insertString(start, "// ${SuppressionUtilCore.SUPPRESS_INSPECTIONS_TAG_NAME} $toolId\n$indent")
+                document.insertString(start, "// noinspection $toolId\n$indent")
             }
             documents.commitDocument(document)
         }
     }
 
-    private companion object {
+    object Paragraph {
         /** The top-level paragraph or command around [element]; `module` and `open` declarations are not. */
         fun paragraph(element: PsiElement): PsiElement? {
             val paragraph = PsiTreeUtil.findFirstParent(element, false) { it.parent is PsiFile } ?: return null

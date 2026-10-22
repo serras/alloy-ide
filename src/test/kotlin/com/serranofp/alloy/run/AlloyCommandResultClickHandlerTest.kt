@@ -5,7 +5,6 @@ import com.intellij.codeInsight.hints.declarative.StringInlayActionPayload
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.intellij.util.ui.UIUtil
 import com.serranofp.alloy.settings.AlloySettings
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
@@ -42,7 +41,7 @@ class AlloyCommandResultClickHandlerTest : BasePlatformTestCase() {
         )
 
     private fun click(command: AlloyCommandRef) =
-        AlloyCommandResultClickHandler().click(myFixture.editor, StringInlayActionPayload(AlloyCommandResultHintsProvider.encode(command)))
+        AlloyCommandResultClickHandler().click(myFixture.editor, StringInlayActionPayload(AlloyCommandResultHintsProvider.Codec.encode(command)))
 
     fun testHandlerIsRegistered() {
         assertInstanceOf(

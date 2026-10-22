@@ -17,7 +17,7 @@ class AlloyFindUsagesTest : BasePlatformTestCase() {
     private fun analyze(vararg files: PsiFile) {
         for (file in files) {
             ApplicationManager.getApplication().executeOnPooledThread<AlloyModelResult> {
-                ReadAction.compute<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(file as AlloyFile) }
+                ReadAction.computeBlocking<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(file as AlloyFile) }
             }.get(30, TimeUnit.SECONDS)
         }
     }
@@ -37,7 +37,7 @@ class AlloyFindUsagesTest : BasePlatformTestCase() {
         )
         // Each entry navigates to the use
         assertTrue(usages.all { it.element!!.text == "p" })
-        assertTrue(usages.all { AlloyUsageTypeProvider().getUsageType(it.element!!) == AlloyUsageTypeProvider.CONFIRMED })
+        assertTrue(usages.all { AlloyUsageTypeProvider().getUsageType(it.element!!) == AlloyUsageTypeProvider.Usages.CONFIRMED })
     }
 
     fun testUsesInAFileWithErrorsAreUnconfirmed() {
@@ -47,8 +47,8 @@ class AlloyFindUsagesTest : BasePlatformTestCase() {
         val predicate = PsiTreeUtil.findChildOfType(a, AlloyPredDecl::class.java)!!
 
         val tree = myFixture.getUsageViewTreeTextRepresentation(predicate)
-        val confirmed = tree.indexOf(AlloyUsageTypeProvider.CONFIRMED.toString())
-        val unconfirmed = tree.indexOf(AlloyUsageTypeProvider.UNCONFIRMED.toString())
+        val confirmed = tree.indexOf(AlloyUsageTypeProvider.Usages.CONFIRMED.toString())
+        val unconfirmed = tree.indexOf(AlloyUsageTypeProvider.Usages.UNCONFIRMED.toString())
         assertTrue(tree, confirmed >= 0 && unconfirmed >= 0)
         // a.als in the confirmed group, b.als in the unconfirmed one
         val groups = if (confirmed < unconfirmed) listOf(tree.substring(confirmed, unconfirmed), tree.substring(unconfirmed))

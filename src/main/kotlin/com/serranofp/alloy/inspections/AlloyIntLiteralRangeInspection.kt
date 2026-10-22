@@ -91,18 +91,18 @@ class AlloyIntLiteralRangeInspection : AlloyModelInspection() {
         return "the $keyword at line ${context.document.getLineNumber(context.range(command.command.pos).startOffset) + 1}"
     }
 
+    /** The integer that [n] stands for with [bitwidth] bits. */
+    fun wrap(n: Int, bitwidth: Int): Int {
+        val min = Util.min(bitwidth).toLong()
+        val size = 1L shl bitwidth
+        return (Math.floorMod(n - min, size) + min).toInt()
+    }
+
     private companion object {
         /** The bitwidth of a command without `int` scope. */
         const val DEFAULT_BITWIDTH = 4
 
         /** The largest bitwidth the analyzer accepts. */
         const val MAX_BITWIDTH = 30
-
-        /** The integer that [n] stands for with [bitwidth] bits. */
-        fun wrap(n: Int, bitwidth: Int): Int {
-            val min = Util.min(bitwidth).toLong()
-            val size = 1L shl bitwidth
-            return (Math.floorMod(n - min, size) + min).toInt()
-        }
     }
 }

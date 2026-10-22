@@ -18,7 +18,7 @@ object AlloyRelationalRules {
     }
 
     /** Whether [node] is a relation, rather than an integer, whose `+` would be an addition. */
-    private fun isRelation(node: Expr): Boolean = node.type().arity() >= 1 && !node.type().is_int() && !node.type().is_small_int()
+    private fun isRelation(node: Expr): Boolean = node.type().arity() >= 1 && !node.type().is_int && !node.type().is_small_int
 
     /** `r + r` and `r & r` → `r` */
     val idempotence: AlloyRewriteRule = AlloySimplification(family) { node ->

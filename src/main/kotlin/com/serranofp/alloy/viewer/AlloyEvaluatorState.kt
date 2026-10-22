@@ -19,6 +19,7 @@ class FileWatches : BaseState() {
 
 class AlloyEvaluatorWatches : BaseState() {
     var files by list<FileWatches>()
+    fun increment() { this.incrementModificationCount() }
 }
 
 /**
@@ -38,7 +39,7 @@ class AlloyEvaluatorState : SimplePersistentStateComponent<AlloyEvaluatorWatches
             it.url = file.url
             it.expressions = expressions.toMutableList()
         }
-        state.intIncrementModificationCount()
+        state.increment()
     }
 
     override fun loadState(state: AlloyEvaluatorWatches) {

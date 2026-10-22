@@ -121,20 +121,18 @@ internal fun AlloyPiece.allUses(): List<Expr> = uses + when (this) {
  */
 class AlloyRewriteRenderer(private val symbolic: Boolean) {
     fun render(piece: AlloyPiece, position: AlloyPosition): String {
-        if (piece is AlloyPiece.Group) return "(" + render(piece.piece, AlloyPosition.TOP) + ")"
+        if (piece is AlloyPiece.Group) return "(${render(piece.piece, AlloyPosition.TOP)})"
         val parenthesized = when (piece) {
             is AlloyPiece.Slice -> position.needsParentheses(piece.level, piece.isBind, piece.endsOpen)
             // An operator ending in a quantifier gets the quantifier parenthesized, rather than itself
             is AlloyPiece.Op -> position.needsParentheses(piece.operator.level, isBind = false, endsOpen = false)
             is AlloyPiece.Bind -> position.needsParentheses(AlloyPrecedence.BIND, isBind = true, endsOpen = true)
-            is AlloyPiece.Group -> false
         }
         val rightOpen = parenthesized || position.rightOpen
         val text = when (piece) {
             is AlloyPiece.Slice -> piece.source.text
             is AlloyPiece.Op -> renderOp(piece, rightOpen)
-            is AlloyPiece.Bind -> "${piece.quantifier} ${piece.decls} | " + render(piece.body, AlloyPosition(AlloyPrecedence.SEQ, true, rightOpen))
-            is AlloyPiece.Group -> render(piece.piece, AlloyPosition.TOP)
+            is AlloyPiece.Bind -> "${piece.quantifier} ${piece.decls} | ${render(piece.body, AlloyPosition(AlloyPrecedence.SEQ, true, rightOpen))}"
         }
         return if (parenthesized) "($text)" else text
     }
@@ -147,7 +145,8 @@ class AlloyRewriteRenderer(private val symbolic: Boolean) {
         }
         val spelling = operator.spelling(symbolic)
         return when (operator.fixity) {
-            AlloyFixity.PREFIX, AlloyFixity.MULTIPLICITY -> if (spelling.first().isLetter()) "$spelling ${operands.single()}" else spelling + operands.single()
+            AlloyFixity.PREFIX, AlloyFixity.MULTIPLICITY ->
+                if (spelling.first().isLetter()) "$spelling ${operands.single()}" else "$spelling${operands.single()}"
             AlloyFixity.POSTFIX -> operands.single() + spelling
             AlloyFixity.DOT -> operands.joinToString(spelling)
             else -> operands.joinToString(" $spelling ")

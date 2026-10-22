@@ -118,10 +118,9 @@ class AlloySourceText(val file: AlloyFile, val document: Document) {
         val unclosed = ArrayList<IElementType>()
         val unopened = ArrayList<IElementType>()
         for (token in tokens(range)) {
-            val type = token.elementType ?: continue
-            when {
-                type in OPENERS -> unclosed += type
-                type in CLOSERS -> when {
+            when (val type = token.elementType ?: continue) {
+                in OPENERS -> unclosed += type
+                in CLOSERS -> when {
                     unclosed.isEmpty() -> unopened += type
                     closerOf(unclosed.last()) == type -> unclosed.removeLast()
                     else -> return null
@@ -136,11 +135,10 @@ class AlloySourceText(val file: AlloyFile, val document: Document) {
             var nested = 0
             var token = previousToken(start)
             while (next < unopened.size) {
-                val type = token?.elementType ?: return null
-                when {
-                    type in CLOSERS -> nested++
-                    type in OPENERS && nested > 0 -> nested--
-                    type in OPENERS -> {
+                when (val type = token?.elementType ?: return null) {
+                    in CLOSERS -> nested++
+                    in OPENERS if nested > 0 -> nested--
+                    in OPENERS -> {
                         if (closerOf(type) != unopened[next]) return null
                         next++
                         start = token.textRange.startOffset
@@ -154,11 +152,10 @@ class AlloySourceText(val file: AlloyFile, val document: Document) {
             var nested = 0
             var token = nextToken(end)
             while (next >= 0) {
-                val type = token?.elementType ?: return null
-                when {
-                    type in OPENERS -> nested++
-                    type in CLOSERS && nested > 0 -> nested--
-                    type in CLOSERS -> {
+                when (val type = token?.elementType ?: return null) {
+                    in OPENERS -> nested++
+                    in CLOSERS if nested > 0 -> nested--
+                    in CLOSERS -> {
                         if (closerOf(unclosed[next]) != type) return null
                         next--
                         end = token.textRange.endOffset

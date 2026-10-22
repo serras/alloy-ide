@@ -35,12 +35,12 @@ class AlloyEvaluatorCompletionTest : BasePlatformTestCase() {
         val offered = variants(model, "<caret>")
         assertContainsElements(offered, "Node", "succ", "linked", "\$show_n", "plus")
         assertEmpty(offered.filter { it in KEYWORDS })
-        assertSameElements(offered, AlloyEvaluatorCompletionContributor.names(model).map { it.text })
+        assertSameElements(offered, AlloyEvaluatorCompletionContributor.NamesProvider.names(model).map { it.text })
     }
 
     fun testOpenedModulesAreQualifiedWhenAmbiguous() {
         val model = model("open util/ordering[A] as ao\nopen util/ordering[B] as bo\nopen util/integer\nsig A {}\nsig B {}\nrun {} for 2")
-        val names = AlloyEvaluatorCompletionContributor.names(model).map { it.text }
+        val names = AlloyEvaluatorCompletionContributor.NamesProvider.names(model).map { it.text }
         assertContainsElements(names, "A", "ao/first", "bo/first", "ao/Ord", "bo/Ord", "add", "integer/max")
         // `next` is in both orderings and in util/integer
         assertContainsElements(names, "ao/next", "bo/next", "integer/next")

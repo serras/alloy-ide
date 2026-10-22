@@ -106,11 +106,12 @@ class AlloyRewriteWalker(private val source: AlloySourceText, private val rules:
         return results
     }
 
-    private fun roots(module: CompModule): List<Expr> =
-        module.allFacts.map { it.b } +
-            module.allAssertions.map { it.expr } +
-            module.allFunc.map { it.body } +
-            module.allSigs.flatMap { it.facts }
+    private fun roots(module: CompModule): List<Expr> = buildList {
+        module.allFacts.mapTo(this) { it.b }
+        module.allAssertions.mapTo(this) { it.expr }
+        module.allFunc.mapTo(this) { it.body }
+        module.allSigs.flatMapTo(this) { it.facts }
+    }
 
     private fun visit(node: Expr, position: AlloyPosition, ancestors: List<Expr>, paragraph: PsiElement, foreign: Boolean, results: MutableList<AlloyRewriteResult>) {
         // A node of a macro's body, or of another file: what is under it is not written here

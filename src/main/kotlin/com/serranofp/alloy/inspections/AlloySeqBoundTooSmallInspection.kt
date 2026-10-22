@@ -44,7 +44,7 @@ class AlloySeqBoundTooSmallInspection : AlloyCommandInspection() {
             }
         }.distinct()
 
-    private fun elements(bound: Expr): List<PrimSig> {
+    private fun elements(bound: Expr): Sequence<PrimSig> {
         val sequences = mutableListOf<ExprBinary>()
         bound.accept(object : VisitQuery<Unit>() {
             override fun visit(x: ExprBinary): Unit? {
@@ -52,6 +52,11 @@ class AlloySeqBoundTooSmallInspection : AlloyCommandInspection() {
                 return super.visit(x)
             }
         })
-        return sequences.flatMap { it.right.type().fold() }.mapNotNull { it.lastOrNull() }.map(::topLevel).filter(::isUser).distinct()
+        return sequences.asSequence()
+            .flatMap { it.right.type().fold() }
+            .mapNotNull { it.lastOrNull() }
+            .map(::topLevel)
+            .filter(::isUser)
+            .distinct()
     }
 }

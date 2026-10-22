@@ -33,10 +33,12 @@ class AlloyStaticPrimeInspection : AlloyModelInspection() {
         val module = context.model.module
         val analysis = AlloyFrameAnalysis()
         val reported = HashSet<TextRange>()
-        val roots = module.allFacts.map { it.b to null } +
-            module.allAssertions.map { it.expr to null } +
-            module.allFunc.map { it.body to it } +
-            module.allSigs.filter(::isUser).flatMap { sig -> sig.facts.map { it to null } }
+        val roots = buildList {
+            module.allFacts.mapTo(this) { it.b to null }
+            module.allAssertions.mapTo(this) { it.expr to null }
+            module.allFunc.mapTo(this) { it.body to it }
+            module.allSigs.filter(::isUser).flatMapTo(this) { sig -> sig.facts.map { it to null } }
+        }
         for ((body, func) in roots) {
             if (!context.inFile(body.span())) continue
             val lets = HashMap<ExprVar, Expr>()
@@ -82,12 +84,12 @@ class AlloyStaticPrimeInspection : AlloyModelInspection() {
         val range = balanced(context.document, written, paragraph.textRange)
         val text = context.document.getText(range)
         val unprimed = text.removeSuffix("'")
-        val sub = x.sub.deNOP()
-        val message = when {
-            sub is ExprVar && func != null && func.params().any { it === sub } ->
+        val message = when (val sub = x.sub.deNOP()) {
+            is ExprVar if func != null && func.params().any { it === sub } ->
                 "${sub.label} is a parameter, and parameters keep their value across states, so $text is the same as $unprimed. " +
-                    "A macro, such as ${macro(context, func)}, primes its argument instead"
-            sub is ExprVar -> "${sub.label} is a quantified variable, which keeps its value across states, so $text is the same as $unprimed"
+                        "A macro, such as ${macro(context, func)}, primes its argument instead"
+
+            is ExprVar -> "${sub.label} is a quantified variable, which keeps its value across states, so $text is the same as $unprimed"
             else -> {
                 val statics = relations(x.sub)
                 when (statics.size) {

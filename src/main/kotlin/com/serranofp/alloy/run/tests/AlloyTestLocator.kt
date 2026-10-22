@@ -20,13 +20,13 @@ import com.serranofp.alloy.run.AlloyCommands
 object AlloyTestLocator : SMTestLocator {
     const val PROTOCOL = "alloy"
 
-    fun url(file: VirtualFile, ref: AlloyCommandRef): String = "$PROTOCOL://${file.url}#${AlloyCommandResultHintsProvider.encode(ref)}"
+    fun url(file: VirtualFile, ref: AlloyCommandRef): String = "$PROTOCOL://${file.url}#${AlloyCommandResultHintsProvider.Codec.encode(ref)}"
 
     /** The file URL and the command of the path of a location (what follows `alloy://`). */
     fun parse(path: String): Pair<String, AlloyCommandRef>? {
         val hash = path.lastIndexOf('#')
         if (hash < 0) return null
-        val ref = AlloyCommandResultHintsProvider.decode(path.substring(hash + 1)) ?: return null
+        val ref = AlloyCommandResultHintsProvider.Codec.decode(path.substring(hash + 1)) ?: return null
         return path.substring(0, hash) to ref
     }
 

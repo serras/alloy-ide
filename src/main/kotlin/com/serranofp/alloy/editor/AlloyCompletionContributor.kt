@@ -39,7 +39,7 @@ import com.serranofp.alloy.semantics.AlloyReference
 import com.serranofp.alloy.semantics.AlloyScopes
 import com.serranofp.alloy.viewer.isAlloyEvaluatorFragment
 
-/** What completion offers at a position, decided from the PSI around it. */
+/** What completion offers at a position, decided from the surrounding PSI. */
 sealed interface AlloyCompletionContext {
     /** A comment or a string. */
     data object None : AlloyCompletionContext

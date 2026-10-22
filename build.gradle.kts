@@ -83,14 +83,8 @@ intellijPlatform {
                 untilBuild = provider { null }
             }
         }
-        // Internal and override-only API usages are reported, without failing the build: the evaluator's watch
-        // state and the structure view's navigation use such APIs
-        failureLevel = listOf(
-            VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
-            VerifyPluginTask.FailureLevel.MISSING_DEPENDENCIES,
-            VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
-            VerifyPluginTask.FailureLevel.NON_EXTENDABLE_API_USAGES,
-        )
+        val doNotReport = setOf(VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES, VerifyPluginTask.FailureLevel.SCHEDULED_FOR_REMOVAL_API_USAGES)
+        failureLevel = VerifyPluginTask.FailureLevel.ALL - doNotReport
     }
 }
 

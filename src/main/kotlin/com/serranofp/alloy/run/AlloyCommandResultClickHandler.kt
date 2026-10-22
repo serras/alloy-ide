@@ -17,7 +17,7 @@ class AlloyCommandResultClickHandler : InlayActionHandler {
 
     fun click(editor: Editor, payload: InlayActionPayload) {
         val project = editor.project ?: return
-        val ref = (payload as? StringInlayActionPayload)?.text?.let(AlloyCommandResultHintsProvider::decode) ?: return
+        val ref = (payload as? StringInlayActionPayload)?.text?.let(AlloyCommandResultHintsProvider.Codec::decode) ?: return
         val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
         val result = AlloyCommandResults.getInstance(project).get(file, ref) ?: return
         if (result.state == CommandState.Running) {

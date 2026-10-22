@@ -94,7 +94,7 @@ class AlloyInstanceViewerTest : BasePlatformTestCase() {
 
     fun testHintClickOpensTheViewer() {
         found(show, counterexample = false)
-        AlloyCommandResultClickHandler().click(myFixture.editor, StringInlayActionPayload(AlloyCommandResultHintsProvider.encode(show)))
+        AlloyCommandResultClickHandler().click(myFixture.editor, StringInlayActionPayload(AlloyCommandResultHintsProvider.Codec.encode(show)))
         assertEquals(show, viewer.session!!.origin.command)
     }
 

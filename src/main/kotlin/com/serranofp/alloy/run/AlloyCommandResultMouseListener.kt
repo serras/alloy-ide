@@ -35,6 +35,6 @@ class AlloyCommandResultMouseListener(
         val result = AlloyCommandResults.getInstance(project).get(file, ref) ?: return
         if (result.link == null && result.state != CommandState.Running) return
         e.consume()
-        handler.click(editor, StringInlayActionPayload(AlloyCommandResultHintsProvider.encode(ref)))
+        handler.click(editor, StringInlayActionPayload(AlloyCommandResultHintsProvider.Codec.encode(ref)))
     }
 }

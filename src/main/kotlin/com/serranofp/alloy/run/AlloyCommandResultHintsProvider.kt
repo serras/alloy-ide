@@ -43,7 +43,7 @@ class AlloyCommandResultHintsProvider : InlayHintsProvider {
             val format = if (outdated != null) HintFormat.default.withColorKind(HintColorKind.TextWithoutBackground) else HintFormat.default
             val text = if (outdated != null) "${result.summary}$OUTDATED_SUFFIX" else result.summary
             val action = if (result.link != null || result.state == CommandState.Running) {
-                InlayActionData(StringInlayActionPayload(encode(ref)), AlloyCommandResultClickHandler.HANDLER_ID)
+                InlayActionData(StringInlayActionPayload(Codec.encode(ref)), AlloyCommandResultClickHandler.HANDLER_ID)
             } else {
                 null
             }
@@ -56,7 +56,9 @@ class AlloyCommandResultHintsProvider : InlayHintsProvider {
     companion object {
         const val PROVIDER_ID = "alloy.command.results"
         const val OUTDATED_SUFFIX = " (outdated)"
+    }
 
+    object Codec {
         /** The click payload: `<index>:<label>`, with an empty label for unlabelled commands. */
         fun encode(ref: AlloyCommandRef): String = "${ref.index}:${ref.label.orEmpty()}"
 

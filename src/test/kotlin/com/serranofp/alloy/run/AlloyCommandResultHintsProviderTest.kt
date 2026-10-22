@@ -117,7 +117,7 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
         assertEquals(HintFormat.default, hint.format)
         assertEquals(AlloyCommandResultTooltip.html(results.get(file, show)!!, null), hint.tooltip)
         assertEquals(AlloyCommandResultClickHandler.HANDLER_ID, hint.action!!.handlerId)
-        assertEquals(show, AlloyCommandResultHintsProvider.decode((hint.action!!.payload as StringInlayActionPayload).text))
+        assertEquals(show, AlloyCommandResultHintsProvider.Codec.decode((hint.action.payload as StringInlayActionPayload).text))
     }
 
     fun testOnlyTheExecutedCommandGetsAHint() {
@@ -129,7 +129,7 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
         val third = AlloyCommandRef(null, 2)
         record(third, CommandState.NoInstance, "No instance found · 1 ms")
         assertEquals(listOf(5), hints().map { it.line })
-        assertEquals(third, AlloyCommandResultHintsProvider.decode(AlloyCommandResultHintsProvider.encode(third)))
+        assertEquals(third, AlloyCommandResultHintsProvider.Codec.decode(AlloyCommandResultHintsProvider.Codec.encode(third)))
     }
 
     fun testOutdatedAfterAnEdit() {
@@ -207,7 +207,7 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
             val hint = hints().single()
             assertTrue("$vacuity: ${hint.text}", hint.text.matches(text))
             assertTrue("$vacuity: ${hint.tooltip}", hint.tooltip!!.contains("<b>Vacuity check</b>"))
-            assertTrue(hint.tooltip!!.contains(AlloyCommandResultTooltip.vacuity(vacuity).first().replace("'", "&#39;")))
+            assertTrue(hint.tooltip.contains(AlloyCommandResultTooltip.vacuity(vacuity).first().replace("'", "&#39;")))
             assertNull(hint.action)
         }
     }

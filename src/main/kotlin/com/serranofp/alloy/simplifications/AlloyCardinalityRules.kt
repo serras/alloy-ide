@@ -67,7 +67,7 @@ object AlloyCardinalityRules {
             isNone(comparison.left) -> comparison.right to strip(comparison.left)
             else -> return@AlloySimplification null
         }
-        if (set.type().arity() != 1 || set.type().is_int() || set.type().is_small_int()) return@AlloySimplification null
+        if (set.type().arity() != 1 || set.type().is_int || set.type().is_small_int) return@AlloySimplification null
         val operator = if (comparison.op == ExprBinary.Op.EQUALS) AlloyOperator.NO else AlloyOperator.SOME
         val operand = slice(set) ?: return@AlloySimplification null
         val keyword = operator.keyword
