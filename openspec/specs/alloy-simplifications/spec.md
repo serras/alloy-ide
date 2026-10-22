@@ -46,7 +46,7 @@ A simplification SHALL be offered only when the formula, and every part of it th
 ### Requirement: Rewrites keep the meaning and the user's text
 Applying a quick-fix or intention SHALL replace exactly the rewritten formula, together with any parentheses written around it, by an equivalent formula. The replacement SHALL reuse the source text of the operands it keeps, comments and line breaks included, and their parentheses. It SHALL add parentheses only where an operand or the result would otherwise be read differently, and it SHALL type-check. A replacement that is a single operand, written in parentheses that its place does not need, SHALL drop them, unless a comment is written inside them.
 
-The places where a quantifier or `let` would extend further than its operand SHALL get it in parentheses, including before a `;`, whose left side a quantifier's body takes in. The receiver `e` of a method-style call `e.f` SHALL be treated as the left side of a `.`, not as an argument in brackets.
+The places where a quantifier or `let` would extend further than its operand SHALL get it in parentheses, including before a `;`, whose left side a quantifier's body takes in. So SHALL the places where the analyzer's grammar does not take one: after a binary operator such as `and`, `or` or `iff` a quantifier MAY be written bare, but something that merely ends in one, such as `not all x: A | p` or `always all x: A | p`, SHALL NOT, while under `implies`, a prefix operator, or at the top of a formula it MAY. The receiver `e` of a method-style call `e.f` SHALL be treated as the left side of a `.`, not as an argument in brackets.
 
 #### Scenario: Parentheses no longer needed
 - **WHEN** the user applies the quick-fix to `always (always p)`, or to `not (not (a or b))` on a line of its own
@@ -55,6 +55,10 @@ The places where a quantifier or `let` would extend further than its operand SHA
 #### Scenario: Quantifier before a sequence
 - **WHEN** the user applies the quick-fix to `not (some n: Node | n in n.succ) ; p`
 - **THEN** the text reads `(no n: Node | n in n.succ) ; p`, and not `no n: Node | n in n.succ ; p`, which means `no n: Node | (n in n.succ ; p)`
+
+#### Scenario: Quantifier under a prefix operator at the end of a conjunction
+- **WHEN** the user applies "Replace with 'no'" to `(all n: Node | not p[n])` in `some Node and always (all n: Node | not p[n])`
+- **THEN** the text reads `some Node and always (no n: Node | p[n])`, and not `some Node and always no n: Node | p[n]`, which the analyzer rejects
 
 #### Scenario: Receiver of a call
 - **WHEN** a model has `fun g[s: Node -> Node]: set Node`, and the user applies the quick-fix to `Node->Node + Node->Node` in `some (Node->Node + Node->Node).g`

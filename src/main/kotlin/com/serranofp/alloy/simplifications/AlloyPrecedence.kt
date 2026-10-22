@@ -68,13 +68,23 @@ object AlloyPrecedence {
 
 /**
  * Where an operand sits under its operator: it is written without parentheses when its level is at least
- * [level]. It may be a quantifier or `let` when [bindAllowed], as the last operand of most operators. A
- * [rightmost] operand extends as far as its operator does, and a [bounded] one is enclosed by brackets.
+ * [level]. It may be a quantifier or `let` when [bindAllowed], as the last operand of most operators, and it
+ * may end in one when [opensAllowed]: the grammar's `…A` variants take, as their last operand, either a bare
+ * quantifier (`AndExprB AND Bind`) or, for prefix operators, multiplicities, comparisons and `implies` only,
+ * something that ends in one (`NOT UnaryExprA`). Either way the operator then ends open itself, which its
+ * own place must allow. A [rightmost] operand extends as far as its operator does, and a [bounded] one is
+ * enclosed by brackets.
  */
-data class AlloyOperandSpec(val level: Int, val bindAllowed: Boolean, val rightmost: Boolean, val bounded: Boolean = false) {
+data class AlloyOperandSpec(
+    val level: Int,
+    val bindAllowed: Boolean,
+    val rightmost: Boolean,
+    val bounded: Boolean = false,
+    val opensAllowed: Boolean = false,
+) {
     companion object {
         /** An operand in brackets, braces or a block line: anything goes. */
-        val BOUNDED = AlloyOperandSpec(AlloyPrecedence.SEQ, bindAllowed = true, rightmost = false, bounded = true)
+        val BOUNDED = AlloyOperandSpec(AlloyPrecedence.SEQ, bindAllowed = true, rightmost = false, bounded = true, opensAllowed = true)
 
         /** An operand whose context is not known: only atoms go without parentheses. */
         val CONSERVATIVE = AlloyOperandSpec(AlloyPrecedence.ATOM, bindAllowed = false, rightmost = false)
@@ -82,18 +92,40 @@ data class AlloyOperandSpec(val level: Int, val bindAllowed: Boolean, val rightm
 }
 
 /**
- * Where a node or a replacement sits: [AlloyOperandSpec.level] and [bindAllowed] as for its operand spec, and
- * [rightOpen] when nothing follows it up to the end of what encloses it, so that it may end open.
+ * Where a node or a replacement sits: [AlloyOperandSpec.level], [bindAllowed] and [opensAllowed] as for its
+ * operand spec, the latter two only where what encloses it may end open too, and [rightOpen] when nothing
+ * follows it up to the end of what encloses it, so that it may end open.
  */
-data class AlloyPosition(val level: Int, val bindAllowed: Boolean, val rightOpen: Boolean) {
-    /** Whether something of [level] needs parentheses here: a quantifier or `let` if [isBind], or something ending in one if [endsOpen]. */
+data class AlloyPosition(val level: Int, val bindAllowed: Boolean, val rightOpen: Boolean, val opensAllowed: Boolean = false) {
+    /**
+     * Whether something of [level] needs parentheses here: a quantifier or `let` if [isBind], or something
+     * ending in one if [endsOpen], such as `not all x: A | p` as the last operand of an `and`.
+     */
     fun needsParentheses(level: Int, isBind: Boolean, endsOpen: Boolean): Boolean =
         if (isBind) !(rightOpen && (bindAllowed || this.level <= AlloyPrecedence.BIND))
-        else level < this.level || (endsOpen && !rightOpen)
+        else level < this.level || (endsOpen && !(rightOpen && opensAllowed))
+
+    /**
+     * Where an operand of [spec] sits under a node here, which is [parenthesized] or not. A quantifier as the
+     * operand makes the node end open, and so does an operand that ends in one: both need the node in
+     * parentheses or where it may end open.
+     */
+    fun operand(spec: AlloyOperandSpec, parenthesized: Boolean): AlloyPosition {
+        if (spec.bounded) return AlloyPosition(spec.level, spec.bindAllowed, rightOpen = true, spec.opensAllowed)
+        val rightOpen = spec.rightmost && (parenthesized || this.rightOpen)
+        val opens = rightOpen && (parenthesized || opensAllowed)
+        return AlloyPosition(spec.level, spec.bindAllowed && opens, rightOpen, spec.opensAllowed && opens)
+    }
 
     companion object {
         /** A whole block line, paragraph body, or quantifier or `let` body. */
-        val TOP = AlloyPosition(AlloyPrecedence.SEQ, bindAllowed = true, rightOpen = true)
+        val TOP = AlloyPosition(AlloyPrecedence.SEQ, bindAllowed = true, rightOpen = true, opensAllowed = true)
+
+        /**
+         * The body of a quantifier or `let`, `BAR ExprNoSeq`, which may end open anywhere it may be: [rightOpen]
+         * when the quantifier is.
+         */
+        fun body(rightOpen: Boolean) = AlloyPosition(AlloyPrecedence.SEQ, bindAllowed = true, rightOpen, opensAllowed = true)
     }
 }
 
@@ -158,9 +190,9 @@ enum class AlloyOperator(val level: Int, val fixity: AlloyFixity, val keyword: S
 
     /** Where operand [index] of [count] sits. */
     fun operand(index: Int, count: Int): AlloyOperandSpec = when (fixity) {
-        AlloyFixity.PREFIX -> AlloyOperandSpec(level, bindAllowed = true, rightmost = true)
-        // `some e` takes an expression above the comparisons, which cannot be a quantifier
-        AlloyFixity.MULTIPLICITY -> AlloyOperandSpec(AlloyPrecedence.SHIFT, bindAllowed = false, rightmost = true)
+        AlloyFixity.PREFIX -> AlloyOperandSpec(level, bindAllowed = true, rightmost = true, opensAllowed = true)
+        // `some e` takes an expression above the comparisons, which cannot be a quantifier but may end in one
+        AlloyFixity.MULTIPLICITY -> AlloyOperandSpec(AlloyPrecedence.SHIFT, bindAllowed = false, rightmost = true, opensAllowed = true)
         AlloyFixity.POSTFIX -> AlloyOperandSpec(AlloyPrecedence.UNOP, bindAllowed = false, rightmost = false)
         AlloyFixity.NARY -> (index == count - 1).let { AlloyOperandSpec(level, bindAllowed = it, rightmost = it) }
         AlloyFixity.LEFT ->
@@ -168,10 +200,11 @@ enum class AlloyOperator(val level: Int, val fixity: AlloyFixity, val keyword: S
             else AlloyOperandSpec(level + 1, bindAllowed = true, rightmost = true)
         AlloyFixity.RIGHT ->
             if (index == 0) AlloyOperandSpec(level + 1, bindAllowed = false, rightmost = false)
-            else AlloyOperandSpec(level, bindAllowed = true, rightmost = true)
+            // `AndExprB IMPLIES ImpliesExprA`, but `DomainExprB RelOp Bind`
+            else AlloyOperandSpec(level, bindAllowed = true, rightmost = true, opensAllowed = this == IMPLIES)
         AlloyFixity.COMPARISON ->
             if (index == 0) AlloyOperandSpec(level, bindAllowed = false, rightmost = false)
-            else AlloyOperandSpec(AlloyPrecedence.SHIFT, bindAllowed = false, rightmost = true)
+            else AlloyOperandSpec(AlloyPrecedence.SHIFT, bindAllowed = false, rightmost = true, opensAllowed = true)
         AlloyFixity.DOT ->
             if (index == 0) AlloyOperandSpec(AlloyPrecedence.BRACKET, bindAllowed = false, rightmost = false)
             else AlloyOperandSpec(AlloyPrecedence.UNOP, bindAllowed = true, rightmost = true)

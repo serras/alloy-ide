@@ -103,4 +103,13 @@ class AlloyStaticPrimeTest : AlloyInspectionTestCase() {
         myFixture.checkResult(network + "pred step[n: Node] { some (n.succ) }\n")
         assertEmpty(problems())
     }
+
+    fun testRemoveThePrimePreview() {
+        val model = network + "pred step { inbox' = inbox + succ' }\n"
+        myFixture.configureByText("model.als", model)
+        myFixture.doHighlighting()
+        myFixture.editor.caretModel.moveToOffset(model.indexOf("succ'"))
+        assertEquals(network + "pred step { inbox' = inbox + succ }\n", myFixture.getIntentionPreviewText(myFixture.findSingleIntention("Remove the prime")))
+        assertEquals(model, myFixture.editor.document.text)
+    }
 }

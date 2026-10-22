@@ -135,4 +135,6 @@ tasks.test {
     // Load only this plugin in tests; the full unified IDE distribution fails to start under the test
     // classpath (https://github.com/JetBrains/intellij-platform-gradle-plugin/issues/2261)
     systemProperty("idea.load.plugins.id", "com.serranofp.alloy-ide")
+    // Preferences in memory, so that tests never touch the developer's own (see InMemoryPreferencesFactory)
+    systemProperty("java.util.prefs.PreferencesFactory", "com.serranofp.alloy.settings.InMemoryPreferencesFactory")
 }

@@ -1,5 +1,6 @@
 package com.serranofp.alloy.inspections
 
+import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.lang.annotation.HighlightSeverity
 import com.serranofp.alloy.PracticalAlloyCorpus
@@ -144,5 +145,18 @@ class AlloyScopeInspectionsTest : AlloyInspectionTestCase() {
         val inspection = AlloySeqBoundTooSmallInspection()
         configure(inspection, "sig Node { path: seq Node }\nrun {} for 3 but 2 seq")
         assertEmpty(detailedProblems(inspection))
+    }
+
+    fun testAddScopePreview() {
+        val inspection = AlloyUnscopedMutableSignatureInspection()
+        val model = "sig Node { var inbox: set Message }\nsig Message {}\nrun {} for 3 but 2 Node"
+        configure(inspection, model)
+        myFixture.doHighlighting()
+        myFixture.editor.caretModel.moveToOffset(model.indexOf("for 3"))
+        val preview = myFixture.getIntentionPreviewText(myFixture.findSingleIntention("Add a scope for Message"))
+        assertEquals("sig Node { var inbox: set Message }\nsig Message {}\nrun {} for 3 but 2 Node, 3 Message", preview)
+        // No template is started by the preview, and the file is unchanged
+        assertNull(TemplateManagerImpl.getTemplateState(myFixture.editor))
+        assertEquals(model, myFixture.editor.document.text)
     }
 }

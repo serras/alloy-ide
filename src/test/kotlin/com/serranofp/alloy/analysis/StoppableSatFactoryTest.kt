@@ -49,6 +49,38 @@ class StoppableSatFactoryTest : BasePlatformTestCase() {
         }
     }
 
+    /** A solver given a few clauses, for which SAT4J searches. */
+    private fun SATSolver.withClauses(): SATSolver = apply {
+        addVariables(2)
+        addClause(intArrayOf(1, 2))
+        addClause(intArrayOf(-1, -2))
+    }
+
+    /** SAT4J forgets an expiry when it starts to search, so a stop before the solver exists must still be seen. */
+    fun testSolverCreatedAfterTheStopDoesNotAnswer() {
+        val stoppable = StoppableSatFactory(SATFactory.DEFAULT)
+        stoppable.stop()
+        val solver = stoppable.instance().withClauses()
+        assertThrows(RuntimeException::class.java) { solver.solve() }
+    }
+
+    fun testSolverStoppedBeforeItSolvesDoesNotAnswer() {
+        val stoppable = StoppableSatFactory(SATFactory.DEFAULT)
+        val solver = stoppable.instance().withClauses()
+        stoppable.stop()
+        assertThrows(RuntimeException::class.java) { solver.solve() }
+    }
+
+    /** An enumeration solves again with the factory of the stopped analysis, once rearmed. */
+    fun testRearmedSolversSolve() {
+        val stoppable = StoppableSatFactory(SATFactory.DEFAULT)
+        val before = stoppable.instance().withClauses()
+        stoppable.stop()
+        stoppable.rearm()
+        assertTrue(before.solve())
+        assertTrue(stoppable.instance().withClauses().solve())
+    }
+
     /**
      * A stand-in external solver: a script that never answers, as a solver busy solving. It blocks in the
      * `read` builtin, so that the process to destroy is the script itself, with no child.

@@ -22,7 +22,15 @@ class AlloyDesktopPreferencesTest : BasePlatformTestCase() {
         return node.keys().associateWith { node.get(it, null) }
     }
 
+    /** The preferences are the build's in-memory ones, so the test cannot change the developer's own. */
+    fun testPreferencesAreInMemory() {
+        assertEquals(InMemoryPreferencesFactory::class.java.name, System.getProperty("java.util.prefs.PreferencesFactory"))
+        assertEquals(InMemoryPreferencesFactory::class.java, Preferences.userRoot().javaClass.enclosingClass)
+    }
+
     fun testRunLeavesTheDesktopPreferencesUnchanged() {
+        // A value of the desktop application's, which the run must keep
+        Preferences.userRoot().node(path).put("marker", "kept")
         val before = snapshot()
         AlloyCommandResults.getInstance(project).clear()
         val settings = AlloySettings.getInstance()

@@ -163,7 +163,8 @@ class AlloyRemovePrimeFix(prime: PsiElement) : LocalQuickFixAndIntentionActionOn
 
     override fun invoke(project: Project, file: PsiFile, editor: Editor?, startElement: PsiElement, endElement: PsiElement) {
         val documents = PsiDocumentManager.getInstance(project)
-        val document = documents.getDocument(file) ?: return
+        // Not PsiDocumentManager.getDocument, which has no document for the copy an intention preview edits
+        val document = file.viewProvider.document ?: return
         document.deleteString(startElement.textRange.startOffset, startElement.textRange.endOffset)
         documents.commitDocument(document)
     }

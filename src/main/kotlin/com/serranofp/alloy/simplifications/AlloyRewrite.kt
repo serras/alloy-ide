@@ -122,20 +122,18 @@ class AlloyRewriteRenderer(private val symbolic: Boolean) {
             is AlloyPiece.Op -> position.needsParentheses(piece.operator.level, isBind = false, endsOpen = false)
             is AlloyPiece.Bind -> position.needsParentheses(AlloyPrecedence.BIND, isBind = true, endsOpen = true)
         }
-        val rightOpen = parenthesized || position.rightOpen
         val text = when (piece) {
             is AlloyPiece.Slice -> piece.text
-            is AlloyPiece.Op -> renderOp(piece, rightOpen)
-            is AlloyPiece.Bind -> "${piece.quantifier} ${piece.decls} | ${render(piece.body, AlloyPosition(AlloyPrecedence.SEQ, true, rightOpen))}"
+            is AlloyPiece.Op -> renderOp(piece, position, parenthesized)
+            is AlloyPiece.Bind -> "${piece.quantifier} ${piece.decls} | ${render(piece.body, AlloyPosition.body(parenthesized || position.rightOpen))}"
         }
         return if (parenthesized) "($text)" else text
     }
 
-    private fun renderOp(op: AlloyPiece.Op, rightOpen: Boolean): String {
+    private fun renderOp(op: AlloyPiece.Op, position: AlloyPosition, parenthesized: Boolean): String {
         val operator = op.operator
         val operands = op.operands.mapIndexed { i, operand ->
-            val spec = operator.operand(i, op.operands.size)
-            render(operand, AlloyPosition(spec.level, spec.bindAllowed, spec.bounded || (spec.rightmost && rightOpen)))
+            render(operand, position.operand(operator.operand(i, op.operands.size), parenthesized))
         }
         val spelling = operator.spelling(symbolic)
         return when (operator.fixity) {

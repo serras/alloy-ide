@@ -1,5 +1,6 @@
 package com.serranofp.alloy.inspections
 
+import com.intellij.codeInsight.intention.FileModifier
 import com.intellij.codeInsight.intention.preview.IntentionPreviewUtils
 import com.intellij.codeInsight.template.TemplateBuilderImpl
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement
@@ -157,11 +158,14 @@ sealed interface AlloyScopeEdit {
 class AlloyScopeFix(
     decl: AlloyCommandDecl,
     private val part: Int,
-    private val edit: AlloyScopeEdit,
+    // Plain data, which the intention preview can use as it is
+    @FileModifier.SafeFieldForPreview private val edit: AlloyScopeEdit,
     private val text: String,
     private val family: String,
     others: List<Pair<AlloyCommandDecl, Int>> = emptyList(),
 ) : LocalQuickFixAndIntentionActionOnPsiElement(decl) {
+    // The preview finds them again in its copy of the file
+    @FileModifier.SafeFieldForPreview
     private val others = others.map { (decl, part) -> SmartPointerManager.createPointer(decl) to part }
 
     override fun getText(): String = text
@@ -171,7 +175,8 @@ class AlloyScopeFix(
     override fun invoke(project: Project, file: PsiFile, editor: Editor?, startElement: PsiElement, endElement: PsiElement) {
         val decl = startElement as? AlloyCommandDecl ?: return
         val documents = PsiDocumentManager.getInstance(project)
-        val document = documents.getDocument(file) ?: return
+        // Not PsiDocumentManager.getDocument, which has no document for the copy an intention preview edits
+        val document = file.viewProvider.document ?: return
         // In an intention preview, [file] is a copy
         val targets = listOf(decl to part) + others.mapNotNull { (pointer, part) ->
             val other = pointer.element ?: return@mapNotNull null

@@ -138,6 +138,25 @@ class AlloyRewriteRenderTest : BasePlatformTestCase() {
         check("a and not (some z: A | some z.r)", "a and no z: A | some z.r", "a and (no z: A | some z.r)", rules = arrayOf(negatedSome))
     }
 
+    fun testQuantifierAsTheOperandOfAPrefixOperator() {
+        // `AndExprB AND Bind`: after an `and`, `or`, `iff`, … a quantifier goes bare, but not inside a prefix operator
+        check("a and always not (some z: A | some z.r)", "a and always (no z: A | some z.r)", rules = arrayOf(negatedSome))
+        check("a or after not (some z: A | some z.r)", "a or after (no z: A | some z.r)", rules = arrayOf(negatedSome))
+        check("a and not not (some z: A | some z.r)", "a and not (no z: A | some z.r)", rules = arrayOf(negatedSome))
+        check("a iff eventually not (some z: A | some z.r)", "a iff eventually (no z: A | some z.r)", rules = arrayOf(negatedSome))
+        check("a until always not (some z: A | some z.r)", "a until always (no z: A | some z.r)", rules = arrayOf(negatedSome))
+        check("b or a implies not (some z: A | some z.r)", "b or a implies (no z: A | some z.r)", rules = arrayOf(negatedSome))
+    }
+
+    fun testQuantifierAsTheOperandOfAPrefixOperatorWhereItMayEndOpen() {
+        // `NOT UnaryExprA` and `AndExprB IMPLIES ImpliesExprA`: an operand ending open is fine where its operator may end open
+        check("always not (some z: A | some z.r)", "always no z: A | some z.r", "always (no z: A | some z.r)", rules = arrayOf(negatedSome))
+        check("a implies always not (some z: A | some z.r)", "a implies always no z: A | some z.r", "a implies always (no z: A | some z.r)", rules = arrayOf(negatedSome))
+        check("(a and always not (some z: A | some z.r))", "(a and always (no z: A | some z.r))", rules = arrayOf(negatedSome))
+        check("a and all w: A | always not (some z: w | some z.r)", "a and all w: A | always no z: w | some z.r", "a and (all w: A | always (no z: w | some z.r))", rules = arrayOf(negatedSome))
+        check("a\n  always not (some z: A | some z.r)\n  b", "a\n  always no z: A | some z.r\n  b", "a and (always (no z: A | some z.r)) and b", rules = arrayOf(negatedSome))
+    }
+
     fun testQuantifierBeforeAnOperator() {
         check("not (some z: A | some z.r) and a", "(no z: A | some z.r) and a", rules = arrayOf(negatedSome))
         check("not (some z: A | some z.r) implies a", "(no z: A | some z.r) implies a", rules = arrayOf(negatedSome))

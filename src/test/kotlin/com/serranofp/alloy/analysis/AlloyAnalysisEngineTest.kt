@@ -1,6 +1,7 @@
 package com.serranofp.alloy.analysis
 
 import com.intellij.openapi.util.Disposer
+import com.intellij.testFramework.LoggedErrorProcessor
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.analysis.AlloyAnalysis.State
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent.End
@@ -23,6 +24,7 @@ import edu.mit.csail.sdg.parser.CompUtil
 import edu.mit.csail.sdg.translator.A4Options
 import edu.mit.csail.sdg.translator.TranslateAlloyToKodkod
 import kodkod.engine.satlab.SATFactory
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
@@ -54,8 +56,8 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
     }
 
     /**
-     * Waits until the analysis thread is in SAT4J's search. The `Solving` event comes just before it, and
-     * the solver may only be stopped once it searches.
+     * Waits until the analysis thread is in SAT4J's search. The `Solving` event comes just before it, and a
+     * stop then is only seen once the search starts (see [testStopRightAfterTheSolvingEvent]).
      */
     private fun AlloyAnalysis.waitUntilSearching() {
         waitFor<Solving>()
@@ -135,6 +137,30 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
         assertInstanceOf(end, Stopped::class.java)
         assertEquals(listOf(Stopping::class.java, Stopped::class.java), events.takeLast(2).map { it.javaClass })
         assertNoneSolved()
+    }
+
+    /** SAT4J resets its timeout as it starts to search, so a stop before that must still be seen. */
+    fun testStopRightAfterTheSolvingEvent() {
+        val started = CompletableFuture<AlloyAnalysis>()
+        val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, PIGEONHOLE)
+        val analysis = engine.execute("test", testRootDisposable, module.allReachableSigs, module.allCommands.first(), slowOptions().apply { solver = SATFactory.DEFAULT }) {
+            events += it
+            if (it is Solving) started.get().stop()
+        }
+        started.complete(analysis)
+        assertInstanceOf(analysis.finish(), Stopped::class.java)
+        assertNoneSolved()
+    }
+
+    /** The listener's failure is logged as an error, which the test expects rather than fails on. */
+    fun testThrowingListenerStillEndsTheAnalysis() {
+        lateinit var analysis: AlloyAnalysis
+        val logged = LoggedErrorProcessor.executeAndReturnLoggedError {
+            analysis = engine.start("test", testRootDisposable, options(), { if (it is End) error("listener bug") }) { _, _ -> null }
+            assertTrue("the analysis did not end", analysis.await(10, TimeUnit.SECONDS))
+        }
+        assertEquals("listener bug", logged.message)
+        assertEquals(State.Done, analysis.state)
     }
 
     fun testStopDuringTranslationIsStoppingFirst() {

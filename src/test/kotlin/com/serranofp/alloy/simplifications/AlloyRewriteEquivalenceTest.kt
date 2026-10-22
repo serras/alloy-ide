@@ -121,7 +121,7 @@ class AlloyRewriteEquivalenceTest : BasePlatformTestCase() {
         contexts: List<String>,
         missed: Set<String> = emptySet(),
     ) {
-        val bodies = contexts.flatMap { context -> subjects.map { context.replace("%s", it) } } - KNOWN_BROKEN
+        val bodies = contexts.flatMap { context -> subjects.map { context.replace("%s", it) } }
         val (rewrites, unchanged) = rewritesOfEveryNode(rules, bodies)
         val oneNode = contexts.filter { it == "%s" || "(%s)" in it }.flatMap { context -> subjects.map { context.replace("%s", it) } }.toSet()
         assertEquals("Nothing rewritten", missed, unchanged.map { bodies[it] }.filter { it in oneNode }.toSet())
@@ -266,13 +266,6 @@ class AlloyRewriteEquivalenceTest : BasePlatformTestCase() {
     fun testTransposeJoinInContexts() = assertEquivalentInContexts(AlloyEquivalenceRules.TRANSPOSE_JOIN, TRANSPOSE_JOIN.map { it.first }, SET_CONTEXTS)
 
     private companion object {
-        /**
-         * Bodies left out because a rewrite in them is known not to type-check: the universal negation of
-         * `q and not (all s: S | not s in A)` writes `q and not no s: S | s in A`, without the parentheses that
-         * a quantifier needs as the operand of `not` (or `always`, …) at the end of a conjunction.
-         */
-        val KNOWN_BROKEN = setOf("q and not (all s: S | not s in A)")
-
         /**
          * The bodies where the analyzer flattens [subject], an `and` (or an `or`), into the list around it, so
          * that its parentheses leave no node for the rules to match: `;` is an `and` of an `after`, and block

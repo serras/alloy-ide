@@ -199,7 +199,8 @@ class AlloyWrapInAlwaysFix(decl: AlloyFactDecl, private val priority: PriorityAc
         val decl = startElement as? AlloyFactDecl ?: return
         val block = decl.block ?: return
         val documents = PsiDocumentManager.getInstance(project)
-        val document = documents.getDocument(file) ?: return
+        // Not PsiDocumentManager.getDocument, which has no document for the copy an intention preview edits
+        val document = file.viewProvider.document ?: return
         val open = block.textRange.startOffset
         val close = block.textRange.endOffset - 1
         val inner = document.getText(TextRange(open + 1, close))

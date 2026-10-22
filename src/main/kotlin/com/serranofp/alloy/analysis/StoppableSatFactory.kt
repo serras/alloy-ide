@@ -5,6 +5,7 @@ import kodkod.engine.satlab.ExternalSolver
 import kodkod.engine.satlab.SATFactory
 import kodkod.engine.satlab.SATSolver
 import org.sat4j.specs.ISolver
+import org.sat4j.specs.SearchListener
 import java.io.Serializable
 import java.lang.reflect.Field
 import java.nio.file.Path
@@ -14,7 +15,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * Stands for [original] in `A4Options.solver`, so that the solvers Kodkod creates can be stopped (see the
  * spike results in the design, Decision 8): the `ISolver` inside the SAT4J wrappers is told to expire, and
- * external solver processes, which pardinus keeps out of reach, are destroyed. A factory that [original]
+ * external solver processes, which pardinus keeps out of reach, are destroyed. SAT4J forgets an expiry when a
+ * search starts, so a stop that comes before (just after the `Solving` callback, or before the solver even
+ * exists) is caught by a [StopListener] once the search runs. A factory that [original]
  * chooses for some options (`doOptions`) is wrapped too, and stops with this one.
  */
 internal class StoppableSatFactory private constructor(
@@ -69,7 +72,7 @@ internal class StoppableSatFactory private constructor(
         val solver = original.instance()
         sat4jSolver(solver)?.let {
             state.solvers += it
-            if (state.stopped) it.expireTimeout()
+            it.searchListener = StopListener(state, it, it.searchListener)
         }
         if (solver is ExternalSolver) cnfFile(solver)?.let { state.cnfFiles += it }
         return solver
@@ -111,6 +114,27 @@ internal class StoppableSatFactory private constructor(
                 process.pid() !in state.before && program.any { fileName(it) in state.executables }
             }
             .forEach { it.destroyForcibly() }
+    }
+
+    /**
+     * Expires [solver] at the start of each round of its search if the analysis was stopped. SAT4J resets its
+     * timeout once `isSatisfiable` starts, before the first round, so an expiry from [stop] before that is
+     * lost; one after it is not, so between them no stop is missed. Expiring here, rather than throwing, lets
+     * SAT4J undo the search, as for a stop during it. It keeps passing every event to the listener it replaces.
+     */
+    private class StopListener(
+        private val state: State,
+        private val solver: ISolver,
+        private val previous: SearchListener,
+    ) : SearchListener by previous {
+        override fun beginLoop() {
+            if (state.stopped) solver.expireTimeout()
+            previous.beginLoop()
+        }
+
+        companion object {
+            private const val serialVersionUID = 1L
+        }
     }
 
     companion object {

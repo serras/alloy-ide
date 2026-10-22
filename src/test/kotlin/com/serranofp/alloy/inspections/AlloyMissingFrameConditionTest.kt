@@ -121,4 +121,15 @@ class AlloyMissingFrameConditionTest : AlloyInspectionTestCase() {
         myFixture.checkResult(network + "// noinspection AlloyMissingFrameCondition\n" + send + forward)
         assertEquals(listOf("forward"), problems().map { it.first })
     }
+
+    fun testFixPreview() {
+        val model = "sig Node { var inbox, outbox : set Node }\npred clear { no inbox' }"
+        myFixture.configureByText("model.als", model)
+        myFixture.doHighlighting()
+        myFixture.editor.caretModel.moveToOffset(model.indexOf("clear"))
+        val preview = myFixture.getIntentionPreviewText(myFixture.findSingleIntention("Add outbox' = outbox"))
+        assertEquals("sig Node { var inbox, outbox : set Node }\npred clear { no inbox'\n  outbox' = outbox\n}", preview)
+        // Only the preview's copy is changed
+        assertEquals(model, myFixture.editor.document.text)
+    }
 }

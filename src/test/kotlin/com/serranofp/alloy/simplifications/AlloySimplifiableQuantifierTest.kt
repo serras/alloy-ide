@@ -30,6 +30,13 @@ class AlloySimplifiableQuantifierTest : AlloySimplificationTestCase() {
         assertEquals("pred subject { (no n: Node | n in n.succ) ; some Node }\n", fix("not (some", "Simplify to 'no n: Node | n in n.succ'"))
     }
 
+    /** A quantifier cannot be the operand of a unary operator without its parentheses. */
+    fun testOperandOfAUnaryOperatorInAConjunction() {
+        model("pred subject { some Node and always (all n: Node | not p[n]) }\n")
+        assertEquals(listOf("(all n: Node | not p[n])" to "Universal negation"), problems())
+        assertEquals("pred subject { some Node and always (no n: Node | p[n]) }\n", fix("(all", "Replace with 'no'"))
+    }
+
     fun testMembershipQuantifiers() {
         assertEquals(
             listOf("Message in Node.inbox", "some Message & Node.inbox", "no Message & Node.inbox", "Message in Node.inbox"),

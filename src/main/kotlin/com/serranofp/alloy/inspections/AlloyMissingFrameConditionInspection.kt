@@ -1,5 +1,6 @@
 package com.serranofp.alloy.inspections
 
+import com.intellij.codeInsight.intention.FileModifier
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.openapi.editor.Editor
@@ -103,7 +104,8 @@ class AlloyMissingFrameConditionInspection : AlloyModelInspection() {
  */
 class AlloyFrameConditionFix(
     decl: AlloyPredDecl,
-    private val conditions: List<String>,
+    // Plain text, which the intention preview can use as it is
+    @FileModifier.SafeFieldForPreview private val conditions: List<String>,
     private val text: String,
     private val family: String,
 ) : LocalQuickFixAndIntentionActionOnPsiElement(decl) {
@@ -114,7 +116,8 @@ class AlloyFrameConditionFix(
     override fun invoke(project: Project, file: PsiFile, editor: Editor?, startElement: PsiElement, endElement: PsiElement) {
         val body = (startElement as? AlloyPredDecl)?.blockList?.lastOrNull() ?: return
         val documents = PsiDocumentManager.getInstance(project)
-        val document = documents.getDocument(file) ?: return
+        // Not PsiDocumentManager.getDocument, which has no document for the copy an intention preview edits
+        val document = file.viewProvider.document ?: return
         val open = body.textRange.startOffset
         val close = body.textRange.endOffset - 1
         val closeLine = document.getLineNumber(close)

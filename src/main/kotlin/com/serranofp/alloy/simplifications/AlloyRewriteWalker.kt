@@ -185,10 +185,10 @@ class AlloyRewriteWalker(private val source: AlloySourceText, private val rules:
     /** The operands of [node], at [position], and where each of them sits. */
     private fun operands(node: Expr, position: AlloyPosition): List<Pair<Expr, AlloyPosition>> {
         // Inside parentheses, the last operand may extend to the closing one
-        val inside = source.source(node)?.parenthesized == true || position.rightOpen
-        fun at(spec: AlloyOperandSpec) = AlloyPosition(spec.level, spec.bindAllowed, spec.bounded || (spec.rightmost && inside))
+        val parenthesized = source.source(node)?.parenthesized == true
+        fun at(spec: AlloyOperandSpec) = position.operand(spec, parenthesized)
         val conservative = at(AlloyOperandSpec.CONSERVATIVE)
-        val body = at(AlloyOperandSpec(AlloyPrecedence.SEQ, bindAllowed = true, rightmost = true))
+        val body = AlloyPosition.body(parenthesized || position.rightOpen)
         return when (node) {
             is ExprUnary -> listOf(node.sub to (AlloyOperator.of(node)?.let { at(it.operand(0, 1)) } ?: conservative))
             is ExprBinary -> when {
@@ -210,7 +210,7 @@ class AlloyRewriteWalker(private val source: AlloySourceText, private val rules:
             is ExprITE -> listOf(
                 node.cond to at(AlloyOperandSpec(AlloyPrecedence.AND, false, rightmost = false)),
                 node.left to at(AlloyOperandSpec(AlloyPrecedence.AND, false, rightmost = false)),
-                node.right to at(AlloyOperandSpec(AlloyPrecedence.IMPLIES, true, rightmost = true)),
+                node.right to at(AlloyOperandSpec(AlloyPrecedence.IMPLIES, true, rightmost = true, opensAllowed = true)),
             )
             is ExprCall -> {
                 // `e.f` is `f[e]`: an argument written before the name is the left of a `.`, not in brackets
@@ -256,7 +256,11 @@ class AlloyRewriteWalker(private val source: AlloySourceText, private val rules:
             sequenced -> AlloyPrecedence.BIND
             else -> level
         }
-        return AlloyPosition(operandLevel, bindAllowed = true, rightOpen = rightOpen)
+        // A quantifier after an `and` makes the list end open (`AndExprB AND Bind`), and so does an operand that
+        // ends in one, which may only start the list or a line: the list, or the line, must be where it may end open
+        val opens = rightOpen && (lineAfter || source.source(list)?.parenthesized == true || position.opensAllowed)
+        val bounded = operandLevel <= AlloyPrecedence.BIND
+        return AlloyPosition(operandLevel, bindAllowed = bounded || opens, rightOpen, opensAllowed = bounded || (opens && (from == 0 || freeLeft)))
     }
 
     /** Whether [join] is written `a.b`, rather than `b[a]` or as the implicit `this.f` of a signature fact. */

@@ -162,4 +162,14 @@ class AlloyFactOnlyAtStartTest : AlloyInspectionTestCase() {
         )
         assertEmpty(detailedProblems())
     }
+
+    fun testWrapPreview() {
+        val model = network + "fact { all n: Node | n.inbox' = n.inbox }\n"
+        myFixture.configureByText("model.als", model)
+        myFixture.doHighlighting()
+        myFixture.editor.caretModel.moveToOffset(model.indexOf("n.inbox'"))
+        val preview = myFixture.getIntentionPreviewText(myFixture.findSingleIntention("Wrap in always"))
+        assertEquals(network + "fact { always { all n: Node | n.inbox' = n.inbox } }\n", preview)
+        assertEquals(model, myFixture.editor.document.text)
+    }
 }

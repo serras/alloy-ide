@@ -59,7 +59,7 @@ class AlloyRewriteWalkerTest : BasePlatformTestCase() {
             AlloyRewriteWalker(source, listOf(record)).walk(model.module)
             seen
         }
-        assertEquals(listOf("${AlloyPosition(AlloyPrecedence.IMPLIES, bindAllowed = true, rightOpen = true)}"), seen)
+        assertEquals(listOf("${AlloyPosition(AlloyPrecedence.IMPLIES, bindAllowed = true, rightOpen = true, opensAllowed = true)}"), seen)
     }
 
     fun testOperandWithoutTextIsLookedIntoAfterAMatch() {

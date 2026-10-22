@@ -86,7 +86,7 @@ class AlloySettingsConfigurable(
         ui = null
     }
 
-    override fun isModified(): Boolean = formState() != settings.state
+    override fun isModified(): Boolean = formState() != clamped(settings.state)
 
     override fun apply() {
         val changed = isModified
@@ -95,19 +95,30 @@ class AlloySettingsConfigurable(
     }
 
     override fun reset() {
-        val state = settings.state
+        val state = clamped(settings.state)
         val saved = state.solver
         if (saved != null && (solver.model as DefaultComboBoxModel<String>).getIndexOf(saved) < 0) solver.addItem(saved)
         solver.selectedItem = saved
         skolemDepth.selectedItem = state.skolemDepth
         preventOverflows.isSelected = state.preventOverflows
-        // A hand-edited or older alloy.xml can hold any number; the analyzer gets them clamped too
-        coreMinimization.selectedIndex = state.coreMinimization.coerceIn(0, coreMinimization.itemCount - 1)
-        coreGranularity.selectedIndex = state.coreGranularity.coerceIn(0, coreGranularity.itemCount - 1)
+        coreMinimization.selectedIndex = state.coreMinimization
+        coreGranularity.selectedIndex = state.coreGranularity
         nonFatalWarnings.isSelected = state.nonFatalWarnings
         recordKodkod.isSelected = state.recordKodkod
         inferPartialInstance.isSelected = state.inferPartialInstance
         checkVacuity.isSelected = state.checkVacuity
+    }
+
+    /**
+     * [state] with its numbers in the ranges the page offers: a hand-edited or older alloy.xml can hold any
+     * number, and the analyzer gets them clamped too. The page shows these values, and is not modified by
+     * showing them.
+     */
+    private fun clamped(state: AlloySettingsState) = AlloySettingsState().also {
+        it.copyFrom(state)
+        it.skolemDepth = state.skolemDepth.coerceIn(AlloySettingsState.SKOLEM_DEPTHS)
+        it.coreMinimization = state.coreMinimization.coerceIn(0, coreMinimization.itemCount - 1)
+        it.coreGranularity = state.coreGranularity.coerceIn(0, coreGranularity.itemCount - 1)
     }
 
     private fun formState() = AlloySettingsState().also {

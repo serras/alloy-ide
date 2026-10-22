@@ -8,6 +8,12 @@ import com.serranofp.alloy.psi.AlloyTypes
 class AlloyCommenter : CodeDocumentationAwareCommenter {
     override fun getLineCommentPrefix(): String = "//"
 
+    /**
+     * Alloy also has `--` line comments: commenting writes `//`, and uncommenting would remove either. The
+     * platform's *Comment Line* (2026.2) only reads [getLineCommentPrefix], so `--` lines are not uncommented yet.
+     */
+    override fun getLineCommentPrefixes(): List<String> = listOf("//", "--")
+
     override fun getBlockCommentPrefix(): String = "/*"
 
     override fun getBlockCommentSuffix(): String = "*/"

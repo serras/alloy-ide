@@ -4,6 +4,7 @@ import com.intellij.openapi.util.JDOMUtil
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.xmlb.XmlSerializer
+import com.serranofp.alloy.AlloyBundle
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import javax.swing.SwingUtilities
@@ -20,9 +21,18 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         return AlloySettingsConfigurable(settings, discovery) { changes++ }.also {
             pages += it
             it.createComponent()
-            discovery.load().get(10, TimeUnit.SECONDS)
-            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            awaitSolvers(discovery, it)
         }
+    }
+
+    /**
+     * Waits until [page] shows the solvers that [discovery] found: the page gets them from a callback of the
+     * discovery's future, which can still be about to post them when `get` returns.
+     */
+    private fun awaitSolvers(discovery: AlloySolvers, page: AlloySettingsConfigurable) {
+        discovery.load().get(10, TimeUnit.SECONDS)
+        val loading = AlloyBundle.message("settings.solver.loading", "sat4j")
+        PlatformTestUtil.waitWithEventsDispatching("The page did not show the solvers", { page.solverLabel("sat4j") != loading }, 10)
     }
 
     override fun tearDown() {
@@ -111,8 +121,7 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         val page = AlloySettingsConfigurable(settings, discovery) { changes++ }.also { pages += it }
         val panel = page.createComponent()
         // So that the page is filled before it is disposed, rather than after the test
-        discovery.load().get(10, TimeUnit.SECONDS)
-        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        awaitSolvers(discovery, page)
         val options = listOf(
             page.solver, page.skolemDepth, page.preventOverflows, page.coreMinimization, page.coreGranularity,
             page.nonFatalWarnings, page.recordKodkod, page.inferPartialInstance, page.checkVacuity,
@@ -154,8 +163,11 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         settings.loadState(XmlSerializer.deserialize(xml, AlloySettingsState::class.java))
         assertEquals(9, settings.state.skolemDepth)
         val page = configurable(present)
+        assertEquals(4, page.skolemDepth.selectedItem)
         assertEquals("Fast", page.coreMinimization.selectedItem)
         assertEquals("Top-level", page.coreGranularity.selectedItem)
+        // Showing the clamped values is no change to apply
+        assertFalse(page.isModified)
         val options = settings.analyzerOptions { setOf("sat4j") }
         assertEquals(4, options.skolemDepth)
         assertEquals(2, options.coreMinimization)
@@ -209,8 +221,7 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         } finally {
             release.countDown()
         }
-        discovery.load().get(10, TimeUnit.SECONDS)
-        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        awaitSolvers(discovery, page)
         assertEquals("MiniSat", page.solverLabel("minisat"))
     }
 }

@@ -3,6 +3,8 @@ package com.serranofp.alloy.analysis
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.ControlFlowException
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.util.Disposer
 import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.alloy4.A4Reporter
@@ -125,14 +127,22 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
         private set
 
     fun stop() {
-        synchronized(this) {
-            if (state != State.Running) return
-            stopRequested = true
-            state = State.Stopping
-            listener(AlloyAnalysisEvent.Stopping(System.currentTimeMillis()))
+        var stopping = false
+        try {
+            synchronized(this) {
+                if (state != State.Running) return
+                stopRequested = true
+                state = State.Stopping
+                stopping = true
+                notify(AlloyAnalysisEvent.Stopping(System.currentTimeMillis()))
+            }
+        } finally {
+            // Even if the listener failed on Stopping; not once the analysis ended, as an enumeration may reuse the factory
+            if (stopping) {
+                factory.stop()
+                thread?.interrupt()
+            }
         }
-        factory.stop()
-        thread?.interrupt()
     }
 
     /** Waits for the analysis to end; true if it did. */
@@ -152,8 +162,14 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
         } catch (e: Throwable) {
             if (stopRequested) AlloyAnalysisEvent.Stopped(System.currentTimeMillis()) else failed(e)
         }
-        end(end)
-        Disposer.dispose(this)
+        try {
+            end(end)
+        } catch (e: Throwable) {
+            // Nothing on this thread waits to be cancelled
+            if (e !is ControlFlowException) throw e
+        } finally {
+            Disposer.dispose(this)
+        }
     }
 
     internal fun end(event: AlloyAnalysisEvent.End) {
@@ -161,9 +177,26 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
             if (state == State.Done) return
             state = State.Done
             end = event
-            listener(event)
+            try {
+                notify(event)
+            } finally {
+                done.countDown()
+            }
         }
-        done.countDown()
+    }
+
+    /**
+     * Gives [event] to the listener, under the lock as [emit], for the events after which the analysis must
+     * go on to its end however the listener fails: a bug in it is logged, and a cancellation goes on to the
+     * caller (once the analysis has gone on).
+     */
+    private fun notify(event: AlloyAnalysisEvent) {
+        try {
+            listener(event)
+        } catch (e: Throwable) {
+            if (e is ControlFlowException) throw e
+            LOG.error("The listener of an analysis failed on $event", e)
+        }
     }
 
     private fun failed(e: Throwable): AlloyAnalysisEvent.Failed {
@@ -245,6 +278,8 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
         }
     }
 }
+
+private val LOG = logger<AlloyAnalysis>()
 
 /** Thrown from the reporter when a stop was requested; the analyzer wraps it in an `ErrorFatal`. */
 private class AlloyStopped : RuntimeException("The analysis was stopped")
