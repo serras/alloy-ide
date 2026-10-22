@@ -16,7 +16,8 @@ class AlloyLibraryRootsProviderTest : BasePlatformTestCase() {
         assertNotNull(root.findFileByRelativePath("util/ordering.als"))
 
         val presentation = library as ItemPresentation
-        assertEquals("Alloy 6.2.0", presentation.presentableText)
+        // The version of the bundled analyzer, which the specification names: an upgrade changes both
+        assertEquals("the bundled analyzer is not Alloy 6.2.0 any more; update the specification", "Alloy 6.2.0", presentation.presentableText)
         assertEquals(AlloyIcons.FILE, presentation.getIcon(false))
     }
 

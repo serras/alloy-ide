@@ -7,7 +7,9 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.SmartPointerManager
+import com.serranofp.alloy.inspections.assertTypeChecks
 import java.util.concurrent.TimeUnit
 
 class AlloySimplifiableBooleanTest : AlloySimplificationTestCase() {
@@ -90,11 +92,11 @@ class AlloySimplifiableBooleanTest : AlloySimplificationTestCase() {
         model("fact { not not some Node }\nfact { some Bogus }\n")
         assertEmpty(problems())
         myFixture.editor.document.let { document ->
-            com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) {
+            WriteCommandAction.runWriteCommandAction(project) {
                 document.replaceString(document.text.indexOf("fact { some Bogus }"), document.textLength, "")
             }
         }
-        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
         assertEquals(listOf("not not some Node"), reported())
     }
 
@@ -132,31 +134,116 @@ class AlloySimplifiableBooleanTest : AlloySimplificationTestCase() {
         assertEquals(listOf("not not q"), reported())
     }
 
-    fun testFixDoesNothingAfterAnEdit() {
-        model("fact { not not p }\n")
-        myFixture.doHighlighting()
+    /** A fix of `not not p` to `q`, built by hand for a problem reported on [original], applied to the model. */
+    private fun applyHandBuiltFix(original: String) {
         val start = myFixture.file.text.indexOf("not not p")
         val range = SmartPointerManager.getInstance(project).createSmartPsiFileRangePointer(myFixture.file, TextRange(start, start + 9))
-        val fix = AlloyRewriteFix(range, "not not q", "q", "Remove double negation")
+        val fix = AlloyRewriteFix(range, original, "q", "Remove double negation")
         val descriptor = InspectionManager.getInstance(project).createProblemDescriptor(
             myFixture.file.children.last { it.text.startsWith("fact") },
             TextRange(7, 16), "Double negation", ProblemHighlightType.WEAK_WARNING, true,
         )
         WriteCommandAction.runWriteCommandAction(project) { fix.applyFix(project, descriptor) }
+    }
+
+    fun testFixDoesNothingAfterAnEdit() {
+        model("fact { not not p }\n")
+        myFixture.doHighlighting()
+        applyHandBuiltFix(original = "not not q")
         assertEquals("fact { not not p }\n", myFixture.file.text.removePrefix(header))
+        // The same fix, for the text it was reported on, does apply
+        applyHandBuiltFix(original = "not not p")
+        assertEquals("fact { q }\n", myFixture.file.text.removePrefix(header))
+    }
+
+    /** The problems that [inspection] reports, as a batch run sees them. */
+    private fun descriptors(): List<ProblemDescriptor> {
+        val manager = InspectionManager.getInstance(project)
+        return ApplicationManager.getApplication().executeOnPooledThread<List<ProblemDescriptor>> {
+            ReadAction.computeBlocking<List<ProblemDescriptor>, Throwable> { inspection.checkFile(myFixture.file, manager, true)!!.toList() }
+        }.get(60, TimeUnit.SECONDS)
+    }
+
+    private fun ProblemDescriptor.applySingleFix() {
+        WriteCommandAction.runWriteCommandAction(project) { fixes!!.single().applyFix(project, this) }
+    }
+
+    fun testFixOfTextEditedSinceItWasReported() {
+        model("fact { not not p }\nfact { not not q }\n")
+        val (first, second) = descriptors()
+        val document = myFixture.editor.document
+        WriteCommandAction.runWriteCommandAction(project) {
+            document.replaceString(document.text.indexOf("not not p"), document.text.indexOf("not not p") + 9, "not not r")
+            PsiDocumentManager.getInstance(project).commitDocument(document)
+        }
+        first.applySingleFix()
+        second.applySingleFix()
+        // The edited text is left alone; the other fix still finds its text, which moved
+        assertEquals("fact { not not r }\nfact { q }\n", myFixture.file.text.removePrefix(header))
     }
 
     fun testFixesOfOneParagraphFollowTheEarlierOnes() {
         model("fact { not not p and not not q and not not a }\n")
-        val manager = InspectionManager.getInstance(project)
-        val descriptors = ApplicationManager.getApplication().executeOnPooledThread<List<ProblemDescriptor>> {
-            ReadAction.computeBlocking<List<ProblemDescriptor>, Throwable> { inspection.checkFile(myFixture.file, manager, true)!!.toList() }
-        }.get(60, TimeUnit.SECONDS)
         // As a batch fix may apply them: each after the ones before it, which moved its text
-        for (descriptor in descriptors.sortedBy { it.textRangeInElement.startOffset }) {
-            WriteCommandAction.runWriteCommandAction(project) { descriptor.fixes!!.single().applyFix(project, descriptor) }
-        }
+        for (descriptor in descriptors().sortedBy { it.textRangeInElement.startOffset }) descriptor.applySingleFix()
         assertEquals("fact { p and q and a }\n", myFixture.file.text.removePrefix(header))
+    }
+
+    fun testFixAllInTheFile() {
+        model("fact { not not p and not not q }\nfact { not (not a or not b) }\n")
+        myFixture.doHighlighting()
+        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("not not p"))
+        myFixture.launchAction(myFixture.findSingleIntention("Fix all 'Boolean formula can be simplified' problems in file"))
+        assertEquals("fact { p and q }\nfact { a and b }\n", myFixture.file.text.removePrefix(header))
+        myFixture.assertTypeChecks()
+        assertEmpty(problems())
+    }
+
+    fun testLetBody() {
+        model("pred subject { let x = Node | not not some x.inbox }\n")
+        assertEquals(listOf("not not some x.inbox"), reported())
+        assertEquals("pred subject { let x = Node | some x.inbox }\n", fix("not not", "Remove double negation"))
+    }
+
+    fun testBranchesOfAnImplicationWithAnElse() {
+        model("pred subject { p implies not not q else not not r }\n")
+        assertEquals(listOf("not not q", "not not r"), reported())
+        assertEquals("pred subject { p implies q else not not r }\n", fix("not not q", "Remove double negation"))
+        assertEquals("pred subject { p implies q else r }\n", fix("not not r", "Remove double negation"))
+    }
+
+    fun testComprehensionBody() {
+        model("pred subject { some { n: Node | not not some n.inbox } }\n")
+        assertEquals("pred subject { some { n: Node | some n.inbox } }\n", fix("not not", "Remove double negation"))
+    }
+
+    fun testSignatureFactWithItsImplicitThis() {
+        model("sig A { f: set A } { not not some f }\n")
+        assertEquals(listOf("not not some f"), reported())
+        assertEquals("sig A { f: set A } { some f }\n", fix("not not", "Remove double negation"))
+    }
+
+    fun testAnonymousCommandBody() {
+        model("run { not not p } for 3\n")
+        assertEquals("run { p } for 3\n", fix("not not", "Remove double negation"))
+    }
+
+    fun testCommentBetweenConverseImplicationsKeepsThem() {
+        // The fix would drop the comment
+        model("fact {\n  p implies q\n  // keep\n  q implies p\n}\n")
+        assertEmpty(problems())
+    }
+
+    fun testConverseImplicationsBeforeALetLine() {
+        model("fact {\n  p implies q\n  q implies p\n  let x = P, y = Q | not not some x + y\n}\n")
+        assertEquals(listOf("p implies q\n  q implies p", "not not some x + y"), reported())
+    }
+
+    /** The analyzer counts a tab as one column, and a character outside the BMP as two, as the document does. */
+    fun testPositionsAfterTabsAndSupplementaryCharacters() {
+        model("fact {\t-- 😀 😀\n\t/* 😀 */ not not p }\n")
+        assertEquals(listOf("not not p"), reported())
+        assertEquals("fact {\t-- 😀 😀\n\t/* 😀 */ p }\n", fix("not not", "Remove double negation"))
     }
 
     fun testFixPreview() {

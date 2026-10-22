@@ -1,21 +1,37 @@
 package com.serranofp.alloy.settings
 
+import com.intellij.openapi.util.JDOMUtil
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.util.xmlb.XmlSerializer
 import java.util.concurrent.CountDownLatch
-import javax.swing.SwingUtilities
 import java.util.concurrent.TimeUnit
+import javax.swing.SwingUtilities
 
 class AlloySettingsConfigurableTest : BasePlatformTestCase() {
     private val settings = AlloySettings()
     private var changes = 0
 
+    private val pages = mutableListOf<AlloySettingsConfigurable>()
+
+    /** A page shown with [solvers] found, once discovery ended; its UI is disposed after the test. */
     private fun configurable(solvers: List<AlloySolver>): AlloySettingsConfigurable {
         val discovery = AlloySolvers().apply { discover = { solvers } }
         return AlloySettingsConfigurable(settings, discovery) { changes++ }.also {
+            pages += it
             it.createComponent()
             discovery.load().get(10, TimeUnit.SECONDS)
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        }
+    }
+
+    override fun tearDown() {
+        try {
+            pages.forEach { it.disposeUIResources() }
+        } catch (e: Throwable) {
+            addSuppressedException(e)
+        } finally {
+            super.tearDown()
         }
     }
 
@@ -91,8 +107,12 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
 
     /** Every option of the page is one of its nine fields, shown on the panel. */
     fun testShowsNineOptions() {
-        val page = AlloySettingsConfigurable(settings, AlloySolvers().apply { discover = { present } }) { changes++ }
+        val discovery = AlloySolvers().apply { discover = { present } }
+        val page = AlloySettingsConfigurable(settings, discovery) { changes++ }.also { pages += it }
         val panel = page.createComponent()
+        // So that the page is filled before it is disposed, rather than after the test
+        discovery.load().get(10, TimeUnit.SECONDS)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         val options = listOf(
             page.solver, page.skolemDepth, page.preventOverflows, page.coreMinimization, page.coreGranularity,
             page.nonFatalWarnings, page.recordKodkod, page.inferPartialInstance, page.checkVacuity,
@@ -123,6 +143,37 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         val page = configurable(present)
         assertEquals("Fast", page.coreMinimization.selectedItem)
         assertEquals("Top-level", page.coreGranularity.selectedItem)
+    }
+
+    /** What a hand-edited or older `alloy.xml` holds is shown as the analyzer gets it, clamped. */
+    fun testOutOfRangeValuesOfASavedFile() {
+        val xml = JDOMUtil.load(
+            """<AlloySettingsState><option name="skolemDepth" value="9" /><option name="coreMinimization" value="7" />""" +
+                """<option name="coreGranularity" value="-2" /></AlloySettingsState>""",
+        )
+        settings.loadState(XmlSerializer.deserialize(xml, AlloySettingsState::class.java))
+        assertEquals(9, settings.state.skolemDepth)
+        val page = configurable(present)
+        assertEquals("Fast", page.coreMinimization.selectedItem)
+        assertEquals("Top-level", page.coreGranularity.selectedItem)
+        val options = settings.analyzerOptions { setOf("sat4j") }
+        assertEquals(4, options.skolemDepth)
+        assertEquals(2, options.coreMinimization)
+        assertEquals(0, options.coreGranularity)
+    }
+
+    /** With discovery already ended, the list is filled as the page is created, and not again later. */
+    fun testSolversFoundBeforeAreFilledOnce() {
+        val discovery = AlloySolvers().apply { discover = { present } }
+        discovery.load().get(10, TimeUnit.SECONDS)
+        val page = AlloySettingsConfigurable(settings, discovery) { changes++ }.also { pages += it }
+        page.createComponent()
+        val model = page.solver.model
+        assertEquals(listOf("sat4j", "sat4j.light", "minisat"), (0 until page.solver.itemCount).map { page.solver.getItemAt(it) })
+        assertEquals("MiniSat", page.solverLabel("minisat"))
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertSame(model, page.solver.model)
+        assertFalse(page.isModified)
     }
 
     fun testNoSavedSolver() {

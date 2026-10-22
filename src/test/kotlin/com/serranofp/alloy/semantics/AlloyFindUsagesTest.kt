@@ -1,9 +1,9 @@
 package com.serranofp.alloy.semantics
 
 import com.intellij.codeInsight.highlighting.HighlightUsagesHandler
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
+import com.intellij.lang.cacheBuilder.WordOccurrence
 import com.intellij.openapi.editor.colors.EditorColors
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -11,19 +11,14 @@ import com.serranofp.alloy.psi.AlloyBinderDecl
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyFactDecl
 import com.serranofp.alloy.psi.AlloyFieldDecl
-import com.serranofp.alloy.psi.AlloyFile
+import com.serranofp.alloy.psi.AlloyParamDecl
 import com.serranofp.alloy.psi.AlloyPredDecl
 import com.serranofp.alloy.psi.AlloyRef
 import com.serranofp.alloy.psi.AlloySigName
-import java.util.concurrent.TimeUnit
 
 class AlloyFindUsagesTest : BasePlatformTestCase() {
     private fun analyze(vararg files: PsiFile) {
-        for (file in files) {
-            ApplicationManager.getApplication().executeOnPooledThread<AlloyModelResult> {
-                ReadAction.computeBlocking<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(file as AlloyFile) }
-            }.get(30, TimeUnit.SECONDS)
-        }
+        files.forEach(::computeModel)
     }
 
     private val library = "sig A {}\npred p[x: A] { some x }\nfact { all a: A | p[a] }"
@@ -91,5 +86,53 @@ class AlloyFindUsagesTest : BasePlatformTestCase() {
         assertEquals("signature", provider.getType(PsiTreeUtil.findChildOfType(file, AlloySigName::class.java)!!))
         assertEquals("fact", provider.getType(PsiTreeUtil.findChildOfType(file, AlloyFactDecl::class.java)!!))
         assertEquals("command", provider.getType(PsiTreeUtil.findChildOfType(file, AlloyCommandDecl::class.java)!!))
+    }
+
+    fun testNamesOfTheDeclarations() {
+        val file = myFixture.configureByText("m.als", "sig A {}\npred p[x: A] {}")
+        val provider = AlloyFindUsagesProvider()
+        val predicate = PsiTreeUtil.findChildOfType(file, AlloyPredDecl::class.java)!!
+        assertEquals("p", provider.getDescriptiveName(predicate))
+        assertEquals("p", provider.getNodeText(predicate, true))
+        assertTrue(provider.canFindUsagesFor(predicate))
+        assertFalse(provider.canFindUsagesFor(file))
+        assertEquals("parameter", provider.getType(PsiTreeUtil.findChildOfType(file, AlloyParamDecl::class.java)!!))
+    }
+
+    /**
+     * Identifiers are words of code, and the words in comments and strings are not: a search for usages, which
+     * looks for words of code, does not stop at them. As the search splits a name like `a"b`, so does the index.
+     */
+    fun testWordsOfCodeCommentsAndStrings() {
+        val words = mutableListOf<Pair<String, WordOccurrence.Kind?>>()
+        val text = "sig a\"b { f': set univ } -- x\nfact { \"y\" = \"y\" }"
+        AlloyFindUsagesProvider().wordsScanner.processWords(text) { words += it.baseText.substring(it.start, it.end) to it.kind; true }
+        val code = words.filter { it.second == WordOccurrence.Kind.CODE }.map { it.first }
+        assertTrue(code.toString(), code.containsAll(listOf("a", "b", "f", "univ")))
+        assertFalse(code.toString(), "x" in code || "y" in code)
+        assertEquals(listOf(WordOccurrence.Kind.COMMENTS), words.filter { it.first == "x" }.map { it.second })
+        assertEquals(listOf(WordOccurrence.Kind.LITERALS, WordOccurrence.Kind.LITERALS), words.filter { it.first == "y" }.map { it.second })
+    }
+
+    fun testUsagesOfAParameterAndABinderStayInTheirParagraph() {
+        val file = myFixture.configureByText(
+            "m.als",
+            "sig A { f: set A }\npred p[x: A] { all y: x.f | some y.f and y in x }\npred q[x: A] { some y: A | y in x }",
+        )
+        analyze(file)
+        fun uses(declaration: PsiElement): List<Pair<Int, String>> = myFixture.findUsages(declaration)
+            .map { usage -> file.text.substring(0, usage.navigationRange.startOffset).count { it == '\n' } to usage.element!!.text }
+        val parameter = PsiTreeUtil.findChildrenOfType(file, AlloyParamDecl::class.java).first()
+        assertEquals(listOf(1 to "x", 1 to "x"), uses(parameter))
+        val binder = PsiTreeUtil.findChildrenOfType(file, AlloyBinderDecl::class.java).first()
+        assertEquals(listOf(1 to "y", 1 to "y"), uses(binder))
+    }
+
+    /** `@f` names the field itself, rather than its join with `this`; it is a use of the field all the same. */
+    fun testAtFieldIsAUsage() {
+        val file = myFixture.configureByText("m.als", "sig A { f: set A } { some @f }\nfact { some A.f }")
+        analyze(file)
+        val field = PsiTreeUtil.findChildOfType(file, AlloyFieldDecl::class.java)!!
+        assertEquals(2, myFixture.findUsages(field).size)
     }
 }

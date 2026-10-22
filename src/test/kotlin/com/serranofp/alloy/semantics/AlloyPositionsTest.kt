@@ -2,6 +2,7 @@ package com.serranofp.alloy.semantics
 
 import com.intellij.openapi.editor.impl.DocumentImpl
 import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
@@ -11,8 +12,21 @@ import edu.mit.csail.sdg.alloy4.Err
 import edu.mit.csail.sdg.alloy4.Pos
 import edu.mit.csail.sdg.parser.CompUtil
 import java.nio.file.Files
+import java.nio.file.Path
 
 class AlloyPositionsTest : BasePlatformTestCase() {
+    private val temporaryDirectories = mutableListOf<Path>()
+
+    override fun tearDown() {
+        try {
+            temporaryDirectories.forEach { FileUtil.delete(it) }
+        } catch (e: Throwable) {
+            addSuppressedException(e)
+        } finally {
+            super.tearDown()
+        }
+    }
+
     private fun errorPos(text: String): Pos =
         try {
             CompUtil.parseEverything_fromString(A4Reporter.NOP, text)
@@ -68,7 +82,7 @@ class AlloyPositionsTest : BasePlatformTestCase() {
     }
 
     fun testProjectFileOnDisk() {
-        val dir = Files.createTempDirectory("alloy-positions")
+        val dir = Files.createTempDirectory("alloy-positions").also { temporaryDirectories.add(it) }
         VfsRootAccess.allowRootAccess(testRootDisposable, dir.toRealPath().toString())
         val path = Files.writeString(dir.resolve("model.als"), "sig A {}")
         val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)!!
@@ -91,6 +105,13 @@ class AlloyPositionsTest : BasePlatformTestCase() {
         assertTrue(file.url, file.url.endsWith("!/models/util/ordering.als"))
         assertFalse(file.isWritable)
         assertTrue(String(file.contentsToByteArray()).contains("module util/ordering"))
+    }
+
+    fun testEmptyDocument() {
+        val document = DocumentImpl("")
+        assertEquals(TextRange(0, 0), AlloyPositions.textRange(Pos("m.als", 1, 1), document))
+        assertEquals(TextRange(0, 0), AlloyPositions.textRange(Pos("m.als", 4, 3, 9, 3), document))
+        assertEquals(Pos("m.als", 1, 1, 1, 1), AlloyPositions.pos("m.als", document, TextRange(0, 0)))
     }
 
     fun testUnknownLibraryFile() {

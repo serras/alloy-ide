@@ -1,6 +1,14 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
+import com.intellij.codeInsight.completion.CompletionType
+import com.intellij.codeInsight.lookup.LookupManager
 import com.intellij.lang.annotation.HighlightSeverity
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.testFramework.PlatformTestUtil
+import com.serranofp.alloy.semantics.AlloyModelService
+import com.serranofp.alloy.semantics.AlloyReference
+import java.util.concurrent.atomic.AtomicInteger
 import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
@@ -61,6 +69,53 @@ class AlloyEvaluatorFragmentTest : BasePlatformTestCase() {
             assertTrue(tokens.toString(), AlloyTypes.IDENTIFIER in tokens)
         } finally {
             field.removeNotify()
+        }
+    }
+
+    private fun model(text: String) = link(text).let { AlloySolutionModel(it.solution, module = it.module) }
+
+    /** The field's own file, which is not physical, completes the names of the model it evaluates in. */
+    fun testTheFieldCompletesTheModelsNames() {
+        val model = model("sig Node { succ: set Node }\nrun { some succ } for 2")
+        val field = EditorTextField(alloyEvaluatorDocument(project) { model }, project, AlloyFileType, false, true)
+        field.text = "su"
+        field.addNotify()
+        try {
+            val editor = field.editor!!
+            editor.caretModel.moveToOffset(2)
+            CodeCompletionHandlerBase(CompletionType.BASIC).invokeCompletion(project, editor)
+            PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+            val lookup = LookupManager.getActiveLookup(editor)
+            try {
+                // `sub` is from util/integer, which every model opens
+                assertSameElements(lookup!!.items.map { it.lookupString }, "succ", "sub")
+            } finally {
+                lookup?.hideLookup(true)
+            }
+        } finally {
+            field.removeNotify()
+        }
+    }
+
+    /** A fragment is not a module: its names resolve by name only, without asking the analyzer for a model of it. */
+    fun testResolvingInTheFragmentMakesNoModel() {
+        val service = AlloyModelService.getInstance(project)
+        val parse = service.parse
+        val parses = AtomicInteger()
+        service.parse = { reporter, contents, path -> parses.incrementAndGet(); parse(reporter, contents, path) }
+        try {
+            val document = alloyEvaluatorDocument(project) { null }
+            // Parsed as a module, the names of a fact are references
+            WriteCommandAction.runWriteCommandAction(project) { document.setText("fact { some succ }") }
+            val documents = PsiDocumentManager.getInstance(project)
+            documents.commitDocument(document)
+            val file = documents.getPsiFile(document)!!
+            val reference = file.findReferenceAt(document.text.indexOf("succ") + 1) as AlloyReference
+            assertEmpty(reference.multiResolve(false))
+            assertNull(reference.exactResolution())
+            assertEquals(0, parses.get())
+        } finally {
+            service.parse = parse
         }
     }
 }

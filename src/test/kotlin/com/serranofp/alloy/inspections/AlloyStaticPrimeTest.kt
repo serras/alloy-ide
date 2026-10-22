@@ -1,19 +1,7 @@
 package com.serranofp.alloy.inspections
 
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
-
-class AlloyStaticPrimeTest : BasePlatformTestCase() {
-    private val inspection = AlloyStaticPrimeInspection()
-
-    override fun setUp() {
-        super.setUp()
-        myFixture.enableInspections(inspection)
-    }
-
-    private fun problems(): List<Pair<String, String>> =
-        myFixture.doHighlighting().filter { it.inspectionToolId == inspection.shortName }.sortedBy { it.startOffset }.map {
-            myFixture.file.text.substring(it.startOffset, it.endOffset) to it.description
-        }
+class AlloyStaticPrimeTest : AlloyInspectionTestCase() {
+    override val inspection = AlloyStaticPrimeInspection()
 
     private val network = "sig Node {\n  succ : one Node,\n  var inbox : set Node\n}\nvar sig Active in Node {}\n\n"
 
@@ -26,6 +14,16 @@ class AlloyStaticPrimeTest : BasePlatformTestCase() {
     fun testParenthesesInACommentAreNotBalanced() {
         myFixture.configureByText("model.als", network + "pred step { inbox' = inbox + (succ /* ) */)' }\n")
         assertEquals(listOf("(succ /* ) */)'"), problems().map { it.first })
+        removePrime("(succ")
+        myFixture.checkResult(network + "pred step { inbox' = inbox + (succ /* ) */) }\n")
+        assertEmpty(problems())
+    }
+
+    fun testParenthesisOpenedInACommentIsNotBalanced() {
+        myFixture.configureByText("model.als", network + "pred step[n: Node] { some (n.succ /* ( */)' }\n")
+        assertEquals(listOf("(n.succ /* ( */)'"), problems().map { it.first })
+        removePrime("(n.succ")
+        myFixture.checkResult(network + "pred step[n: Node] { some (n.succ /* ( */) }\n")
     }
 
     fun testPredicateParameterPrimed() {
@@ -88,8 +86,7 @@ class AlloyStaticPrimeTest : BasePlatformTestCase() {
     }
 
     private fun removePrime(at: String) {
-        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf(at))
-        myFixture.launchAction(myFixture.findSingleIntention("Remove the prime"))
+        launch(at, "Remove the prime")
     }
 
     fun testRemoveThePrime() {

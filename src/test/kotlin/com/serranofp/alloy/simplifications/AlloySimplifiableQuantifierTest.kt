@@ -25,7 +25,7 @@ class AlloySimplifiableQuantifierTest : AlloySimplificationTestCase() {
     }
 
     fun testNegatedQuantifierBeforeASequence() {
-        // Without parentheses, the quantifier's body would take in `; some Node`
+        // The parentheses are kept, although the analyzer ends the body before the `;` (see AlloyRewriteRenderTest)
         model("pred subject { not (some n: Node | n in n.succ) ; some Node }\n")
         assertEquals("pred subject { (no n: Node | n in n.succ) ; some Node }\n", fix("not (some", "Simplify to 'no n: Node | n in n.succ'"))
     }

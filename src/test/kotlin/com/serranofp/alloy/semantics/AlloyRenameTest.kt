@@ -1,34 +1,28 @@
 package com.serranofp.alloy.semantics
 
 import com.intellij.lang.LanguageRefactoringSupport
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.application.WriteAction
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.command.undo.UndoManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.ui.TestDialog
+import com.intellij.openapi.ui.TestDialogManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.rename.RenameUtil
+import com.intellij.refactoring.rename.inplace.VariableInplaceRenameHandler
 import com.intellij.refactoring.util.CommonRefactoringUtil
-import com.intellij.openapi.ui.TestDialog
-import com.intellij.openapi.ui.TestDialogManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.testFramework.fixtures.CodeInsightTestUtil
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyBinderDecl
 import com.serranofp.alloy.psi.AlloyElementFactory
-import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloySigName
-import java.util.concurrent.TimeUnit
 
 class AlloyRenameTest : BasePlatformTestCase() {
     private fun analyze(vararg files: PsiFile) {
-        for (file in files) {
-            ApplicationManager.getApplication().executeOnPooledThread<AlloyModelResult> {
-                ReadAction.compute<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(file as AlloyFile) }
-            }.get(30, TimeUnit.SECONDS)
-        }
+        files.forEach(::computeModel)
     }
 
     /** The message of the refusal, which tests get as an exception instead of a hint. */
@@ -85,6 +79,39 @@ class AlloyRenameTest : BasePlatformTestCase() {
         assertFalse(support.isInplaceRenameAvailable(PsiTreeUtil.findChildOfType(file, AlloySigName::class.java)!!, null))
     }
 
+    fun testRenamingThroughAQualifiedUseKeepsTheQualifier() {
+        val b = myFixture.addFileToProject("b.als", "open a as x\nrun { x/p } for 3\nrun x/p for 2")
+        val a = myFixture.configureByText("a.als", "sig A {}\npred p<caret> { some A }")
+        analyze(a, b)
+        myFixture.renameElementAtCaret("q")
+        assertEquals("sig A {}\npred q { some A }", a.text)
+        assertEquals("open a as x\nrun { x/q } for 3\nrun x/q for 2", b.text)
+    }
+
+    fun testRenamingOneOfTwoOverloadedFields() {
+        val file = myFixture.configureByText(
+            "m.als",
+            "sig A { f<caret>: set A }\nsig B { f: set B }\npred p[a: A, b: B] { some a.f and some b.f }",
+        )
+        analyze(file)
+        myFixture.renameElementAtCaret("g")
+        assertEquals("sig A { g: set A }\nsig B { f: set B }\npred p[a: A, b: B] { some a.g and some b.f }", file.text)
+    }
+
+    fun testRenamingAnEnumMember() {
+        val file = myFixture.configureByText("m.als", "enum Color { Red<caret>, Green }\nfact { some Red and Red != Green }")
+        analyze(file)
+        myFixture.renameElementAtCaret("Crimson")
+        assertEquals("enum Color { Crimson, Green }\nfact { some Crimson and Crimson != Green }", file.text)
+    }
+
+    fun testInPlaceRenameOfALocalBinder() {
+        val file = myFixture.configureByText("m.als", "sig A { f: set A }\npred p { all x<caret>: A | some x.f and x in A }")
+        analyze(file)
+        CodeInsightTestUtil.doInlineRename(VariableInplaceRenameHandler(), "y", myFixture)
+        assertEquals("sig A { f: set A }\npred p { all y: A | some y.f and y in A }", file.text)
+    }
+
     fun testRefusedOnAModelWithErrors() {
         val text = "sig A {}\npred p { some A and some Undefined }"
         val file = myFixture.configureByText("m.als", "sig A<caret> {}\npred p { some A and some Undefined }")
@@ -120,7 +147,7 @@ class AlloyRenameTest : BasePlatformTestCase() {
         try {
             assertNull(AlloyRenameProcessor().substituteElementToRename(PsiTreeUtil.findChildOfType(file, AlloySigName::class.java)!!, null))
         } finally {
-            AlloyModelService.getInstance(project).parse = edu.mit.csail.sdg.parser.CompUtil::parseEverything_fromFile
+            AlloyModelService.getInstance(project).restoreParse()
         }
     }
 

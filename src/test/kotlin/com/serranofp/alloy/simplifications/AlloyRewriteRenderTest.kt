@@ -5,6 +5,7 @@ import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.ExprBinary
 import edu.mit.csail.sdg.ast.ExprCall
+import edu.mit.csail.sdg.ast.ExprLet
 import edu.mit.csail.sdg.ast.ExprList
 import edu.mit.csail.sdg.ast.ExprQt
 import edu.mit.csail.sdg.ast.ExprUnary
@@ -83,6 +84,7 @@ class AlloyRewriteRenderTest : BasePlatformTestCase() {
                 (d.disjoint != null) == (e.disjoint != null) && d.names.size == e.names.size && sameAst(d.expr, e.expr, bound) &&
                     d.names.indices.all { bound[d.names[it]] = e.names[it]; true }
             } && sameAst(x.sub, y.sub, bound)
+            x is ExprLet && y is ExprLet -> sameAst(x.expr, y.expr, bound) && bound.put(x.`var`, y.`var`).let { true } && sameAst(x.sub, y.sub, bound)
             x is ExprUnary && y is ExprUnary -> x.op == y.op && sameAst(x.sub, y.sub, bound)
             x is ExprBinary && y is ExprBinary -> x.op == y.op && sameAst(x.left, y.left, bound) && sameAst(x.right, y.right, bound)
             x is ExprCall && y is ExprCall -> x.`fun` == y.`fun` && x.args.size == y.args.size && x.args.indices.all { sameAst(x.args[it], y.args[it], bound) }
@@ -142,10 +144,37 @@ class AlloyRewriteRenderTest : BasePlatformTestCase() {
     }
 
     fun testQuantifierBeforeASequence() {
-        // A quantifier's body takes in the `;` after it, as does the last of a flattened `and`
+        // Parentheses are kept before a `;`, although they are not needed there (see testSequenceEndsAQuantifierBody)
         check("not (some z: A | some z.r) ; a", "(no z: A | some z.r) ; a", rules = arrayOf(negatedSome))
         check("b and not (some z: A | some z.r) ; a", "b and (no z: A | some z.r) ; a", rules = arrayOf(negatedSome))
         check("b ; not (some z: A | some z.r)", "b ; no z: A | some z.r", "b ; (no z: A | some z.r)", rules = arrayOf(negatedSome))
+    }
+
+    fun testLetBody() {
+        check("let z = A | not not (a or b)", "let z = A | a or b", "let z = A | (a or b)", rules = arrayOf(doubleNegation))
+        check("(let z = A | not (some w: z | some w.r)) and a", "(let z = A | no w: z | some w.r) and a", rules = arrayOf(negatedSome))
+        check("let z = A | not (some w: z | some w.r) ; a", "let z = A | (no w: z | some w.r) ; a", "(let z = A | (no w: z | some w.r)) ; a", rules = arrayOf(negatedSome))
+    }
+
+    /** Pins the analyzer's grammar: `;` binds more loosely than a quantifier's or a `let`'s body. */
+    fun testSequenceEndsAQuantifierBody() {
+        val module = CompUtil.parseEverything_fromString(
+            A4Reporter.NOP,
+            header + "pred s { no z: A | some z.r ; a }\npred t { (no z: A | some z.r) ; a }\npred u { no z: A | (some z.r ; a) }\n" +
+                "pred v { let z = A | some z ; a }\npred w { (let z = A | some z) ; a }\n",
+        )
+        val (s, t, u, v, w) = listOf("s", "t", "u", "v", "w").map { name -> module.allFunc.single { it.label == "this/$name" }.body }
+        assertTrue(sameAst(s, t))
+        assertFalse(sameAst(s, u))
+        assertTrue(sameAst(v, w))
+    }
+
+    fun testLetGroupingIsCompared() {
+        // A positive control for the `let` case of [sameAst]: a different grouping is told apart
+        val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, header + "pred s { let z = A | some z and a }\npred t { (let z = A | some z) and a }\npred u { let w = A | some w and a }\n")
+        val (s, t, u) = listOf("s", "t", "u").map { name -> module.allFunc.single { it.label == "this/$name" }.body }
+        assertFalse(sameAst(s, t))
+        assertTrue(sameAst(s, u))
     }
 
     fun testQuantifierOnABlockLine() {

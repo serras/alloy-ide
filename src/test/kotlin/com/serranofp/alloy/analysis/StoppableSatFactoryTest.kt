@@ -1,5 +1,6 @@
 package com.serranofp.alloy.analysis
 
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.parser.CompUtil
@@ -8,13 +9,25 @@ import kodkod.engine.satlab.ExternalSolver
 import kodkod.engine.satlab.SATFactory
 import kodkod.engine.satlab.SATSolver
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
 class StoppableSatFactoryTest : BasePlatformTestCase() {
+    /** The temporary directories of the fake solvers, deleted after the test. */
+    private val directories = mutableListOf<Path>()
+
+    /**
+     * The fake solvers are shell scripts, and their processes are told apart by their arguments, which
+     * `ProcessHandle` only gives on some platforms: elsewhere the tests that run them are skipped.
+     */
+    override fun shouldRunTest(): Boolean =
+        super.shouldRunTest() && (name !in RUNS_PROCESSES || SystemInfo.isUnix && ProcessHandle.current().info().arguments().isPresent)
+
+    /** Native solvers may be loadable on some platforms; the bundled SAT4J ones always are. */
     fun testEveryBundledSolverHasAStoppableHandle() {
-        val ids = SATFactory.getAllSolvers().filter { it.isPresent }.map { it.id() }
-        assertEquals(listOf("sat4j", "sat4j.light", "sat4j.pmax"), ids.sorted())
-        for (factory in SATFactory.getAllSolvers().filter { it.isPresent }) {
+        val bundled = SATFactory.getAllSolvers().filter { it.isPresent && it.id().startsWith("sat4j") }
+        assertEquals(listOf("sat4j", "sat4j.light", "sat4j.pmax"), bundled.map { it.id() }.sorted())
+        for (factory in bundled) {
             assertNotNull(factory.id(), StoppableSatFactory.sat4jSolver(factory.instance()))
         }
     }
@@ -47,13 +60,28 @@ class StoppableSatFactoryTest : BasePlatformTestCase() {
         override fun createSolver(): SATSolver = ExternalSolver("fakesolver", null, true)
     }
 
-    private fun solverProcesses() = ProcessHandle.current().descendants().filter {
-        it.info().arguments().orElse(emptyArray()).firstOrNull()?.endsWith("/fakesolver") == true
-    }.count()
+    private fun isFakeSolver(process: ProcessHandle) =
+        process.info().arguments().orElse(emptyArray()).firstOrNull()?.endsWith("/fakesolver") == true
+
+    private fun solverProcesses() = ProcessHandle.current().descendants().filter(::isFakeSolver).count()
+
+    /** A fake solver executable, which pardinus finds by its name. */
+    private fun fakeSolver(): Path {
+        val dir = Files.createTempDirectory("alloy-fake-solver")
+        directories.add(dir)
+        val executable = Files.writeString(dir.resolve("fakesolver"), "#!/bin/sh\nread -r answer\n")
+        executable.toFile().setExecutable(true)
+        // Where pardinus looks for an executable before the PATH
+        System.setProperty("alloy.native.exe.fakesolver", executable.toString())
+        return executable
+    }
 
     override fun tearDown() {
         try {
             System.clearProperty("alloy.native.exe.fakesolver")
+            // Those a failed test left running
+            ProcessHandle.current().descendants().filter(::isFakeSolver).forEach { it.destroyForcibly() }
+            directories.forEach { it.toFile().deleteRecursively() }
         } finally {
             super.tearDown()
         }
@@ -61,11 +89,7 @@ class StoppableSatFactoryTest : BasePlatformTestCase() {
 
     /** An analysis whose solver is [FakeExternal], once its process runs. */
     private fun externalAnalysis(running: Long): AlloyAnalysis {
-        val dir = Files.createTempDirectory("alloy-fake-solver")
-        val executable = Files.writeString(dir.resolve("fakesolver"), "#!/bin/sh\nread -r answer\n")
-        executable.toFile().setExecutable(true)
-        // Where pardinus looks for an executable before the PATH
-        System.setProperty("alloy.native.exe.fakesolver", executable.toString())
+        fakeSolver()
         val options = A4Options().apply { solver = FakeExternal() }
         val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, "sig Node { succ: lone Node }\nrun { some succ and no iden & succ } for 3")
         val events = mutableListOf<AlloyAnalysisEvent>()
@@ -86,6 +110,44 @@ class StoppableSatFactoryTest : BasePlatformTestCase() {
         assertTrue(analysis.await(10, TimeUnit.SECONDS))
         assertInstanceOf(analysis.end, AlloyAnalysisEvent.Stopped::class.java)
         assertEquals(0L, solverProcesses())
+    }
+
+    /** A process that runs the same executable, but is not the analysis's solver, as it has no CNF file of it. */
+    fun testStoppingLeavesAnotherProcessOfTheSameSolver() {
+        val analysis = externalAnalysis(running = 1)
+        val other = ProcessBuilder(System.getProperty("alloy.native.exe.fakesolver")).start()
+        try {
+            waitForProcesses(2)
+            analysis.stop()
+            assertTrue(analysis.await(10, TimeUnit.SECONDS))
+            assertInstanceOf(analysis.end, AlloyAnalysisEvent.Stopped::class.java)
+            assertTrue(other.isAlive)
+            assertEquals(1L, solverProcesses())
+        } finally {
+            other.destroyForcibly()
+        }
+    }
+
+    /** SAT4J, which has no executables, identifies no process as its solver. */
+    fun testStoppingAJavaSolverDestroysNoProcess() {
+        val other = ProcessBuilder(fakeSolver().toString()).start()
+        try {
+            val stoppable = StoppableSatFactory(SATFactory.DEFAULT)
+            stoppable.instance()
+            waitForProcesses(1)
+            stoppable.stop()
+            assertTrue(other.isAlive)
+        } finally {
+            other.destroyForcibly()
+        }
+    }
+
+    private fun waitForProcesses(count: Long) {
+        val deadline = System.currentTimeMillis() + 30_000
+        while (solverProcesses() < count) {
+            assertTrue("the solver process did not start", System.currentTimeMillis() < deadline)
+            Thread.sleep(10)
+        }
     }
 
     fun testStoppingLeavesTheProcessesOfOtherAnalyses() {
@@ -120,9 +182,7 @@ class StoppableSatFactoryTest : BasePlatformTestCase() {
     }
 
     fun testFactoriesChosenForOptionsStopWithTheOriginal() {
-        val script = Files.writeString(Files.createTempDirectory("alloy-fake-solver").resolve("fakesolver"), "#!/bin/sh\nread -r answer\n")
-        script.toFile().setExecutable(true)
-        System.setProperty("alloy.native.exe.fakesolver", script.toString())
+        val script = fakeSolver()
         // The original has no executables of its own: the one it chooses has
         val stoppable = StoppableSatFactory(Choosing(Spawning(script.toString())))
         val chosen = stoppable.doOptions(kodkod.engine.config.ExtendedOptions())
@@ -138,5 +198,15 @@ class StoppableSatFactoryTest : BasePlatformTestCase() {
             assertTrue("the solver process was not destroyed", System.currentTimeMillis() < deadline)
             Thread.sleep(10)
         }
+    }
+
+    private companion object {
+        val RUNS_PROCESSES = setOf(
+            "testStoppingDestroysTheExternalSolverProcess",
+            "testStoppingLeavesAnotherProcessOfTheSameSolver",
+            "testStoppingAJavaSolverDestroysNoProcess",
+            "testStoppingLeavesTheProcessesOfOtherAnalyses",
+            "testFactoriesChosenForOptionsStopWithTheOriginal",
+        )
     }
 }

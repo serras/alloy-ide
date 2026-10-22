@@ -9,6 +9,9 @@ import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import edu.mit.csail.sdg.alloy4.ErrorSyntax
+import edu.mit.csail.sdg.alloy4.ErrorType
+import edu.mit.csail.sdg.alloy4.Pos
 
 class AlloyExternalAnnotatorTest : BasePlatformTestCase() {
     private fun highlights(severity: HighlightSeverity): List<HighlightInfo> =
@@ -74,6 +77,69 @@ class AlloyExternalAnnotatorTest : BasePlatformTestCase() {
         val atOpen = highlights(HighlightSeverity.ERROR).single()
         assertEquals("util/ordering", atOpen.text())
         assertTrue(atOpen.description, atOpen.description.startsWith("The opened module util/ordering has errors (ordering.als:"))
+    }
+
+    fun testErrorsInAModuleOpenedTwiceAreAtBothOpens() {
+        myFixture.addFileToProject("d.als", "module d\nsig D { f: Undefined }")
+        myFixture.addFileToProject("b.als", "module b\nopen d")
+        myFixture.addFileToProject("c.als", "module c\nopen d")
+        myFixture.configureByText("main.als", "open b\nopen c\nsig Box {}")
+        assertEquals(listOf("b", "c"), highlights(HighlightSeverity.ERROR).map { it.text() }.sorted())
+    }
+
+    fun testWarningInAnOpenedModuleIsNotShownInTheOpener() {
+        myFixture.addFileToProject("lib.als", "module lib\nsig Item {}\nfact { some Item & none }")
+        myFixture.configureByText("main.als", "open lib\nsig Box { items: set Item }")
+        assertEmpty(highlights(HighlightSeverity.WARNING))
+        assertEmpty(highlights(HighlightSeverity.ERROR))
+    }
+
+    /**
+     * A position past the text, as the analyzer reports for text that has changed since, is clamped into it:
+     * past the last line to the last line, past the end of a line to its end.
+     */
+    fun testErrorPastTheTextIsClampedIntoIt() {
+        val service = AlloyModelService.getInstance(project)
+        service.parse = { _, _, filename -> throw ErrorSyntax(Pos(filename, 1, 5), "Unexpected end") }
+        try {
+            myFixture.configureByText("model.als", "sig A {}\nsig B {}")
+            val error = highlights(HighlightSeverity.ERROR).single()
+            assertEquals("Unexpected end", error.description)
+            assertEquals("sig A {}\n".length, error.startOffset)
+            assertEquals("s", error.text())
+
+            service.parse = { _, _, filename -> throw ErrorSyntax(Pos(filename, 30, 1, 40, 2), "Unexpected end") }
+            WriteCommandAction.runWriteCommandAction(project) { myFixture.editor.document.insertString(0, " ") }
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            // From the end of the first line to the end of the second
+            assertEquals("\nsig B {}", highlights(HighlightSeverity.ERROR).single().text())
+        } finally {
+            service.restoreParse()
+        }
+    }
+
+    fun testErrorWithoutAPositionIsForTheWholeFile() {
+        val service = AlloyModelService.getInstance(project)
+        service.parse = { _, _, _ -> throw ErrorType("Somewhere unknown") }
+        try {
+            myFixture.configureByText("model.als", "sig A {}")
+            val error = highlights(HighlightSeverity.ERROR).single()
+            assertEquals("Somewhere unknown", error.description)
+            assertTrue(error.isFileLevelAnnotation)
+        } finally {
+            service.restoreParse()
+        }
+    }
+
+    fun testAnalyzerFailureShowsNothing() {
+        val service = AlloyModelService.getInstance(project)
+        service.parse = { _, _, _ -> throw IllegalStateException("analyzer bug") }
+        try {
+            myFixture.configureByText("model.als", "sig A { f: Undefined }")
+            assertEmpty(myFixture.doHighlighting(HighlightSeverity.WARNING))
+        } finally {
+            service.restoreParse()
+        }
     }
 
     fun testValidModel() {

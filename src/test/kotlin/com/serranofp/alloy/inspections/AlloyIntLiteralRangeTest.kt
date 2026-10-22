@@ -1,33 +1,51 @@
 package com.serranofp.alloy.inspections
 
-import com.intellij.codeInsight.template.impl.TemplateManagerImpl
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.serranofp.alloy.AlloyBundle
 
-class AlloyIntLiteralRangeTest : BasePlatformTestCase() {
-    private val inspection = AlloyIntLiteralRangeInspection()
-
-    override fun setUp() {
-        super.setUp()
-        TemplateManagerImpl.setTemplateTesting(testRootDisposable)
-        myFixture.enableInspections(inspection)
-    }
-
-    private fun problems(): List<Pair<String, String>> =
-        myFixture.doHighlighting().filter { it.inspectionToolId == inspection.shortName }.sortedBy { it.startOffset }.map {
-            myFixture.file.text.substring(it.startOffset, it.endOffset) to it.description
-        }
+class AlloyIntLiteralRangeTest : AlloyInspectionTestCase() {
+    override val inspection = AlloyIntLiteralRangeInspection()
 
     /** Applies [fix] at the literal [at], the first occurrence in the file, and returns the number selected for editing. */
-    private fun apply(at: String, fix: String): String? {
-        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf(at))
-        myFixture.launchAction(myFixture.findSingleIntention(fix))
-        val template = TemplateManagerImpl.getTemplateState(myFixture.editor) ?: return null
-        val selected = template.currentVariableRange?.substring(myFixture.editor.document.text)
-        template.gotoEnd(false)
-        return selected
-    }
+    private fun apply(at: String, fix: String): String? = launch(at, fix)
 
     private val nodes = "sig Node {}\n"
+
+    fun testBoundsOfTheRange() {
+        val reported = listOf("-9", "-8", "7", "8", "- 9", "0b111", "0b1000", "00").associateWith { literal ->
+            myFixture.configureByText("model.als", nodes + "fact { #Node > $literal }\nrun a {}\n")
+            problems().map { it.first }
+        }
+        assertEquals(
+            mapOf(
+                "-9" to listOf("-9"), "-8" to emptyList(), "7" to emptyList(), "8" to listOf("8"), "- 9" to listOf("- 9"),
+                "0b111" to emptyList(), "0b1000" to listOf("0b1000"), "00" to emptyList(),
+            ),
+            reported,
+        )
+    }
+
+    fun testLiteralBeyondEveryBitwidth() {
+        myFixture.configureByText("model.als", nodes + "fact { #Node < 1000000000 }\nrun a {}\n")
+        assertEquals(listOf("1000000000" to "a uses 4-bit integers (-8..7), so 1000000000 is read as 0"), problems())
+        // No bitwidth the analyzer allows holds it, so there is no fix
+        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("1000000000"))
+        assertEmpty(myFixture.availableIntentions.filter { it.familyName == AlloyBundle.message("inspection.int.literal.fix.family") })
+    }
+
+    fun testLiteralOfACheckedAssertion() {
+        myFixture.configureByText("model.als", nodes + "assert small { #Node < 9 }\ncheck small for 3\nassert other { #Node < 10 }\n")
+        assertEquals(listOf("9" to "small uses 4-bit integers (-8..7), so 9 is read as -7"), problems())
+        assertEquals("5", apply("9", "Set the bitwidth of small to 5 int"))
+        myFixture.checkResult(nodes + "assert small { #Node < 9 }\ncheck small for 3 but 5 int\nassert other { #Node < 10 }\n")
+    }
+
+    fun testLiteralOfACommandChain() {
+        // Each command of the chain has its own bitwidth
+        myFixture.configureByText("model.als", nodes + "pred a { #Node < 12 }\npred b { #Node < 9 }\nrun a for 3 but 5 int => run b for 3\n")
+        assertEquals(listOf("9" to "b uses 4-bit integers (-8..7), so 9 is read as -7"), problems())
+        assertEquals("5", apply("9", "Set the bitwidth of b to 5 int"))
+        myFixture.checkResult(nodes + "pred a { #Node < 12 }\npred b { #Node < 9 }\nrun a for 3 but 5 int => run b for 3 but 5 int\n")
+    }
 
     fun testDefaultBitwidth() {
         myFixture.configureByText("model.als", nodes + "fact { #Node =< 8 }\nrun example {} for 3\n")

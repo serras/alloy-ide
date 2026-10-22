@@ -3,6 +3,7 @@ package com.serranofp.alloy.run.tests
 import com.intellij.execution.RunManager
 import com.intellij.execution.actions.ConfigurationContext
 import com.intellij.execution.actions.RunConfigurationProducer
+import com.intellij.execution.configurations.RuntimeConfigurationError
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.run.AlloyCommandRef
 import org.jdom.Element
@@ -66,6 +67,41 @@ class AlloyCommandsConfigurationTest : BasePlatformTestCase() {
         assertEquals("file:///models/a.als", read.fileUrl)
         assertEquals(configuration.commands, read.commands)
         assertEquals(listOf(0, 0, 0, 1), read.commands.map { it.occurrence })
+    }
+
+    fun testMalformedCommandsAreSkippedWhenRead() {
+        val element = Element("configuration")
+        element.addContent(Element("command").setAttribute("index", "x").setAttribute("label", "show"))
+        element.addContent(Element("command").setAttribute("label", "other"))
+        element.addContent(Element("command").setAttribute("index", "2").setAttribute("label", "safety").setAttribute("occurrence", "?"))
+        val read = AlloyCommandsRunConfiguration(project, AlloyCommandsConfigurationType.getInstance().factory, "")
+        read.readExternal(element)
+        assertEquals("", read.fileUrl)
+        assertEquals(listOf(AlloyCommandRef("safety", 2)), read.commands)
+        assertEquals(0, read.commands.single().occurrence)
+    }
+
+    private fun configurationError(configuration: AlloyCommandsRunConfiguration): String? =
+        try {
+            configuration.checkConfiguration()
+            null
+        } catch (e: RuntimeConfigurationError) {
+            e.localizedMessage
+        }
+
+    fun testConfigurationOfAMissingFileIsAnError() {
+        val configuration = producer.createConfigurationFromContext(context())!!.configuration as AlloyCommandsRunConfiguration
+        configuration.fileUrl = "temp:///missing.als"
+        assertEquals("The Alloy file is not found", configurationError(configuration))
+        configuration.fileUrl = ""
+        assertEquals("The Alloy file is not found", configurationError(configuration))
+    }
+
+    fun testConfigurationOfAnotherFileIsAnError() {
+        val configuration = producer.createConfigurationFromContext(context())!!.configuration as AlloyCommandsRunConfiguration
+        myFixture.configureByText("notes.txt", "run show")
+        configuration.fileUrl = myFixture.file.virtualFile.url
+        assertEquals("notes.txt is not an Alloy file", configurationError(configuration))
     }
 
     fun testSettingsEditorKeepsTheFile() {

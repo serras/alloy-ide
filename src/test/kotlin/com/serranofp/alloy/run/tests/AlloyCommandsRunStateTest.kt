@@ -1,21 +1,27 @@
 package com.serranofp.alloy.run.tests
 
 import com.intellij.execution.DefaultExecutionResult
+import com.intellij.execution.ExecutionException
+import com.intellij.execution.configurations.RunProfile
 import com.intellij.execution.executors.DefaultRunExecutor
 import com.intellij.execution.process.ProcessEvent
+import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessOutputTypes
+import com.intellij.execution.runners.ExecutionEnvironment
+import com.intellij.execution.runners.ExecutionEnvironmentBuilder
 import com.intellij.execution.runners.ProgramRunner
 import com.intellij.execution.testframework.sm.runner.ui.SMTRunnerConsoleView
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.run.AlloyCommandLauncher
 import com.serranofp.alloy.run.AlloyCommandRef
 import com.serranofp.alloy.run.AlloyCommandResults
 import com.serranofp.alloy.run.AlloyRunService
+import com.serranofp.alloy.run.AlloyRunTestCase
+import com.serranofp.alloy.run.analysisIsSearching
 import com.serranofp.alloy.run.CommandState
 import com.serranofp.alloy.run.Vacuity
 import com.serranofp.alloy.run.Verdict
@@ -26,9 +32,7 @@ import com.serranofp.alloy.run.waitUntil
 import edu.mit.csail.sdg.translator.A4Options
 import jetbrains.buildServer.messages.serviceMessages.ServiceMessage
 
-class AlloyCommandsRunStateTest : BasePlatformTestCase() {
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyCommandsRunStateTest : AlloyRunTestCase() {
 
     private val mixed = """
         sig Node { succ: lone Node }
@@ -44,19 +48,6 @@ class AlloyCommandsRunStateTest : BasePlatformTestCase() {
         check vacuous for 3
         run { some Node } for 2
     """.trimIndent()
-
-    override fun setUp() {
-        super.setUp()
-        results.clear()
-    }
-
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-        } finally {
-            super.tearDown()
-        }
-    }
 
     private class Suite(val handler: AlloyCommandsProcessHandler) {
         val out = StringBuffer()
@@ -77,25 +68,61 @@ class AlloyCommandsRunStateTest : BasePlatformTestCase() {
         fun failed() = named("testFailed").associate { it.attributes["name"] to it.attributes["message"] }
     }
 
-    private fun start(model: String, only: List<AlloyCommandRef> = emptyList(), launcher: () -> AlloyCommandLauncher = { AlloyCommandLauncher(project) }): Suite {
+    /** A suite of [model]'s commands, which records what it prints, not started yet. */
+    private fun suite(model: String, only: List<AlloyCommandRef> = emptyList(), launcher: () -> AlloyCommandLauncher = { AlloyCommandLauncher(project) }): Suite {
         myFixture.configureByText("a.als", model)
-        val suite = Suite(AlloyCommandsProcessHandler(project, myFixture.file.virtualFile, only, launcher))
-        suite.handler.addProcessListener(object : ProcessListener {
+        return Suite(AlloyCommandsProcessHandler(project, myFixture.file.virtualFile, only, launcher)).also { it.listen(it.handler) }
+    }
+
+    private fun Suite.listen(handler: ProcessHandler) {
+        handler.addProcessListener(object : ProcessListener {
             override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                (if (outputType == ProcessOutputTypes.STDERR) suite.err else suite.out).append(event.text)
+                (if (outputType == ProcessOutputTypes.STDERR) err else out).append(event.text)
             }
 
             override fun processTerminated(event: ProcessEvent) {
-                suite.exitCode = event.exitCode
+                exitCode = event.exitCode
             }
         })
-        suite.handler.startNotify()
-        return suite
     }
 
-    private fun Suite.await(): Suite {
+    private fun start(model: String, only: List<AlloyCommandRef> = emptyList(), launcher: () -> AlloyCommandLauncher = { AlloyCommandLauncher(project) }): Suite =
+        suite(model, only, launcher).also { it.handler.startNotify() }
+
+    /** Waits for the suite to end, and checks that its messages are well formed (see [assertWellFormed]). */
+    private fun Suite.await(stopped: Boolean = false): Suite {
         waitUntil("the suite did not end") { exitCode != null }
+        assertWellFormed(stopped)
         return this
+    }
+
+    /**
+     * Each test is started, then has at most its output and then its failure, and finishes before the next
+     * one starts, as the test tree expects. Only the last one may be left unfinished, when the suite was
+     * [stopped].
+     */
+    private fun Suite.assertWellFormed(stopped: Boolean = false) {
+        val steps = listOf("testStarted", "testStdOut", "testFailed", "testFinished")
+        var current: String? = null
+        var step = -1
+        for (message in messages) {
+            val name = message.attributes["name"]
+            when (val next = steps.indexOf(message.messageName)) {
+                -1 -> assertNull("$message inside the test $current", current)
+                0 -> {
+                    assertNull("$name started inside $current", current)
+                    current = name
+                    step = 0
+                }
+                else -> {
+                    assertEquals("$message", current, name)
+                    assertTrue("$message after a ${steps[step]}", next > step)
+                    step = next
+                    if (message.messageName == "testFinished") current = null
+                }
+            }
+        }
+        if (!stopped) assertNull("$current did not finish", current)
     }
 
     private fun run(model: String, only: List<AlloyCommandRef> = emptyList()) = start(model, only).await()
@@ -166,10 +193,10 @@ class AlloyCommandsRunStateTest : BasePlatformTestCase() {
             "pred show { #P = 11 and #H = 10 }\npred last {}\nrun first for 2\nrun show for 11\nrun last for 2"
         val suite = start(model, launcher = { AlloyCommandLauncher(project, options = ::slowOptions) })
         waitUntil("the second command did not start solving") {
-            suite.started().size == 2 && service.activeExecution?.log?.progress == "Solving..."
+            suite.started().size == 2 && service.activeExecution?.log?.progress == "Solving..." && analysisIsSearching()
         }
         suite.handler.destroyProcess()
-        suite.await()
+        suite.await(stopped = true)
 
         assertEquals(listOf("run first", "run show"), suite.started())
         assertEquals(listOf("run first"), suite.finished())
@@ -247,10 +274,94 @@ class AlloyCommandsRunStateTest : BasePlatformTestCase() {
     fun testDetachingStopsTheSuite() {
         val model = "sig H {}\nsig P { h: one H }\nfact { all disj a, b: P | a.h != b.h }\npred show { #P = 11 and #H = 10 }\nrun show for 11"
         val suite = start(model, launcher = { AlloyCommandLauncher(project, options = ::slowOptions) })
-        waitUntil("the command did not start solving") { service.activeExecution?.log?.progress == "Solving..." }
+        waitUntil("the command did not start solving") { service.activeExecution?.log?.progress == "Solving..." && analysisIsSearching() }
         suite.handler.detachProcess()
         waitUntil("the suite did not end") { suite.handler.isProcessTerminated && service.activeExecution == null }
         assertEquals("Stopped before completion", results.get(myFixture.file.virtualFile, AlloyCommandRef("show", 0))!!.summary)
+        suite.assertWellFormed(stopped = true)
+    }
+
+    fun testDestroyedBeforeItStartsRunsNothing() {
+        val suite = suite(mixed)
+        suite.handler.destroyProcess()
+        // Held by the test, so that the suite's thread, if it starts, ends at once
+        val held = service.startSuite()!!
+        try {
+            suite.handler.startNotify()
+            assertEquals(1, suite.exitCode)
+            waitUntil("the suite's thread did not end") { suite.err.isNotEmpty() }
+            assertEmpty(suite.started())
+            assertNull(results.get(myFixture.file.virtualFile, AlloyCommandRef("show", 0)))
+        } finally {
+            service.suiteFinished(held)
+        }
+    }
+
+    private fun configuration(): AlloyCommandsRunConfiguration =
+        (AlloyCommandsConfigurationType.getInstance().factory.createTemplateConfiguration(project) as AlloyCommandsRunConfiguration)
+            .apply { fileUrl = myFixture.file.virtualFile.url }
+
+    /** Executes [state] as the Run executor does; [check] gets its result once its suite ended. */
+    private fun execute(state: AlloyCommandsRunState, configuration: AlloyCommandsRunConfiguration, check: (DefaultExecutionResult, Suite) -> Unit) {
+        val executor = DefaultRunExecutor.getRunExecutorInstance()
+        val result = state.execute(executor, ProgramRunner.getRunner(executor.id, configuration)!!) as DefaultExecutionResult
+        try {
+            val suite = Suite(result.processHandler as AlloyCommandsProcessHandler).also { it.listen(it.handler) }
+            result.processHandler.startNotify()
+            suite.await()
+            check(result, suite)
+        } finally {
+            Disposer.dispose(result.executionConsole)
+        }
+    }
+
+    /** The run of *Rerun Failed Tests* once the test tree of [result] shows [tests] results; null if none failed. */
+    private fun rerunProfile(result: DefaultExecutionResult, configuration: AlloyCommandsRunConfiguration, tests: Int): RunProfile? {
+        val root = (result.executionConsole as SMTRunnerConsoleView).resultsViewer.testsRootNode
+        waitUntil("the test tree did not show the results") { root.children.size == tests && root.children.all { it.isFinal } }
+        val rerun = result.restartActions.single() as AlloyRerunFailedAction
+        val environment = ExecutionEnvironmentBuilder.create(DefaultRunExecutor.getRunExecutorInstance(), configuration).build()
+        // Protected, as the platform calls it when the action is performed
+        val getRunProfile = AlloyRerunFailedAction::class.java.getDeclaredMethod("getRunProfile", ExecutionEnvironment::class.java)
+        return getRunProfile.apply { isAccessible = true }.invoke(rerun, environment) as RunProfile?
+    }
+
+    fun testRerunFailedRunsOnlyTheFailedCommands() {
+        myFixture.configureByText("a.als", mixed)
+        val configuration = configuration()
+        execute(AlloyCommandsRunState(configuration, emptyList()), configuration) { result, suite ->
+            assertEquals(setOf("check noSucc", "check vacuous"), suite.failed().keys)
+            val profile = rerunProfile(result, configuration, tests = 6)!!
+            val executor = DefaultRunExecutor.getRunExecutorInstance()
+            val environment = ExecutionEnvironmentBuilder.create(executor, configuration).build()
+            val state = profile.getState(executor, environment) as AlloyCommandsRunState
+            execute(state, configuration) { _, rerun ->
+                assertEquals(listOf("check noSucc", "check vacuous"), rerun.started())
+                assertEquals(setOf("check noSucc", "check vacuous"), rerun.failed().keys)
+            }
+        }
+    }
+
+    fun testNothingToRerunWhenEveryCommandPassed() {
+        myFixture.configureByText("a.als", "pred show {}\nrun show for 2\nrun other {} for 2 expect 1\n")
+        val configuration = configuration()
+        execute(AlloyCommandsRunState(configuration, emptyList()), configuration) { result, suite ->
+            assertEmpty(suite.failed().keys)
+            assertNull(rerunProfile(result, configuration, tests = 2))
+        }
+    }
+
+    fun testMissingFileCannotBeExecuted() {
+        myFixture.configureByText("a.als", "pred show {}\nrun show for 2\n")
+        val configuration = configuration().apply { fileUrl = "temp:///missing.als" }
+        val executor = DefaultRunExecutor.getRunExecutorInstance()
+        try {
+            AlloyCommandsRunState(configuration, emptyList()).execute(executor, ProgramRunner.getRunner(executor.id, configuration)!!)
+            fail("a missing file was executed")
+        } catch (e: ExecutionException) {
+            assertEquals("The Alloy file is not found", e.message)
+        }
+        assertNull(service.activeExecution)
     }
 
     /** The Run executor runs the configuration, with the SM test console and *Rerun Failed Tests*. */

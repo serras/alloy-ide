@@ -1,6 +1,8 @@
 package com.serranofp.alloy.simplifications
 
+import com.intellij.codeInsight.intention.IntentionActionDelegate
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.serranofp.alloy.inspections.assertTypeChecks
 
 /** Tests of the Alloy intentions, over models that start with [header]. */
 abstract class AlloyIntentionTestCase : BasePlatformTestCase() {
@@ -23,26 +25,25 @@ abstract class AlloyIntentionTestCase : BasePlatformTestCase() {
         myFixture.doHighlighting()
     }
 
-    /** The texts of the Alloy intentions offered at the caret. */
-    protected fun offered(): List<String> = myFixture.availableIntentions.filter { it.familyName in FAMILIES }.map { it.text }
+    /** The texts of the Alloy rewrite intentions offered at the caret, whatever their family. */
+    protected fun offered(): List<String> =
+        myFixture.availableIntentions.filter { IntentionActionDelegate.unwrap(it) is AlloyRewriteIntention }.map { it.text }
 
-    /** [formula] once the intention [text] is invoked with the caret at [at]. */
+    /** [formula] once the intention [text] is invoked with the caret at [at]; the model must still type-check. */
     protected fun invoked(formula: String, text: String, at: String = "", params: String = ""): String {
         configure(formula, at, params)
         myFixture.launchAction(myFixture.findSingleIntention(text))
+        myFixture.assertTypeChecks()
         return myFixture.file.text.removePrefix(header).removePrefix("pred subject$params { ").removeSuffix(" }\n")
     }
 
-    /** Asserts that no intention named [text] is offered with the caret at [at] in [formula]. */
+    /**
+     * Asserts that no intention named [text] is offered with the caret at [at] in [formula]. Every intention
+     * offered is looked at, not only the Alloy ones, so that the assertion does not depend on how they are found.
+     */
     protected fun assertNotOffered(formula: String, text: String, at: String = "", params: String = "") {
         configure(formula, at, params)
-        assertFalse("$text is offered on $formula: ${offered()}", text in offered())
-    }
-
-    private companion object {
-        val FAMILIES = listOf(
-            AlloyDeMorganIntention(), AlloyOrToImpliesIntention(), AlloyImpliesToOrIntention(), AlloyQuantifierNegationIntention(),
-            AlloyTemporalNegationIntention(), AlloyTemporalDistributionIntention(), AlloyTransposeJoinIntention(),
-        ).map { it.familyName }.toSet()
+        val all = myFixture.availableIntentions.map { it.text }
+        assertFalse("$text is offered on $formula: $all", text in all)
     }
 }

@@ -6,6 +6,24 @@ import com.intellij.util.xmlb.XmlSerializer
 class AlloySettingsTest : BasePlatformTestCase() {
     private val unavailable: () -> Collection<String> = { error("availability is not needed for sat4j") }
 
+    // A solver other than sat4j is looked up with its executables: none is on the PATH, whatever the machine
+    private val properties = SolverProperties()
+
+    override fun setUp() {
+        super.setUp()
+        properties.allAbsent()
+    }
+
+    override fun tearDown() {
+        try {
+            properties.restore()
+        } catch (e: Throwable) {
+            addSuppressedException(e)
+        } finally {
+            super.tearDown()
+        }
+    }
+
     fun testDefaultsAreUpstreamDefaults() {
         val state = AlloySettingsState()
         assertEquals("sat4j", state.solver)
@@ -81,6 +99,29 @@ class AlloySettingsTest : BasePlatformTestCase() {
         assertEquals(3, options.coreGranularity)
         assertTrue(options.recordKodkod)
         assertTrue(options.inferPartialInstance)
+    }
+
+    fun testOutOfRangeValuesAreClamped() {
+        val settings = AlloySettings()
+        for ((saved, expected) in listOf(Triple(9, 7, 4) to Triple(4, 2, 3), Triple(-3, -1, -2) to Triple(0, 0, 0))) {
+            settings.state.skolemDepth = saved.first
+            settings.state.coreMinimization = saved.second
+            settings.state.coreGranularity = saved.third
+            val options = settings.analyzerOptions(unavailable)
+            assertEquals("$saved", expected, Triple(options.skolemDepth, options.coreMinimization, options.coreGranularity))
+        }
+    }
+
+    fun testNoSavedSolverIsSat4j() {
+        val settings = AlloySettings().apply { state.solver = null }
+        assertEquals("sat4j", settings.analyzerOptions(unavailable).solver.id())
+        assertNull(settings.solverFallbackWarning(unavailable))
+    }
+
+    /** An external solver that is listed as available but whose executable is gone runs with sat4j. */
+    fun testAvailableSolverWithoutItsExecutableUsesSat4j() {
+        val settings = AlloySettings().apply { state.solver = "yices.external" }
+        assertEquals("sat4j", settings.analyzerOptions { setOf("sat4j", "yices.external") }.solver.id())
     }
 
     fun testEachRunGetsItsOwnOptions() {

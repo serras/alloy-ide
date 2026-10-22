@@ -1,27 +1,15 @@
 package com.serranofp.alloy.run
 
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 import com.serranofp.alloy.analysis.AlloyFailure
 
-class AlloyRunServiceTest : BasePlatformTestCase() {
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyRunServiceTest : AlloyRunTestCase() {
     private val show = AlloyCommandRef("show", 0)
     private val noCycles = AlloyCommandRef("noCycles", 1)
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", "run show for 3\ncheck noCycles for 3\n")
-    }
-
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-        } finally {
-            super.tearDown()
-        }
     }
 
     private val file get() = myFixture.file.virtualFile
@@ -97,6 +85,31 @@ class AlloyRunServiceTest : BasePlatformTestCase() {
         val finished = result()
         execution.accept(AlloyAnalysisEvent.Stopped(0))
         assertSame(finished, result())
+    }
+
+    fun testCallsAfterTheEndChangeNothing() {
+        val execution = newExecution()
+        service.startRun(execution)
+        showRun.forEach(execution::accept)
+        val finished = result()
+        execution.warn("A late warning")
+        execution.fail("Analysis failed", "a late failure")
+        execution.stop()
+        execution.terminate()
+        assertSame(finished, result())
+        assertNull(service.activeExecution)
+    }
+
+    fun testStopBeforeTheAnalysisEndsTheExecution() {
+        val execution = newExecution()
+        service.startRun(execution)
+        execution.stop()
+        assertTrue(execution.isFinished())
+        assertEquals(CommandState.Stopped, result()!!.state)
+        // Nor does the analysis start afterwards
+        var started = false
+        execution.begin({ started = true; error("started") })
+        assertFalse(started)
     }
 
     fun testFailureShowsItsCause() {

@@ -307,6 +307,11 @@ class AlloyRunLogTest : TestCase() {
     }
 
     /** Should the analyzer translate again, the first counts afterwards replace no line of the earlier block. */
+    fun testOptionsTurnedOffInTheSolverLine() {
+        val log = log(listOf(executing("show", 0), Translating("minisat", 4, 3, -1, -1, 0, 0, "batch", 0)))
+        assertEquals("   Solver=minisat Bitwidth=4 MaxSeq=3 Symmetry=OFF Mode=batch", log.lines.single { it.text.startsWith("   Solver=") }.text)
+    }
+
     fun testASecondTranslationStartsANewBlock() {
         val log = log(start("show") + listOf(Solving(0, 12, 103, 149, 29), translating(30), Solving(0, 12, 103, 149, 40)))
         assertEquals(2, log.lines.count { it.text.startsWith("   Solver=") })

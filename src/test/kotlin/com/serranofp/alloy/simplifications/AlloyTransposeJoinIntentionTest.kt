@@ -14,6 +14,9 @@ class AlloyTransposeJoinIntentionTest : AlloyIntentionTestCase() {
 
     fun testTransposeIsDroppedRatherThanDoubled() {
         assertEquals("some n.succ", invoked("some (~succ).n", swap, at = ".n", params = "[n: Node]"))
+        // Only joins written with a `.` are swapped: the box join `(~succ)[n]` keeps its form
+        assertNotOffered("some (~succ)[n]", swap, at = "[n", params = "[n: Node]")
+        assertNotOffered("some (~succ)[n]", swap, at = "~", params = "[n: Node]")
     }
 
     fun testOtherJoins() {

@@ -25,7 +25,9 @@ class AlloyDesktopPreferencesTest : BasePlatformTestCase() {
     fun testRunLeavesTheDesktopPreferencesUnchanged() {
         val before = snapshot()
         AlloyCommandResults.getInstance(project).clear()
-        AlloySettings.getInstance().state.skolemDepth = 3
+        val settings = AlloySettings.getInstance()
+        val saved = AlloySettingsState().apply { copyFrom(settings.state) }
+        settings.state.skolemDepth = 3
         try {
             val file = myFixture.configureByText("model.als", "sig A { f: set A }\npred show { some f }\nrun show for 3\n").virtualFile
             assertTrue(AlloyRunService.getInstance(project).launch(file, AlloyCommandRef("show", 0), myFixture.editor))
@@ -34,7 +36,7 @@ class AlloyDesktopPreferencesTest : BasePlatformTestCase() {
             assertEquals(CommandState.InstanceFound, result.state)
             assertTrue(result.details.log.any { "SkolemDepth=3" in it.text })
         } finally {
-            AlloySettings.getInstance().state.skolemDepth = 1
+            settings.loadState(saved)
         }
         assertEquals(before, snapshot())
     }

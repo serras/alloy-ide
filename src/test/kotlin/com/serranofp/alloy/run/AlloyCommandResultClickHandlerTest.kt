@@ -2,16 +2,12 @@ package com.serranofp.alloy.run
 
 import com.intellij.codeInsight.hints.declarative.InlayActionHandler
 import com.intellij.codeInsight.hints.declarative.StringInlayActionPayload
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.EmptyProgressIndicator
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.settings.AlloySettings
-import java.util.concurrent.Future
+import com.serranofp.alloy.viewer.AlloyInstanceViewer
 import java.util.concurrent.TimeUnit
 
-class AlloyCommandResultClickHandlerTest : BasePlatformTestCase() {
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyCommandResultClickHandlerTest : AlloyRunTestCase() {
     private val show = AlloyCommandRef("show", 0)
     private val noCycles = AlloyCommandRef("noCycles", 1)
 
@@ -19,16 +15,7 @@ class AlloyCommandResultClickHandlerTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", model)
-    }
-
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-        } finally {
-            super.tearDown()
-        }
     }
 
     private val file get() = myFixture.file.virtualFile
@@ -50,11 +37,19 @@ class AlloyCommandResultClickHandlerTest : BasePlatformTestCase() {
         )
     }
 
-    fun testInstanceClickLeavesTheResult() {
-        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instanceLink())
-        val before = results.get(file, show)
-        click(show)
-        assertSame(before, results.get(file, show))
+    fun testInstanceClickOpensItAndLeavesTheResult() {
+        val viewer = AlloyInstanceViewer.getInstance(project)
+        viewer.clear()
+        try {
+            record(show, CommandState.InstanceFound, "Instance found · 4 ms", instanceLink())
+            val before = results.get(file, show)
+            click(show)
+            assertSame(before, results.get(file, show))
+            assertEquals(file, viewer.session!!.origin.file)
+            assertEquals(show, viewer.session!!.origin.command)
+        } finally {
+            viewer.clear()
+        }
     }
 
     fun testResultWithoutASolutionDoesNothing() {
@@ -64,21 +59,20 @@ class AlloyCommandResultClickHandlerTest : BasePlatformTestCase() {
         assertSame(before, results.get(file, noCycles))
     }
 
-    /** Starts [model]'s `run show` as the background task does, on [indicator], and waits for [ready]. */
-    private fun startTask(model: String, indicator: EmptyProgressIndicator, ready: (AlloyCommandExecution) -> Boolean): Pair<AlloyCommandExecution, Future<*>> {
-        myFixture.configureByText("model.als", model)
-        val execution = newExecution(project, myFixture.file.virtualFile, show)
-        service.startRun(execution)
-        val task = AlloyCommandTask(project, execution, AlloyCommandLauncher(project, options = ::slowOptions), testRootDisposable)
-        val running = ApplicationManager.getApplication().executeOnPooledThread { task.run(indicator) }
-        waitUntil("the analysis did not get going") { ready(execution) }
-        return execution to running
+    /** A running result of another command, such as one of a suite, cannot stop this execution. */
+    fun testClickOnAnotherRunningCommandLeavesTheExecution() {
+        val execution = newExecution(project, file, show)
+        assertTrue(service.startRun(execution))
+        record(noCycles, CommandState.Running, "Running…", null)
+        click(noCycles)
+        assertFalse(execution.isFinished())
+        assertSame(execution, service.activeExecution)
     }
 
     private val showResult get() = results.get(myFixture.file.virtualFile, show)!!
 
     fun testRunningClickStopsTheAnalysis() {
-        val (execution, running) = startTask(PIGEONHOLE, EmptyProgressIndicator()) { it.log.progress == "Solving..." }
+        val (execution, running) = startTask(PIGEONHOLE, EmptyProgressIndicator())
         click(show)
         running.get(10, TimeUnit.SECONDS)
         assertTrue(execution.isFinished())
@@ -98,8 +92,10 @@ class AlloyCommandResultClickHandlerTest : BasePlatformTestCase() {
         assertEquals("Stopping…", showResult.summary)
         assertFalse(execution.isFinished())
 
-        // Clicking again does not stop it twice
+        // Clicking again does not end it before the analyzer stops
         click(show)
+        assertEquals("Stopping…", showResult.summary)
+        assertFalse(execution.isFinished())
         running.get(60, TimeUnit.SECONDS)
         assertEquals(CommandState.Stopped, showResult.state)
         assertEquals("Stopped before completion", showResult.summary)
@@ -107,17 +103,11 @@ class AlloyCommandResultClickHandlerTest : BasePlatformTestCase() {
 
     fun testCancellingTheProgressIndicatorStopsTheAnalysis() {
         val indicator = EmptyProgressIndicator()
-        val (execution, running) = startTask(PIGEONHOLE, indicator) { it.log.progress == "Solving..." }
+        val (execution, running) = startTask(PIGEONHOLE, indicator)
         indicator.cancel()
         running.get(10, TimeUnit.SECONDS)
         assertTrue(execution.isFinished())
         assertEquals("Stopped before completion", showResult.summary)
         assertEquals("   Solving...", showResult.details.log.last().text)
-    }
-
-    private companion object {
-        /** Several seconds of translation, without any analyzer callback. */
-        const val HEAVY_TRANSLATION =
-            "sig A { r: A -> A }\npred show { all a, b, c, d: A | a->b->c in r implies (b->c->d in r or c->d->a in r) }\nrun show for 32"
     }
 }

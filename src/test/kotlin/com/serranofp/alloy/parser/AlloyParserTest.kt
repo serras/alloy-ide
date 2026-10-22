@@ -38,6 +38,22 @@ class AlloyParserTest : ParsingTestCase("parser", "als", AlloyParserDefinition()
 
     fun testTopLevelGarbage() = doTest(true)
 
+    /** A `(` closed by the body's `}`: the error stays in the field, and the next signature is untouched. */
+    fun testMismatchedBrackets() = doTest(true)
+
+    /** The file ends inside a predicate's parameters. */
+    fun testEndInAParagraph() = doTest(true)
+
+    /** The file ends after the `/` of a module path. */
+    fun testEndInAnOpen() = doTest(true)
+
+    /**
+     * A `/` with spaces around it: in an expression it still joins a qualified name, as in the analyzer's
+     * grammar; among a module's parameters it is a token of the header, which completion must not take for a
+     * qualifier.
+     */
+    fun testStraySlash() = doTest(true)
+
     /** A field `f`, a parameter `x`, a quantifier binder `y` and a `let` binder `z`. */
     fun testDeclarations() = doTest(true, true)
 

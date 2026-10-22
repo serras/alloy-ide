@@ -11,9 +11,8 @@ import com.serranofp.alloy.psi.AlloyNamedDeclaration
 class AlloyCompletionTest : BasePlatformTestCase() {
     private val declarations = "sig A {}\npred p {}\nfun g: A { A }\nassert q { some A }\n"
 
-    /** The items offered at the caret of [text], without inserting a single one. */
-    private fun items(text: String, name: String = "m.als"): List<LookupElement> {
-        myFixture.configureByText(name, text)
+    /** The items offered at the caret of the current editor, without inserting a single one. */
+    private fun itemsAtCaret(): List<LookupElement> {
         val settings = CodeInsightSettings.getInstance()
         val autocomplete = settings.AUTOCOMPLETE_ON_CODE_COMPLETION
         settings.AUTOCOMPLETE_ON_CODE_COMPLETION = false
@@ -22,6 +21,12 @@ class AlloyCompletionTest : BasePlatformTestCase() {
         } finally {
             settings.AUTOCOMPLETE_ON_CODE_COMPLETION = autocomplete
         }
+    }
+
+    /** The items offered at the caret of [text], without inserting a single one. */
+    private fun items(text: String, name: String = "m.als"): List<LookupElement> {
+        myFixture.configureByText(name, text)
+        return itemsAtCaret()
     }
 
     private fun names(text: String, name: String = "m.als"): List<String> = items(text, name).map { it.lookupString }
@@ -44,6 +49,12 @@ class AlloyCompletionTest : BasePlatformTestCase() {
 
     fun testBinderOutOfScopeInItsBound() {
         assertDoesntContain(names("sig A {}\npred q { all z: <caret> | some z }"), "z")
+    }
+
+    fun testBinderInScopeInTheBoundOfALaterBinder() {
+        val names = names("sig A { next: set A }\npred q { all x: A, y: <caret> | some y }")
+        assertContainsElements(names, "x")
+        assertDoesntContain(names, "y")
     }
 
     fun testFieldsOfTheEnclosingSignature() {
@@ -177,14 +188,7 @@ class AlloyCompletionTest : BasePlatformTestCase() {
         val file = myFixture.addFileToProject(path, text.replace("<caret>", ""))
         myFixture.configureFromExistingVirtualFile(file.virtualFile)
         myFixture.editor.caretModel.moveToOffset(text.indexOf("<caret>"))
-        val settings = CodeInsightSettings.getInstance()
-        val autocomplete = settings.AUTOCOMPLETE_ON_CODE_COMPLETION
-        settings.AUTOCOMPLETE_ON_CODE_COMPLETION = false
-        try {
-            return myFixture.completeBasic()?.toList().orEmpty()
-        } finally {
-            settings.AUTOCOMPLETE_ON_CODE_COMPLETION = autocomplete
-        }
+        return itemsAtCaret()
     }
 
     fun testSiblingModule() {

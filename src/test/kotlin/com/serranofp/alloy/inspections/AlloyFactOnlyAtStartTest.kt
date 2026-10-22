@@ -3,22 +3,9 @@ package com.serranofp.alloy.inspections
 import com.intellij.codeInsight.intention.IntentionActionDelegate
 import com.intellij.codeInsight.intention.PriorityAction
 import com.intellij.lang.annotation.HighlightSeverity
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
-class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
-    private val inspection = AlloyFactOnlyAtStartInspection()
-
-    private data class Problem(val severity: HighlightSeverity, val text: String, val message: String)
-
-    override fun setUp() {
-        super.setUp()
-        myFixture.enableInspections(inspection)
-    }
-
-    private fun problems(): List<Problem> =
-        myFixture.doHighlighting().filter { it.inspectionToolId == inspection.shortName }.sortedBy { it.startOffset }.map {
-            Problem(it.severity, myFixture.file.text.substring(it.startOffset, it.endOffset), it.description)
-        }
+class AlloyFactOnlyAtStartTest : AlloyInspectionTestCase() {
+    override val inspection = AlloyFactOnlyAtStartInspection()
 
     private fun weak(text: String, message: String) = Problem(HighlightSeverity.WEAK_WARNING, text, message)
 
@@ -35,14 +22,14 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
 
     fun testFrameWithoutAlways() {
         myFixture.configureByText("model.als", network + "fact { all n: Node | n.inbox' = n.inbox }\n")
-        assertEquals(listOf(weak("n.inbox'", "n.inbox' constrains only the transition out of the first state$notAlways")), problems())
+        assertEquals(listOf(weak("n.inbox'", "n.inbox' constrains only the transition out of the first state$notAlways")), detailedProblems())
     }
 
     fun testEventCalledFromAFact() {
         myFixture.configureByText("model.als", network + events + "fact { some n: Node | initiate[n] }\n")
         assertEquals(
             listOf(weak("initiate[n]", "The event initiate is constrained to happen only in the first transition$notAlways")),
-            problems(),
+            detailedProblems(),
         )
     }
 
@@ -54,7 +41,7 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
             "fact { some inbox until (inbox' = inbox) }",
         )) {
             myFixture.configureByText("model.als", "$network$events$fact\n")
-            assertEmpty(fact, problems())
+            assertEmpty(fact, detailedProblems())
         }
     }
 
@@ -65,7 +52,7 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
                 weak("after", "This after constrains only the second transition$notAlways"),
                 weak("after", "This after constrains only the third state$notAlways"),
             ),
-            problems(),
+            detailedProblems(),
         )
     }
 
@@ -77,41 +64,41 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
             "fact { after after always some inbox }",
         )) {
             myFixture.configureByText("model.als", "$network$fact\n")
-            assertEmpty(fact, problems())
+            assertEmpty(fact, detailedProblems())
         }
     }
 
     fun testPrimeOnAStaticExpression() {
         myFixture.configureByText("model.als", network + "fact { succ' = succ }\n")
-        assertEmpty(problems())
+        assertEmpty(detailedProblems())
     }
 
     /** Wrapping would also make `no inbox`, about the first state, an invariant. */
     fun testNoWrapForAFactWithAConjunctAboutTheFirstState() {
         myFixture.configureByText("model.als", network + "fact {\n  no inbox\n  all n: Node | n.inbox' = n.inbox\n}\n")
-        assertEquals(listOf(weak("n.inbox'", "n.inbox' constrains only the transition out of the first state$notAlways")), problems())
+        assertEquals(listOf(weak("n.inbox'", "n.inbox' constrains only the transition out of the first state$notAlways")), detailedProblems())
         myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("n.inbox'"))
         assertNull(myFixture.getAvailableIntention("Wrap in always"))
     }
 
     fun testSequenceOperator() {
         myFixture.configureByText("model.als", network + "fact { no inbox ; some inbox }\n")
-        assertEmpty(problems())
+        assertEmpty(detailedProblems())
     }
 
     fun testSignatureFact() {
         myFixture.configureByText("model.als", "sig Node { var inbox : set Node } { lone inbox }\n")
-        assertEmpty(problems())
+        assertEmpty(detailedProblems())
     }
 
     fun testOneWarningPerFact() {
         myFixture.configureByText("model.als", network + events + "fact {\n  stutter\n  all n: Node | n.inbox' = n.inbox\n}\n")
-        assertEquals(listOf(weak("stutter", "The event stutter is constrained to happen only in the first transition$notAlways")), problems())
+        assertEquals(listOf(weak("stutter", "The event stutter is constrained to happen only in the first transition$notAlways")), detailedProblems())
     }
 
     fun testIntendedInvariant() {
         myFixture.configureByText("model.als", network + "fact inbox_bound { all n: Node | lone n.inbox }\n")
-        assertEquals(listOf(information("fact inbox_bound")), problems())
+        assertEquals(listOf(information("fact inbox_bound")), detailedProblems())
         myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("inbox_bound"))
         // The fact may as well be about the initial state
         val wrap = IntentionActionDelegate.unwrap(myFixture.getAvailableIntention("Wrap in always")!!)
@@ -121,7 +108,7 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
     fun testInitialStateFactIsNotHighlighted() {
         myFixture.configureByText("model.als", network + "fact init { no inbox }\n")
         val infos = myFixture.doHighlighting().filter { it.inspectionToolId == inspection.shortName }
-        assertEquals(listOf(information("fact init")), problems())
+        assertEquals(listOf(information("fact init")), detailedProblems())
         // Information has no colors, so nothing is drawn in the editor
         for (info in infos) {
             assertEquals(HighlightSeverity.INFORMATION, info.severity)
@@ -134,7 +121,7 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
 
     fun testStaticFact() {
         myFixture.configureByText("model.als", network + "fact { all n: Node | Node in n.^succ }\n")
-        assertEmpty(problems())
+        assertEmpty(detailedProblems())
     }
 
     fun testThroughAPredicate() {
@@ -142,26 +129,25 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
             "model.als",
             network + "pred init { no inbox }\npred invariant { lone inbox }\nfact { init }\nfact { always invariant }\n",
         )
-        assertEquals(listOf(information("fact")), problems())
+        assertEquals(listOf(information("fact")), detailedProblems())
     }
 
     private fun wrap(at: String) {
-        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf(at))
-        myFixture.launchAction(myFixture.findSingleIntention("Wrap in always"))
+        launch(at, "Wrap in always")
     }
 
     fun testWrapMultiLineBody() {
         myFixture.configureByText("model.als", network + "fact inbox_bound {\n  all n: Node | lone n.inbox\n}\n")
         wrap("inbox_bound")
         myFixture.checkResult(network + "fact inbox_bound {\n  always {\n    all n: Node | lone n.inbox\n  }\n}\n")
-        assertEmpty(problems())
+        assertEmpty(detailedProblems())
     }
 
     fun testWrapOneLineBody() {
         myFixture.configureByText("model.als", network + "fact { all n: Node | n.inbox' = n.inbox }\n")
         wrap("n.inbox'")
         myFixture.checkResult(network + "fact { always { all n: Node | n.inbox' = n.inbox } }\n")
-        assertEmpty(problems())
+        assertEmpty(detailedProblems())
     }
 
     fun testWrapBodyWithCommentsAndBlankLines() {
@@ -174,6 +160,6 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
             network + "fact frame {\n    always {\n        // inbox is kept\n        all n: Node | n.inbox' = n.inbox\n\n" +
                 "        no inbox' & iden\n    }\n}\n",
         )
-        assertEmpty(problems())
+        assertEmpty(detailedProblems())
     }
 }

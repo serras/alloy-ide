@@ -2,13 +2,14 @@ package com.serranofp.alloy.semantics
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiPolyVariantReference
+import com.intellij.psi.impl.DebugUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyBinderDecl
@@ -25,10 +26,7 @@ import java.util.concurrent.TimeUnit
 
 class AlloyReferenceTest : BasePlatformTestCase() {
     /** Computes the model off the EDT, as highlighting does, so that resolution on the EDT can use it. */
-    private fun analyze(file: PsiFile = myFixture.file): AlloyModelResult =
-        ApplicationManager.getApplication().executeOnPooledThread<AlloyModelResult> {
-            ReadAction.computeBlocking<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(file as AlloyFile) }
-        }.get(30, TimeUnit.SECONDS)
+    private fun analyze(file: PsiFile = myFixture.file): AlloyModelResult = computeModel(file)
 
     /** The reference at the start of [marker], or at its `^`. */
     private fun reference(marker: String, file: PsiFile = myFixture.file): PsiPolyVariantReference {
@@ -37,7 +35,7 @@ class AlloyReferenceTest : BasePlatformTestCase() {
         assertTrue("no $text", start >= 0)
         val offset = start + marker.indexOf('^').coerceAtLeast(0)
         val reference = file.findReferenceAt(offset)
-        assertNotNull("no reference at $marker in\n${com.intellij.psi.impl.DebugUtil.psiToString(file, true)}", reference)
+        assertNotNull("no reference at $marker in\n${DebugUtil.psiToString(file, true)}", reference)
         return reference as PsiPolyVariantReference
     }
 
@@ -54,7 +52,7 @@ class AlloyReferenceTest : BasePlatformTestCase() {
     // Go to declaration, with a model that type-checks
 
     fun testSignature() {
-        myFixture.configureByText("m.als", "sig Node {}\npred p { some Node<use> }".replace("<use>", ""))
+        myFixture.configureByText("m.als", "sig Node {}\npred p { some Node }")
         analyze()
         val target = target("Node }")
         assertInstanceOf(target, AlloySigName::class.java)
@@ -143,6 +141,46 @@ class AlloyReferenceTest : BasePlatformTestCase() {
         assertInstanceOf(target("some ^x }"), AlloyBinderDecl::class.java)
     }
 
+    fun testBinderInTheBoundOfALaterBinder() {
+        myFixture.configureByText("m.als", "sig x { next: set x }\npred broken { some Undefined }\npred p { all x: x, y: x.next | some y }")
+        analyze()
+        assertInstanceOf(target("x.next"), AlloyBinderDecl::class.java)
+        assertInstanceOf(target("x, y"), AlloySigName::class.java)
+    }
+
+    /** The specification's "analyzer failure": navigation still works, by name. */
+    fun testAfterAnAnalyzerFailureResolutionIsByName() {
+        val service = AlloyModelService.getInstance(project)
+        service.parse = { _, _, _ -> throw IllegalStateException("analyzer bug") }
+        try {
+            myFixture.configureByText("m.als", overloaded)
+            assertInstanceOf(analyze(), AlloyModelResult.Unavailable::class.java)
+            assertEquals(2, targets("f }").size)
+            assertFalse(exact("f }"))
+            assertInstanceOf(target("A] {"), AlloySigName::class.java)
+        } finally {
+            service.restoreParse()
+        }
+    }
+
+    fun testThisQualifierResolvesInTheCurrentFile() {
+        myFixture.addFileToProject("a.als", "sig A {}")
+        myFixture.configureByText("m.als", "open a\nsig A {}\nfact { some this/A and some Undefined }")
+        analyze()
+        assertEquals("m.als", target("this/A").containingFile.name)
+        myFixture.configureByText("n.als", "open a\nfact { some this/A and some Undefined }")
+        analyze()
+        assertEmpty(targets("this/A"))
+    }
+
+    fun testPathQualifierIntoAnOpenedLibrary() {
+        myFixture.configureByText("m.als", "open util/ordering[S]\nsig S {}\nfact { some util/ordering/first and some Undefined }")
+        analyze()
+        val target = target("util/ordering/first")
+        assertEquals("first", target.name)
+        assertTrue(target.containingFile.virtualFile.url.endsWith("models/util/ordering.als"))
+    }
+
     fun testAmbiguousNameOffersEveryCandidate() {
         myFixture.configureByText("m.als", "$overloaded\npred broken { some Undefined }")
         analyze()
@@ -208,7 +246,7 @@ class AlloyReferenceTest : BasePlatformTestCase() {
             assertInstanceOf(targets.single(), AlloySigName::class.java)
             assertEquals(0, parses)
         } finally {
-            service.parse = edu.mit.csail.sdg.parser.CompUtil::parseEverything_fromFile
+            service.restoreParse()
         }
     }
 

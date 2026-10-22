@@ -3,7 +3,6 @@ package com.serranofp.alloy.viewer
 import com.intellij.codeInsight.hints.declarative.StringInlayActionPayload
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.wm.ToolWindowEP
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.psi.PsiDocumentManager
@@ -11,30 +10,22 @@ import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.run.AlloyCommandRef
 import com.serranofp.alloy.run.AlloyCommandResultClickHandler
 import com.serranofp.alloy.run.AlloyCommandResultHintsProvider
-import com.serranofp.alloy.run.AlloyCommandResults
-import com.serranofp.alloy.run.CommandLink
 import com.serranofp.alloy.run.CommandResult
 import com.serranofp.alloy.run.CommandState
-import com.serranofp.alloy.settings.AlloySettings
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.DropDownLink
 import java.awt.CardLayout
 import com.intellij.ui.components.JBLabel
 import javax.swing.JComponent
 
-class AlloyInstanceViewerTest : BasePlatformTestCase() {
-    private val viewer get() = AlloyInstanceViewer.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
-
+class AlloyInstanceViewerTest : AlloyViewerTestCase() {
     /** `run show` on line 11 and `check noCycles` on line 12. */
     private val graph = "sig Node { succ: set Node }\n" + "\n".repeat(8) + "pred show { some succ }\nrun show for 3\ncheck noCycles { no iden & ^succ } for 3\n"
-    private val show = AlloyCommandRef("show", 0)
+    private val show = SHOW
     private val noCycles = AlloyCommandRef("noCycles", 1)
 
     override fun setUp() {
         super.setUp()
-        results.clear()
-        viewer.clear()
         myFixture.configureByText("graph.als", graph)
     }
 
@@ -44,10 +35,7 @@ class AlloyInstanceViewerTest : BasePlatformTestCase() {
     private fun found(command: AlloyCommandRef, counterexample: Boolean): CommandResult {
         val model = if (counterexample) "sig Node { succ: set Node }\ncheck { no iden & ^succ } for 3" else STATIC
         val state = if (counterexample) CommandState.CounterexampleFound else CommandState.InstanceFound
-        val result = CommandResult(
-            state, "found", link = CommandLink.Solution(solve(model)),
-            documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation,
-        )
+        val result = result(model, state = state)
         results.record(file, command, result)
         return result
     }

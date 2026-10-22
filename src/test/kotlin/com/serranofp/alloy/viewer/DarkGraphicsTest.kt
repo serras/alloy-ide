@@ -3,6 +3,7 @@ package com.serranofp.alloy.viewer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import java.awt.Color
+import java.awt.GradientPaint
 import java.awt.Graphics2D
 import java.awt.image.BufferedImage
 
@@ -50,15 +51,39 @@ class DarkGraphicsTest : BasePlatformTestCase() {
         assertTrue("No label text", black.any { dark[it] == palette.label.rgb })
     }
 
+    private fun BufferedImage.pixel(x: Int, y: Int) = getRGB(x, y) or (0xFF shl 24)
+
     fun testCopiesKeepTheMapping() {
-        val graphics = DarkGraphics(BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).createGraphics(), palette)
+        val image = BufferedImage(3, 1, BufferedImage.TYPE_INT_RGB)
+        val graphics = DarkGraphics(image.createGraphics(), palette)
         graphics.color = Color.WHITE
         val copy = graphics.create()
         assertInstanceOf(copy, DarkGraphics::class.java)
         assertEquals(Color.WHITE, copy.color)
         copy.fillRect(0, 0, 1, 1)
+        copy.color = Color.BLACK
+        copy.drawLine(1, 0, 1, 0)
+        // A copy of a copy too
+        val nested = copy.create()
+        nested.fillRect(2, 0, 1, 1)
+        nested.dispose()
         copy.dispose()
         graphics.dispose()
+        assertEquals(palette.canvas.rgb, image.pixel(0, 0))
+        assertEquals(palette.foreground.rgb, image.pixel(1, 0))
+        assertEquals(palette.foreground.rgb, image.pixel(2, 0))
+    }
+
+    /** A paint that is not a color, such as a gradient, is drawn as it is. */
+    fun testAPaintThatIsNotAColorIsNotMapped() {
+        val image = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB)
+        val graphics = DarkGraphics(image.createGraphics(), palette)
+        val gradient = GradientPaint(0f, 0f, Color.WHITE, 1f, 0f, Color.WHITE)
+        graphics.paint = gradient
+        assertSame(gradient, graphics.paint)
+        graphics.fillRect(0, 0, 1, 1)
+        graphics.dispose()
+        assertEquals(Color.WHITE.rgb, image.pixel(0, 0))
     }
 
     /** A copy's background is its original's, mapped once: `clearRect` paints the canvas, not a mapping of it. */

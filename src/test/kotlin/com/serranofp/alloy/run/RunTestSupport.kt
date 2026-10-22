@@ -48,7 +48,22 @@ fun instanceLink(): CommandLink.Solution =
 /** Options without symmetry breaking, under which [PIGEONHOLE] solves for more than 20 s. */
 fun slowOptions(): A4Options = A4Options().apply { symmetry = 0 }
 
+/** Its `run show` solves for more than 20 s under [slowOptions]. */
 const val PIGEONHOLE = "sig H {}\nsig P { h: one H }\nfact { all disj a, b: P | a.h != b.h }\npred show { #P = 11 and #H = 10 }\nrun show for 11"
+
+/** Its `run show` translates for several seconds, without any analyzer callback after the `Translating` one. */
+const val HEAVY_TRANSLATION =
+    "sig A { r: A -> A }\npred show { all a, b, c, d: A | a->b->c in r implies (b->c->d in r or c->d->a in r) }\nrun show for 32"
+
+/** Whether [stack] is that of a thread in SAT4J's search. */
+fun isSearching(stack: Array<StackTraceElement>): Boolean = stack.any { it.className.startsWith("org.sat4j.") && it.methodName == "search" }
+
+/**
+ * Whether an analysis is in SAT4J's search, where a stop takes effect. Its `Solving` event, and the
+ * "Solving..." progress, come just before, when a stop is not yet seen by the solver.
+ */
+fun analysisIsSearching(): Boolean =
+    Thread.getAllStackTraces().any { (thread, stack) -> thread.name.startsWith("Alloy analysis: ") && isSearching(stack) }
 
 /** Waits for [project]'s execution to end, dispatching the EDT events meanwhile, as the task may run on it. */
 fun waitUntilIdle(project: Project) {
@@ -70,4 +85,32 @@ fun waitUntil(message: String, condition: () -> Boolean) {
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         Thread.sleep(10)
     }
+}
+
+/**
+ * Ends the execution that a test left running in [project], and releases the project's analysis if a suite
+ * or an enumeration still holds it; that fails, as only a test that lost track of one leaves it held.
+ * `AlloyRunService` has no reset of its own, so its fields are reached by reflection.
+ */
+fun releaseRunService(project: Project) {
+    val service = AlloyRunService.getInstance(project)
+    service.activeExecution?.terminate()
+    val leaks = mutableListOf<String>()
+    synchronized(service) {
+        val enumerating = AlloyRunService::class.java.getDeclaredField("enumerating").apply { isAccessible = true }
+        if (enumerating.getBoolean(service)) {
+            leaks += "an enumeration"
+            enumerating.setBoolean(service, false)
+        }
+        val suite = AlloyRunService::class.java.getDeclaredField("suite").apply { isAccessible = true }
+        if (suite.get(service) != null) {
+            leaks += "a suite"
+            suite.set(service, null)
+        }
+    }
+    service.activeExecution?.let {
+        leaks += "an execution that started meanwhile"
+        it.terminate()
+    }
+    check(leaks.isEmpty()) { "The test left ${leaks.joinToString(" and ")} holding the project's analysis" }
 }

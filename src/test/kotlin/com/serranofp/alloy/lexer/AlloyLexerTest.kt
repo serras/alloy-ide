@@ -36,6 +36,14 @@ class AlloyLexerTest : LexerTestCase() {
 
     fun testLineCommentAtEof() = doFileTest("als")
 
+    /** Not in a golden file, whose line separators are read as `\n`: a line comment stops before `\r\n`. */
+    fun testLineCommentBeforeCrLf() {
+        val text = "// a\r\n-- b\r\nsig"
+        val lexer = createLexer().apply { start(text) }
+        val tokens = generateSequence { lexer.tokenType?.let { "$it ${text.substring(lexer.tokenStart, lexer.tokenEnd)}".also { lexer.advance() } } }.toList()
+        assertEquals(listOf("LINE_COMMENT // a", "WHITE_SPACE \r\n", "LINE_COMMENT -- b", "WHITE_SPACE \r\n", "sig sig"), tokens)
+    }
+
     fun testRestart() = checkCorrectRestart(
         """
         module example

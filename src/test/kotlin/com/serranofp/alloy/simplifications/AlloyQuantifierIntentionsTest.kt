@@ -13,7 +13,7 @@ class AlloyQuantifierIntentionsTest : AlloyIntentionTestCase() {
     }
 
     fun testNegationMovedInBeforeASequence() {
-        // The quantifier's body would take in the `;`
+        // The parentheses are kept, although the analyzer ends the body before the `;` (see AlloyRewriteRenderTest)
         assertEquals("(some n: Node | no n.inbox) ; p", invoked("not (all n: Node | some n.inbox) ; p", "Move negation into quantifier", at = "all"))
     }
 

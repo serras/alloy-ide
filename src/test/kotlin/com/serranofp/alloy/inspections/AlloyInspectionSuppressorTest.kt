@@ -1,18 +1,31 @@
 package com.serranofp.alloy.inspections
 
-import com.intellij.lang.annotation.HighlightSeverity
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+class AlloyInspectionSuppressorTest : AlloyInspectionTestCase() {
+    override val inspection = AlloyTestInspection()
 
-class AlloyInspectionSuppressorTest : BasePlatformTestCase() {
-    override fun setUp() {
-        super.setUp()
-        myFixture.enableInspections(AlloyTestInspection())
+    private fun reported(): List<String> = problems().map { it.first }
+
+    /** Which comments before `pred a` suppress `AlloyTest` in it. */
+    fun testCommentForms() {
+        val suppressed = listOf(
+            "// noinspection AlloyTest",
+            "-- noinspection AlloyTest",
+            "//noinspection AlloyTest",
+            "// noinspection AlloyOther,AlloyTest",
+            "// noinspection ALL",
+            "// noinspection AlloyTest\n// another comment",
+            "// noinspection AlloyTest\n\n",
+            // Only line comments are suppression comments
+            "/* noinspection AlloyTest */",
+            "/** noinspection AlloyTest */",
+            "// noinspection AlloyTestOther",
+            "// noinspection AlloyTest\nsig S {}",
+        ).associateWith { comment ->
+            myFixture.configureByText("model.als", "$comment\npred a {}\npred b {}")
+            "a" !in reported()
+        }
+        assertEquals(listOf(true, true, true, true, true, true, true, false, false, false, false), suppressed.values.toList())
     }
-
-    private fun reported(): List<String> =
-        myFixture.doHighlighting(HighlightSeverity.WEAK_WARNING)
-            .filter { it.severity == HighlightSeverity.WEAK_WARNING }
-            .map { myFixture.file.text.substring(it.startOffset, it.endOffset) }
 
     fun testSuppressedPredicateIsNotReported() {
         myFixture.configureByText("model.als", "// noinspection AlloyTest\npred a {}\npred b {}")
@@ -44,6 +57,14 @@ class AlloyInspectionSuppressorTest : BasePlatformTestCase() {
         myFixture.doHighlighting()
         myFixture.launchAction(myFixture.findSingleIntention("Suppress for predicate"))
         myFixture.checkResult("pred a {}\n\n// noinspection AlloyTest\npred b {}\n")
+        assertEquals(listOf("a"), reported())
+    }
+
+    fun testSuppressKeepsTheIndentation() {
+        myFixture.configureByText("model.als", "pred a {}\n\n    pred <caret>b {}\n")
+        myFixture.doHighlighting()
+        myFixture.launchAction(myFixture.findSingleIntention("Suppress for predicate"))
+        myFixture.checkResult("pred a {}\n\n    // noinspection AlloyTest\n    pred b {}\n")
         assertEquals(listOf("a"), reported())
     }
 

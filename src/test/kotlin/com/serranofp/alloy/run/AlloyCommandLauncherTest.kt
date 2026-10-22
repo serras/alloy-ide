@@ -2,14 +2,10 @@ package com.serranofp.alloy.run
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.ProcessCanceledException
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.semantics.AlloyModelService
-import edu.mit.csail.sdg.parser.CompUtil
 import java.util.concurrent.TimeUnit
 
-class AlloyCommandLauncherTest : BasePlatformTestCase() {
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyCommandLauncherTest : AlloyRunTestCase() {
     private val show = AlloyCommandRef("show", 0)
     private lateinit var execution: AlloyCommandExecution
 
@@ -27,33 +23,17 @@ class AlloyCommandLauncherTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", model)
-    }
-
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-            AlloyModelService.getInstance(project).parse = CompUtil::parseEverything_fromFile
-        } catch (e: Throwable) {
-            addSuppressedException(e)
-        } finally {
-            super.tearDown()
-        }
     }
 
     private val file get() = myFixture.file.virtualFile
 
     /** Launches [command] as the background task does, off the EDT, and waits for its result. */
-    private fun launch(command: AlloyCommandRef, solverWarning: String? = null, nonFatalWarnings: Boolean = false, before: () -> Unit = {}): CommandResult {
-        execution = newExecution(project, file, command)
-        service.startRun(execution)
-        before()
-        val launcher = AlloyCommandLauncher(project, solverWarning = { solverWarning }, nonFatalWarnings = { nonFatalWarnings })
-        ApplicationManager.getApplication().executeOnPooledThread { launcher.launch(execution, testRootDisposable) }.get(30, TimeUnit.SECONDS)
-        assertTrue("the execution did not end", execution.waitFor(30_000))
-        return results.get(file, command)!!
-    }
+    private fun launch(command: AlloyCommandRef, solverWarning: String? = null, nonFatalWarnings: Boolean = false, before: () -> Unit = {}): CommandResult =
+        launchAndWait(command, AlloyCommandLauncher(project, solverWarning = { solverWarning }, nonFatalWarnings = { nonFatalWarnings })) {
+            execution = it
+            before()
+        }
 
     private fun CommandResult.executed(): String? = details.log.map { it.text }.firstOrNull { it.startsWith("Executing") }
 

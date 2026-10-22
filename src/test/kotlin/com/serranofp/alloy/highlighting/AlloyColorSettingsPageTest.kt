@@ -3,8 +3,12 @@ package com.serranofp.alloy.highlighting
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.fileTypes.SyntaxHighlighterFactory
 import com.intellij.openapi.options.colors.ColorSettingsPages
+import com.intellij.psi.TokenType
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyLanguage
+import com.serranofp.alloy.psi.AlloyTokenType
+import com.serranofp.alloy.psi.AlloyTypes
+import java.lang.reflect.Modifier
 
 class AlloyColorSettingsPageTest : BasePlatformTestCase() {
     fun testEveryCategoryIsReachableFromDemoText() {
@@ -27,6 +31,19 @@ class AlloyColorSettingsPageTest : BasePlatformTestCase() {
             AlloySyntaxHighlighter::class.java,
         )
         assertTrue(ColorSettingsPages.getInstance().registeredPages.any { it is AlloyColorSettingsPage })
+    }
+
+    /** A new token that is in none of the highlighter's sets would silently get no color. */
+    fun testEveryTokenHasAKey() {
+        val highlighter = AlloySyntaxHighlighter()
+        val tokens = AlloyTypes::class.java.fields
+            .filter { Modifier.isStatic(it.modifiers) }
+            .mapNotNull { it.get(null) as? AlloyTokenType }
+        assertTrue(tokens.size > 50)
+        val missing = tokens.filter { highlighter.getTokenHighlights(it).isEmpty() }.map { it.toString() }
+        assertEmpty("Tokens without highlighting", missing)
+        assertNotEmpty(highlighter.getTokenHighlights(TokenType.BAD_CHARACTER).toList())
+        assertEmpty(highlighter.getTokenHighlights(TokenType.WHITE_SPACE))
     }
 
     fun testTemporalOperatorsUseTheirOwnKey() {

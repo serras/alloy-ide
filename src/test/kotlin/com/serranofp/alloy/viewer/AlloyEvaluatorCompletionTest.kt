@@ -52,6 +52,21 @@ class AlloyEvaluatorCompletionTest : BasePlatformTestCase() {
         assertDoesntContain(names, "first", "next", "integer/add", "run$1")
     }
 
+    /** The prefix of a qualified name is the whole of it, its alias too. */
+    fun testQualifiedPrefix() {
+        val model = model("open util/ordering[A] as ao\nopen util/ordering[B] as bo\nsig A {}\nsig B {}\nrun {} for 2")
+        // The prefix matcher ignores case: `First` is the ordering module's signature
+        assertSameElements(variants(model, "ao/fi<caret>"), "ao/first", "ao/First")
+    }
+
+    /** A result without the module of its analysis has no names to offer, as the evaluator cannot evaluate in it. */
+    fun testNothingWithoutAModule() {
+        val model = AlloySolutionModel(solve(MODEL))
+        assertEmpty(AlloyEvaluatorCompletionContributor.NamesProvider.names(model))
+        assertEmpty(variants(model, "su<caret>"))
+        assertEquals("su", myFixture.editor.document.text)
+    }
+
     private companion object {
         const val MODEL = "sig Node { succ: set Node }\npred linked[a, b: Node] { b in a.succ }\nrun show { some n: Node | some n.succ } for 2"
     }

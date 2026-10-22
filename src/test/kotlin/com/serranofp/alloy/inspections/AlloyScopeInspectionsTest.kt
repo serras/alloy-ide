@@ -1,40 +1,22 @@
 package com.serranofp.alloy.inspections
 
-import com.intellij.codeInsight.template.impl.TemplateManagerImpl
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.lang.annotation.HighlightSeverity
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.serranofp.alloy.PracticalAlloyCorpus
 import java.io.File
 
-class AlloyScopeInspectionsTest : BasePlatformTestCase() {
-    private data class Problem(val severity: HighlightSeverity, val text: String, val message: String)
+class AlloyScopeInspectionsTest : AlloyInspectionTestCase() {
+    private fun fixture(path: String): String = File("$testDataPath/practicalalloy/protocol-design/$path/leaderelection.als").readText()
 
-    override fun setUp() {
-        super.setUp()
-        TemplateManagerImpl.setTemplateTesting(testRootDisposable)
-    }
-
-    private fun fixture(path: String): String = File("src/test/testData/practicalalloy/protocol-design/$path/leaderelection.als").readText()
+    override fun getTestDataPath(): String = PracticalAlloyCorpus.TEST_DATA
 
     private fun configure(inspection: LocalInspectionTool, text: String) {
         myFixture.enableInspections(inspection)
         myFixture.configureByText("leaderelection.als", text)
     }
 
-    private fun problems(inspection: LocalInspectionTool): List<Problem> =
-        myFixture.doHighlighting().filter { it.inspectionToolId == inspection.shortName }.sortedBy { it.startOffset }.map {
-            Problem(it.severity, myFixture.file.text.substring(it.startOffset, it.endOffset), it.description)
-        }
-
     /** Applies [fix] at [scope], the last occurrence in the file, and returns the number selected for editing, if any. */
-    private fun apply(scope: String, fix: String): String? {
-        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.lastIndexOf(scope))
-        myFixture.launchAction(myFixture.findSingleIntention(fix))
-        val template = TemplateManagerImpl.getTemplateState(myFixture.editor) ?: return null
-        val selected = template.currentVariableRange?.substring(myFixture.editor.document.text)
-        template.gotoEnd(false)
-        return selected
-    }
+    private fun apply(scope: String, fix: String): String? = launch(myFixture.file.text.lastIndexOf(scope), fix)
 
     fun testUnscopedMutableSignature() {
         val inspection = AlloyUnscopedMutableSignatureInspection()
@@ -47,14 +29,14 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
                         "and Message is used by the mutable field inbox",
                 ),
             ),
-            problems(inspection),
+            detailedProblems(inspection),
         )
     }
 
     fun testScopeOnASubsignatureScopesItsParent() {
         val inspection = AlloyUnscopedMutableSignatureInspection()
         configure(inspection, fixture("explicit-messages-as-signatures") + "\nrun candidates {} for 3 but exactly 3 Node, 4 CandidateMsg\n")
-        assertEquals(listOf("for 3 but exactly 3 Node"), problems(inspection).map { it.text })
+        assertEquals(listOf("for 3 but exactly 3 Node"), detailedProblems(inspection).map { it.text })
     }
 
     fun testMutableSignatureAndChains() {
@@ -65,9 +47,9 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
                 "Id gets the command's default scope of 3, although the command sets the scope of Node, " +
                     "and Id is used by the mutable signature Active",
             ),
-            problems(inspection).map { it.message },
+            detailedProblems(inspection).map { it.message },
         )
-        assertEquals(listOf("for 3 but 2 Node"), problems(inspection).map { it.text })
+        assertEquals(listOf("for 3 but 2 Node"), detailedProblems(inspection).map { it.text })
     }
 
     fun testAddScope() {
@@ -75,7 +57,7 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
         configure(inspection, fixture("explicit-messages-as-signatures"))
         assertEquals("3", apply("for 3 but exactly 3 Node", "Add a scope for Message"))
         assertTrue(myFixture.editor.document.text.contains("} for 3 but exactly 3 Node, 3 Message expect 0"))
-        assertEmpty(problems(inspection))
+        assertEmpty(detailedProblems(inspection))
     }
 
     fun testAddScopeAfterTheOverallScope() {
@@ -89,7 +71,7 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
     fun testRaisedScopeIsNotTheDefaultScope() {
         val inspection = AlloyUnscopedMutableSignatureInspection()
         configure(inspection, "sig A {}\none sig B, C, D, E extends A {}\nsig N { var m: set A }\nsig Other {}\nrun {} for 3 but 2 Other")
-        assertEmpty(problems(inspection))
+        assertEmpty(detailedProblems(inspection))
     }
 
     fun testExactParameterOfOneOfSeveralModules() {
@@ -97,7 +79,7 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
         configure(inspection, "open util/graph[State]\nopen util/ordering[State]\nsig State {}\nrun {} for 3 but 2 State")
         assertEquals(
             listOf("util/ordering makes the scope of State exactly 2, so configurations with fewer State atoms are not analyzed"),
-            problems(inspection).map { it.message },
+            detailedProblems(inspection).map { it.message },
         )
     }
 
@@ -113,7 +95,7 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
                 Problem(HighlightSeverity.INFORMATION, "for 4 but 1.. steps", "util/ordering makes the scope of Id exactly 4, the overall scope, $consequence"),
                 Problem(HighlightSeverity.WEAK_WARNING, "2 Id", "util/ordering makes the scope of Id exactly 2, $consequence"),
             ),
-            problems(inspection),
+            detailedProblems(inspection),
         )
     }
 
@@ -122,7 +104,7 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
         configure(inspection, ordered)
         assertNull(apply("2 Id", "Write the scope of Id as exact"))
         assertTrue(myFixture.editor.document.text.endsWith("check at_most_one_leader for 3 but exactly 2 Id\n"))
-        assertEquals(2, problems(inspection).size)
+        assertEquals(2, detailedProblems(inspection).size)
     }
 
     fun testMakeOverallScopeExact() {
@@ -130,7 +112,7 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
         configure(inspection, ordered)
         assertEquals("4", apply("for 4 but 20 steps", "Write the scope of Id as exact"))
         assertTrue(myFixture.editor.document.text.contains("check at_most_one_leader for 4 but exactly 4 Id, 20 steps expect 0"))
-        assertEquals(listOf("for 4 but 1.. steps", "2 Id"), problems(inspection).map { it.text })
+        assertEquals(listOf("for 4 but 1.. steps", "2 Id"), detailedProblems(inspection).map { it.text })
     }
 
     fun testSeqBoundTooSmall() {
@@ -138,7 +120,7 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
         configure(inspection, fixture("refining-the-network-model"))
         assertEquals(
             listOf(Problem(HighlightSeverity.WEAK_WARNING, "2 seq", "Sequences in inbox hold at most 2 elements, fewer than the 3 Node atoms")),
-            problems(inspection),
+            detailedProblems(inspection),
         )
     }
 
@@ -147,13 +129,13 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
         configure(inspection, fixture("refining-the-network-model"))
         assertEquals("3", apply("2 seq", "Raise the seq bound to 3"))
         assertTrue(myFixture.editor.document.text.contains("check at_least_one_leader_fair for 3 but 3 seq expect 1"))
-        assertEmpty(problems(inspection))
+        assertEmpty(detailedProblems(inspection))
     }
 
     fun testSeqBoundWithoutWrittenSeq() {
         val inspection = AlloySeqBoundTooSmallInspection()
         configure(inspection, "sig Node { var inbox: seq Node }\nrun {} for 3 but 4 Node")
-        assertEquals(listOf("for 3 but 4 Node"), problems(inspection).map { it.text })
+        assertEquals(listOf("for 3 but 4 Node"), detailedProblems(inspection).map { it.text })
         apply("for 3", "Raise the seq bound to 4")
         assertEquals("sig Node { var inbox: seq Node }\nrun {} for 3 but 4 Node, 4 seq", myFixture.editor.document.text)
     }
@@ -161,6 +143,6 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
     fun testStaticSeqFieldIsNotReported() {
         val inspection = AlloySeqBoundTooSmallInspection()
         configure(inspection, "sig Node { path: seq Node }\nrun {} for 3 but 2 seq")
-        assertEmpty(problems(inspection))
+        assertEmpty(detailedProblems(inspection))
     }
 }

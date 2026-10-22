@@ -1,5 +1,6 @@
 package com.serranofp.alloy.inspections
 
+import com.serranofp.alloy.PracticalAlloyCorpus
 import com.serranofp.alloy.semantics.AlloyModelResult
 import com.serranofp.alloy.semantics.AlloyModules
 import com.serranofp.alloy.semantics.AlloyPositions
@@ -70,8 +71,28 @@ class AlloyCommandBoundsTest : TestCase() {
     private fun userSigs(sigs: Iterable<Sig>): List<PrimSig> =
         sigs.filterIsInstance<PrimSig>().filter { !it.builtin && it.isTopLevel && !AlloyPositions.isLibrary(it.pos.filename) }
 
+    /**
+     * The top-level signatures whose bound has a source that does not match [command]: the analyzer has no
+     * notion of it, so it is checked against what the command writes and the signature declares.
+     */
+    private fun wrongSources(module: CompModule, command: Command): List<String> {
+        val bounds = AlloyCommandBounds(command, module.allReachableSigs.toList())
+        return userSigs(module.allReachableSigs).mapNotNull { sig ->
+            val bound = bounds.bound(sig) ?: return@mapNotNull null
+            val written = command.scope.firstOrNull { it.sig === sig }
+            val right = when (val source = bound.source) {
+                is AlloyCommandBounds.Source.Explicit -> source.scope === written
+                AlloyCommandBounds.Source.Overall -> written == null && command.overall >= 0 && bound.n == command.overall
+                AlloyCommandBounds.Source.Default -> written == null && command.overall < 0 && command.scope.isEmpty() && bound.n == 3
+                AlloyCommandBounds.Source.Fixed -> written == null && (sig.isOne != null || sig.isLone != null || sig.isEnum != null)
+                AlloyCommandBounds.Source.Inherited -> written == null
+            }
+            if (right) null else "${sig.label}: $bound"
+        }
+    }
+
     private fun checkModels(folder: String) {
-        val root = File("src/test/testData/practicalalloy")
+        val root = File("${PracticalAlloyCorpus.TEST_DATA}/practicalalloy")
         val models = File(root, folder).walkTopDown().filter { it.extension == "als" }.sorted().toList()
         assertFalse(models.isEmpty())
         var commands = 0
@@ -84,7 +105,8 @@ class AlloyCommandBoundsTest : TestCase() {
                 val name = "${model.relativeTo(root).invariantSeparatorsPath}: ${command.label}"
                 // So that the comparison is never between two nulls by accident
                 if ((expected == null) != (name in rejected)) "$name: rejected is ${expected == null} (${rejection}), expected ${name in rejected}"
-                else if (expected != actual) "$name: $command is $actual, expected $expected" else null
+                else if (expected != actual) "$name: $command is $actual, expected $expected"
+                else wrongSources(module, command).takeIf { it.isNotEmpty() }?.let { "$name: $command has wrong sources $it" }
             }
         }
         assertTrue(commands > 0)

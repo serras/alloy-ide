@@ -2,10 +2,7 @@ package com.serranofp.alloy.viewer
 
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
-import com.intellij.openapi.actionSystem.KeyboardShortcut
-import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.testFramework.TestActionEvent
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
@@ -14,7 +11,6 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import javax.swing.JPanel
-import javax.swing.KeyStroke
 import javax.swing.UIManager
 import kotlin.math.roundToInt
 
@@ -160,11 +156,26 @@ class AlloyTraceStripTest : BasePlatformTestCase() {
         assertEquals(emptyList<Int>(), clicked)
     }
 
-    /** Runs the strip's action for [key], as pressing it in the focused strip does. */
-    private fun AlloyTraceStrip.press(key: Int) {
-        val stroke = KeyStroke.getKeyStroke(key, 0)
-        val action = ActionUtil.getActions(this).single { action -> action.shortcutSet.shortcuts.any { (it as? KeyboardShortcut)?.firstKeyStroke == stroke } }
-        action.actionPerformed(TestActionEvent.createTestEvent(action))
+    /** A click whose mouse moves [drag] pixels between the press and the release, which then makes no `MOUSE_CLICKED`. */
+    private fun click(strip: AlloyTraceStrip, point: Point, drag: Int) {
+        val released = Point(point.x + drag, point.y)
+        strip.dispatchEvent(event(strip, MouseEvent.MOUSE_PRESSED, point))
+        if (drag > 0) strip.dispatchEvent(event(strip, MouseEvent.MOUSE_DRAGGED, released))
+        strip.dispatchEvent(event(strip, MouseEvent.MOUSE_RELEASED, released))
+        if (drag == 0) strip.dispatchEvent(event(strip, MouseEvent.MOUSE_CLICKED, released))
+    }
+
+    fun testAClickSelectsOnce() {
+        val strip = strip()
+        click(strip, center(strip, 2), drag = 0)
+        assertEquals(listOf(2), clicked)
+    }
+
+    /** The mouse often moves a little while clicking. */
+    fun testASlightlyDraggedClickSelects() {
+        val strip = strip()
+        click(strip, center(strip, 2), drag = 2)
+        assertEquals(listOf(2), clicked)
     }
 
     fun testKeysStepThroughTheTrace() {

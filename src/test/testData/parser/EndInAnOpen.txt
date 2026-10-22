@@ -1,0 +1,9 @@
+Alloy file(0,10)
+  AlloyOpenDeclImpl(OPEN_DECL)(0,9)
+    PsiElement(open)('open')(0,4)
+    PsiWhiteSpace(' ')(4,5)
+    AlloyQualifiedNameImpl(QUALIFIED_NAME)(5,9)
+      PsiElement(IDENTIFIER)('util')(5,9)
+  PsiElement(/)('/')(9,10)
+  PsiErrorElement:IDENTIFIER expected(10,10)
+    <empty list>

@@ -1,13 +1,6 @@
 package com.serranofp.alloy.run
 
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.util.concurrent.TimeUnit
-
-class AlloyCommandVerdictTest : BasePlatformTestCase() {
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
-
+class AlloyCommandVerdictTest : AlloyRunTestCase() {
     private val model = """
         sig Node { succ: lone Node }
         pred show { some succ }
@@ -28,28 +21,11 @@ class AlloyCommandVerdictTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", model)
     }
 
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-        } finally {
-            super.tearDown()
-        }
-    }
-
-    /** Launches the command at [index] as the background task does, off the EDT, and waits for its result. */
-    private fun launch(index: Int): CommandResult {
-        val command = AlloyCommands.ref(AlloyCommands.commands(myFixture.file)[index])
-        val execution = newExecution(project, myFixture.file.virtualFile, command)
-        service.startRun(execution)
-        ApplicationManager.getApplication().executeOnPooledThread { AlloyCommandLauncher(project).launch(execution, testRootDisposable) }
-            .get(30, TimeUnit.SECONDS)
-        assertTrue("the execution did not end", execution.waitFor(30_000))
-        return results.get(myFixture.file.virtualFile, command)!!
-    }
+    /** Launches the command whose text starts with [prefix] as the background task does, and waits for its result. */
+    private fun launch(prefix: String): CommandResult = launchAndWait(commandRef(prefix))
 
     private fun assertVerdict(verdict: Verdict, expectation: Expectation?, result: CommandResult) {
         assertEquals(result.toString(), expectation, result.expectation)
@@ -57,64 +33,64 @@ class AlloyCommandVerdictTest : BasePlatformTestCase() {
     }
 
     fun testInstanceWithExpectOnePasses() {
-        val result = launch(0)
+        val result = launch("run show")
         assertEquals(CommandState.InstanceFound, result.state)
         assertVerdict(Verdict.Passed, Expectation.Passed, result)
     }
 
     fun testNoCounterexampleWithExpectZeroPasses() {
-        val result = launch(1)
+        val result = launch("check acyclic")
         assertEquals(CommandState.NoCounterexample, result.state)
         assertVerdict(Verdict.Passed, Expectation.Passed, result)
     }
 
     fun testNoInstanceWithExpectOneFails() {
-        val result = launch(2)
+        val result = launch("run { some Node and no Node }")
         assertEquals(CommandState.NoInstance, result.state)
         assertVerdict(Verdict.Failed, Expectation.Failed, result)
     }
 
     fun testCounterexampleWithExpectZeroFails() {
         myFixture.configureByText("model.als", "sig Node { succ: lone Node }\nassert noLoops { no n: Node | n = n.succ }\ncheck noLoops for 3 expect 0\n")
-        val result = launch(0)
+        val result = launch("check noLoops")
         assertEquals(CommandState.CounterexampleFound, result.state)
         assertVerdict(Verdict.Failed, Expectation.Failed, result)
     }
 
     fun testCounterexampleWithExpectOnePasses() {
-        val result = launch(3)
+        val result = launch("check noSucc")
         assertEquals(CommandState.CounterexampleFound, result.state)
         assertVerdict(Verdict.Passed, Expectation.Passed, result)
     }
 
     fun testNoCounterexampleWithExpectOneFails() {
-        assertVerdict(Verdict.Failed, Expectation.Failed, launch(5))
+        assertVerdict(Verdict.Failed, Expectation.Failed, launch("check alsoAcyclic"))
     }
 
     fun testInstanceWithExpectZeroFails() {
-        assertVerdict(Verdict.Failed, Expectation.Failed, launch(6))
+        assertVerdict(Verdict.Failed, Expectation.Failed, launch("run another"))
     }
 
     fun testWithoutExpectTheVerdictIsRun() {
-        val result = launch(4)
+        val result = launch("run other")
         assertEquals(CommandState.InstanceFound, result.state)
         assertVerdict(Verdict.Run, null, result)
     }
 
     fun testModelWithErrorsFailsItsExpectation() {
         myFixture.configureByText("model.als", "sig A { f: Undefined }\nrun show for 3 expect 1\n")
-        val result = launch(0)
+        val result = launch("run show")
         assertEquals("Model has errors", result.summary)
         assertVerdict(Verdict.Failed, Expectation.Failed, result)
     }
 
     fun testModelWithErrorsWithoutExpectIsRun() {
         myFixture.configureByText("model.als", "sig A { f: Undefined }\nrun show for 3\n")
-        assertVerdict(Verdict.Run, null, launch(0))
+        assertVerdict(Verdict.Run, null, launch("run show"))
     }
 
     fun testStoppedIsRun() {
-        val command = AlloyCommands.ref(AlloyCommands.commands(myFixture.file)[0])
+        val command = commandRef("run show")
         val execution = newExecution(project, myFixture.file.virtualFile, command)
         service.startRun(execution)
         execution.expect(1)

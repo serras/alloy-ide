@@ -2,6 +2,7 @@ package com.serranofp.alloy.simplifications
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyBundle
+import com.serranofp.alloy.inspections.assertTypeChecks
 
 /** Tests of a simplification [inspection], over models that start with [header]. */
 abstract class AlloySimplificationTestCase : BasePlatformTestCase() {
@@ -42,19 +43,23 @@ abstract class AlloySimplificationTestCase : BasePlatformTestCase() {
     /** The text of each problem reported by [inspection]. */
     protected fun reported(): List<String> = problems().map { it.first }
 
-    /** Applies the fix named [fix] of the problem that starts at [at], and returns the text of the model after [header]. */
+    /**
+     * Applies the fix named [fix] of the problem that starts at [at], checks that the model still type-checks,
+     * and returns the text of the model after [header].
+     */
     protected fun fix(at: String, fix: String): String {
         val offset = myFixture.file.text.indexOf(at, header.length)
         assertTrue("$at is not in the model", offset >= 0)
         myFixture.doHighlighting()
         myFixture.editor.caretModel.moveToOffset(offset)
         myFixture.launchAction(myFixture.findSingleIntention(fix))
+        myFixture.assertTypeChecks()
         return myFixture.file.text.removePrefix(header)
     }
 
     /**
      * For each of [formulas], written where `%s` is in [wrap] in a predicate of its own, the text after its
-     * single quick-fix, without the rest of [wrap].
+     * single quick-fix, without the rest of [wrap]. Each fixed model must type-check.
      */
     protected fun fixed(vararg formulas: String, params: String = "", wrap: String = "%s"): List<String> = formulas.map { formula ->
         val (before, after) = wrap.substringBefore("%s") to wrap.substringAfter("%s")
@@ -66,6 +71,7 @@ abstract class AlloySimplificationTestCase : BasePlatformTestCase() {
         val fixes = myFixture.availableIntentions.filter { it.familyName == AlloyBundle.message("simplification.fix.family") }
         assertEquals("$formula: ${fixes.map { it.text }}", 1, fixes.size)
         myFixture.launchAction(fixes.single())
+        myFixture.assertTypeChecks()
         myFixture.file.text.removePrefix(header).removePrefix(prefix).removeSuffix("$after }\n")
     }
 

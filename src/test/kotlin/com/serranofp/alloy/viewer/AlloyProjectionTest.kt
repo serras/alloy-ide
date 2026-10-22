@@ -1,27 +1,20 @@
 package com.serranofp.alloy.viewer
 
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.DropDownLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.util.ui.UIUtil
-import com.serranofp.alloy.run.AlloyCommandRef
-import com.serranofp.alloy.run.AlloyCommandResults
-import com.serranofp.alloy.run.CommandLink
-import com.serranofp.alloy.run.CommandResult
-import com.serranofp.alloy.run.CommandState
 import com.serranofp.alloy.run.waitUntil
-import com.serranofp.alloy.settings.AlloySettings
 import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import edu.mit.csail.sdg.alloy4viz.AlloyProjection
-import java.awt.event.MouseEvent
+import java.awt.event.KeyEvent
 import javax.swing.JComponent
 
 /** Two atoms in every state, one of them in `X` only in the first state. */
 private const val TWO_NODES = "sig Node {}\nvar sig X in Node {}\nfact { #Node = 2 }\nrun { some X and after no X } for 2 but 2..3 steps"
 
-class AlloyProjectionTest : BasePlatformTestCase() {
+class AlloyProjectionTest : AlloyViewerTestCase() {
     private val states = "sig Item {}\nsig State { holds: set Item }\nrun { some holds } for 3"
 
     private fun AlloySolutionModel.type(name: String) = projectableTypes.single { it.name == name }
@@ -47,7 +40,7 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         model.setProjected(model.type("A"), true)
         for (viz in both) assertEquals(listOf("A"), viz.projectedTypes.map { it.name })
         // Stepping keeps the projection of both
-        model.next()
+        model.goTo(model.successor())
         for (viz in both) assertEquals(listOf("A"), viz.projectedTypes.map { it.name })
         model.setProjected(model.type("A"), false)
         for (viz in both) assertEmpty(viz.projectedTypes)
@@ -97,23 +90,7 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         assertTrue(chooser.createContent().checkBoxes().single { it.text == "State" }.isSelected)
     }
 
-    private fun panelFor(model: String): AlloyInstancePanel {
-        AlloyCommandResults.getInstance(project).clear()
-        val viewer = AlloyInstanceViewer.getInstance(project)
-        viewer.clear()
-        myFixture.configureByText("m.als", "pred show {}\nrun show for 3\n")
-        val panel = AlloyInstancePanel(project, testRootDisposable)
-        val results = AlloyCommandResults.getInstance(project)
-        val result = CommandResult(
-            CommandState.InstanceFound, "found", link = CommandLink.Solution(solve(model)),
-            documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation,
-        )
-        viewer.open(myFixture.file.virtualFile, AlloyCommandRef("show", 0), result)
-        UIUtil.dispatchAllInvocationEvents()
-        return panel
-    }
-
-    private val session get() = AlloyInstanceViewer.getInstance(project).session!!
+    private val session get() = viewer.session!!
 
     private fun JComponent.graphs() = UIUtil.findComponentsOfType(this, GraphViewer::class.java)
 
@@ -150,8 +127,8 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         assertEquals(1, panel.atomSelectors().size)
 
         // Stepping keeps the atom, which still exists
-        model.next()
-        panel.stateChanged()
+        UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!.press(KeyEvent.VK_RIGHT)
+        waitUntil("state 1 was not shown") { model.state == 1 }
         assertEquals(atoms[1], panel.atomSelectors().single().selectedItem)
     }
 
@@ -164,9 +141,7 @@ class AlloyProjectionTest : BasePlatformTestCase() {
         val atoms = model.vizState.originalInstance.type2atoms(node).sorted()
         panel.atomSelectors().single().selectedItem = atoms[1]
 
-        val strip = UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!
-        val circle = strip.geometry!!.circles[1]
-        strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_PRESSED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
+        UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!.pressState(1)
         waitUntil("state 1 was not shown") { model.state == 1 }
         for (viz in listOf(model.vizState, model.nextVizState!!)) assertEquals(listOf(node), viz.projectedTypes.toList())
         assertEquals(atoms[1], panel.atomSelectors().single().selectedItem)
@@ -178,5 +153,19 @@ class AlloyProjectionTest : BasePlatformTestCase() {
     fun testMutableSignaturesCannotBeProjected() {
         val model = AlloySolutionModel(solve("var sig P {}\nsig Q {}\nfact { one P and always P' != P }\nrun { some Q } for 2 but 2 steps"))
         assertEquals(listOf("Q"), model.projectableTypes.map { it.name }.filter { it == "P" || it == "Q" })
+    }
+
+    /** A projected signature without atoms has nothing to choose: its selector is disabled, and the graph shows. */
+    fun testASignatureWithoutAtomsHasADisabledSelector() {
+        val panel = panelFor("sig Item {}\nsig State { holds: set Item }\nrun { no Item and some State } for 3")
+        val model = session.model
+        val item = model.type("Item")
+        assertEmpty(model.vizState.originalInstance.type2atoms(item))
+        model.setProjected(item, true)
+        panel.stateChanged()
+        val selector = panel.atomSelectors().single()
+        assertFalse(selector.isEnabled)
+        assertNull(selector.selectedItem)
+        assertEquals(listOf(model.vizState.getGraph(null, AlloyProjection())), panel.graphs())
     }
 }

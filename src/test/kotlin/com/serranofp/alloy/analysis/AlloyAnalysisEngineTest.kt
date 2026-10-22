@@ -13,6 +13,10 @@ import com.serranofp.alloy.analysis.AlloyAnalysisEvent.Stopping
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent.Translating
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent.Unsat
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent.Warning
+import com.serranofp.alloy.run.HEAVY_TRANSLATION
+import com.serranofp.alloy.run.isSearching
+import com.serranofp.alloy.run.PIGEONHOLE
+import com.serranofp.alloy.run.slowOptions
 import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.alloy4.ErrorFatal
 import edu.mit.csail.sdg.parser.CompUtil
@@ -45,6 +49,19 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
         val deadline = System.currentTimeMillis() + 30_000
         while (events.none { it is T }) {
             assertTrue("no ${T::class.simpleName} event", System.currentTimeMillis() < deadline)
+            Thread.sleep(10)
+        }
+    }
+
+    /**
+     * Waits until the analysis thread is in SAT4J's search. The `Solving` event comes just before it, and
+     * the solver may only be stopped once it searches.
+     */
+    private fun AlloyAnalysis.waitUntilSearching() {
+        waitFor<Solving>()
+        val deadline = System.currentTimeMillis() + 30_000
+        while (!isSearching(thread!!.stackTrace)) {
+            assertTrue("the solver did not search", System.currentTimeMillis() < deadline && state == State.Running)
             Thread.sleep(10)
         }
     }
@@ -109,27 +126,28 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
         assertTrue(events.filterIsInstance<Warning>().single().warning.msg.contains("irrelevant"))
     }
 
+    /** The solver is stopped rather than waited for: then the analysis would end without instance. */
     fun testStopDuringSolving() {
-        val analysis = execute(PIGEONHOLE, options().apply { symmetry = 0 })
-        waitFor<Solving>()
-        Thread.sleep(200)
-        val requested = System.currentTimeMillis()
+        val analysis = execute(PIGEONHOLE, slowOptions().apply { solver = SATFactory.DEFAULT })
+        analysis.waitUntilSearching()
         analysis.stop()
         val end = analysis.finish()
         assertInstanceOf(end, Stopped::class.java)
-        assertTrue("stopping took ${end.timeMillis - requested} ms", end.timeMillis - requested < 2_000)
         assertEquals(listOf(Stopping::class.java, Stopped::class.java), events.takeLast(2).map { it.javaClass })
+        assertNoneSolved()
     }
 
     fun testStopDuringTranslationIsStoppingFirst() {
         val analysis = execute(HEAVY_TRANSLATION)
-        Thread.sleep(300)
+        // After this event the translation reaches no checkpoint for seconds
+        waitFor<Translating>()
         assertEquals(State.Running, analysis.state)
         analysis.stop()
-        // The translation does not reach a checkpoint for seconds
         assertEquals(State.Stopping, analysis.state)
         assertInstanceOf(events.last(), Stopping::class.java)
         assertNull(analysis.end)
+        // A second stop while stopping does nothing more
+        analysis.stop()
 
         assertInstanceOf(analysis.finish(), Stopped::class.java)
         assertEquals(1, events.count { it is Stopping })
@@ -189,6 +207,20 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
         assertEquals("solver exploded", failure.message)
     }
 
+    fun testExceptionNotWrappedByTheAnalyzerIsReportedWithItsMessage() {
+        val analysis = engine.start("test", testRootDisposable, options(), { events += it }) { _, _ -> throw IllegalStateException("plain bug") }
+        val failure = (analysis.finish() as Failed).failure
+        assertEquals(AlloyFailure.UnexpectedException::class.java, failure.javaClass)
+        assertEquals("plain bug", failure.message)
+    }
+
+    fun testNoSolutionIsAFailure() {
+        val end = engine.start("test", testRootDisposable, options(), { events += it }) { _, _ -> null }.finish() as Failed
+        assertInstanceOf(end.failure, AlloyFailure.UnexpectedException::class.java)
+        assertEquals("The analyzer returned no solution", end.failure.message)
+        assertEquals(listOf(end), events)
+    }
+
     fun testAnalyzerErrorIsReportedWithItsMessage() {
         val end = execute("sig A { r: set A }\nrun { all s: set A | s in A.r } for 3").finish() as Failed
         assertInstanceOf(end.failure, AlloyFailure.AnalyzerError::class.java)
@@ -198,8 +230,8 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
     fun testDisposingTheParentStopsTheAnalysis() {
         val project = Disposer.newDisposable("project")
         Disposer.register(testRootDisposable, project)
-        val analysis = execute(PIGEONHOLE, options().apply { symmetry = 0 }, parent = project)
-        waitFor<Solving>()
+        val analysis = execute(PIGEONHOLE, slowOptions().apply { solver = SATFactory.DEFAULT }, parent = project)
+        analysis.waitUntilSearching()
         Disposer.dispose(project)
         assertInstanceOf(analysis.finish(), Stopped::class.java)
     }
@@ -219,12 +251,4 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
     }
 
     private fun assertNoneSolved() = assertTrue(events.none { it is Sat || it is Unsat })
-
-    companion object {
-        /** More than 20 s of solving without symmetry breaking. */
-        const val PIGEONHOLE = "sig H {}\nsig P { h: one H }\nfact { all disj a, b: P | a.h != b.h }\nrun php { #P = 11 and #H = 10 } for 11"
-
-        /** Several seconds of translation, without any analyzer callback. */
-        const val HEAVY_TRANSLATION = "sig A { r: A -> A }\nrun big { all a, b, c, d: A | a->b->c in r implies (b->c->d in r or c->d->a in r) } for 32"
-    }
 }

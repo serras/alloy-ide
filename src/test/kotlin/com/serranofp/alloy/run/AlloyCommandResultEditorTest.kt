@@ -9,7 +9,6 @@ import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.editor.event.EditorMouseEventArea
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.AnimatedIcon
 import com.intellij.util.ui.UIUtil
 import com.serranofp.alloy.AlloyLanguage
@@ -19,24 +18,13 @@ import java.awt.event.InputEvent
 import java.awt.event.MouseEvent
 
 /** Results as the user sees them in a real editor: hints, gutter icons and plain clicks. */
-class AlloyCommandResultEditorTest : BasePlatformTestCase() {
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyCommandResultEditorTest : AlloyRunTestCase() {
     private val show = AlloyCommandRef("show", 0)
     private val noCycles = AlloyCommandRef("noCycles", 1)
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", "pred show {}\nrun show for 3\ncheck noCycles {} for 3\n")
-    }
-
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-        } finally {
-            super.tearDown()
-        }
     }
 
     private val file get() = myFixture.file.virtualFile

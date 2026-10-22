@@ -1,6 +1,8 @@
 package com.serranofp.alloy.psi
 
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
 import com.intellij.psi.impl.source.PsiFileImpl
 import com.intellij.psi.search.GlobalSearchScope
@@ -14,7 +16,7 @@ class AlloyNameIndexTest : BasePlatformTestCase() {
         StubIndex.getElements(NAME_INDEX_KEY, name, project, GlobalSearchScope.projectScope(project), AlloyNamedDeclaration::class.java).toList()
 
     /** The names indexed for [file]; light tests share their project with other tests' files. */
-    private fun names(file: com.intellij.openapi.vfs.VirtualFile): Set<String> {
+    private fun names(file: VirtualFile): Set<String> {
         val names = mutableSetOf<String>()
         StubIndex.getInstance().processAllKeys(NAME_INDEX_KEY, { names += it; true }, GlobalSearchScope.fileScope(project, file), null)
         return names.filterTo(mutableSetOf()) { name -> find(name).any { it.containingFile.virtualFile == file } }
@@ -57,6 +59,27 @@ class AlloyNameIndexTest : BasePlatformTestCase() {
         assertEquals(setOf("A", "B", "f", "g", "Color", "Red", "Green", "h", "m", "named", "show"), names(file))
     }
 
+    /** Each kind of stub makes the PSI class of its declaration, also when found from the stubs alone. */
+    fun testPsiClassOfEachStubKind() {
+        myFixture.tempDirFixture.createFile(
+            "kinds.als",
+            "sig S { fld: set S }\nenum En { Mem }\npred pr {}\nfun fn: S { S }\nlet mac[q] { q }\nassert asr {}\nfact fct {}\nrun cmd {} for 3",
+        )
+        val expected = mapOf(
+            "S" to AlloySigName::class.java,
+            "fld" to AlloyFieldDecl::class.java,
+            "En" to AlloyEnumDecl::class.java,
+            "Mem" to AlloyEnumMember::class.java,
+            "pr" to AlloyPredDecl::class.java,
+            "fn" to AlloyFunDecl::class.java,
+            "mac" to AlloyMacroDecl::class.java,
+            "asr" to AlloyAssertDecl::class.java,
+            "fct" to AlloyFactDecl::class.java,
+            "cmd" to AlloyCommandDecl::class.java,
+        )
+        for ((name, type) in expected) assertInstanceOf(find(name).single(), type)
+    }
+
     fun testIndexFollowsEdits() {
         val file = myFixture.configureByText("m.als", "sig A {}\npred p {}")
         assertEquals(1, find("p").size)
@@ -64,7 +87,7 @@ class AlloyNameIndexTest : BasePlatformTestCase() {
             val offset = myFixture.editor.document.text.indexOf("p {")
             myFixture.editor.document.replaceString(offset, offset + 1, "q")
         }
-        com.intellij.psi.PsiDocumentManager.getInstance(project).commitAllDocuments()
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
         assertEmpty(find("p"))
         assertEquals(file.virtualFile, find("q").single().containingFile.virtualFile)
     }

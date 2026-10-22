@@ -7,6 +7,13 @@ class AlloySimplifiableRelationalTest : AlloySimplificationTestCase() {
         assertEquals(listOf("succ", "n.inbox", "outbox", "*succ", "*succ"), fixed("~~succ", "n.inbox + n.inbox", "outbox & outbox", "^succ + iden", "iden + ^succ", params = "[n: Node]", wrap = "some %s"))
     }
 
+    fun testOperandsOfABoxJoin() {
+        model("pred subject[n: Node] { some (succ + succ)[n] and some inbox[n + n] }\n")
+        assertEquals(listOf("(succ + succ)", "n + n"), reported())
+        assertEquals("pred subject[n: Node] { some succ[n] and some inbox[n + n] }\n", fix("(succ +", "Simplify to 'succ'"))
+        assertEquals("pred subject[n: Node] { some succ[n] and some inbox[n] }\n", fix("n + n", "Simplify to 'n'"))
+    }
+
     fun testMutualInclusion() {
         assertEquals(listOf("Node.inbox = Message"), fixed("Node.inbox in Message and Message in Node.inbox"))
         model("fact {\n  Node.inbox in Message\n  Message in Node.inbox\n}\n")

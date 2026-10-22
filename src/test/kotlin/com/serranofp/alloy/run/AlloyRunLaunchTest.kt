@@ -5,36 +5,28 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
-import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.util.ProgressIndicatorBase
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.openapi.util.Disposer
 import com.intellij.util.ui.UIUtil
+import com.serranofp.alloy.analysis.AlloyAnalysis
 import com.serranofp.alloy.analysis.AlloyAnalysisEngine
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent
+import com.serranofp.alloy.semantics.AlloyModelService
+import edu.mit.csail.sdg.parser.CompUtil
 import edu.mit.csail.sdg.translator.A4Options
 import edu.mit.csail.sdg.translator.TranslateAlloyToKodkod
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-class AlloyRunLaunchTest : BasePlatformTestCase() {
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyRunLaunchTest : AlloyRunTestCase() {
     private val show = AlloyCommandRef("show", 0)
     private val noCycles = AlloyCommandRef("noCycles", 1)
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", "sig Node { succ: lone Node }\npred show { some succ }\nrun show for 3\ncheck noCycles { no iden & succ } for 3\n")
-    }
-
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-        } finally {
-            super.tearDown()
-        }
     }
 
     private val file get() = myFixture.file.virtualFile
@@ -109,6 +101,39 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
         assertEquals(CommandState.Stopped, results.get(file, show)!!.state)
     }
 
+    /**
+     * Cancelling the task while the model is read, under `ProgressManager` as the platform runs it: the read
+     * action is bound to the indicator, so the parse ends with a cancellation, which frees the project.
+     */
+    fun testCancellingWhileTheModelIsReadFreesTheProject() {
+        val parsing = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        AlloyModelService.getInstance(project).parse = { reporter, contents, filename ->
+            parsing.countDown()
+            release.await()
+            CompUtil.parseEverything_fromFile(reporter, contents, filename)
+        }
+        // A file whose model was never computed
+        myFixture.configureByText("model.als", "sig Node {}\npred show { some Node }\nrun show for 3\n")
+        val execution = newExecution(project, file, show)
+        assertTrue(service.startRun(execution))
+        val indicator = EmptyProgressIndicator()
+        val task = AlloyCommandTask(project, execution, AlloyCommandLauncher(project), testRootDisposable)
+        val running = ApplicationManager.getApplication().executeOnPooledThread<Throwable?> {
+            runCatching { ProgressManager.getInstance().runProcess({ task.run(indicator) }, indicator) }.exceptionOrNull()
+        }
+        try {
+            assertTrue("the model was not read", parsing.await(30, TimeUnit.SECONDS))
+            indicator.cancel()
+        } finally {
+            release.countDown()
+        }
+        assertInstanceOf(running.get(30, TimeUnit.SECONDS), ProcessCanceledException::class.java)
+        assertNull(service.activeExecution)
+        assertEquals(CommandState.Stopped, results.get(file, show)!!.state)
+        assertTrue(service.startRun(newExecution(project, file, show)))
+    }
+
     fun testSecondLaunchWhileBusyLeavesTheStoreUnchanged() {
         val first = newExecution(project, file, show)
         service.startRun(first)
@@ -120,20 +145,9 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
         assertNull(results.get(file, noCycles))
     }
 
-    /** Runs a slow `run show` as the background task, on [indicator]; returns once it is solving. */
-    private fun startSlowTask(indicator: ProgressIndicator): Pair<AlloyCommandExecution, java.util.concurrent.Future<*>> {
-        myFixture.configureByText("model.als", PIGEONHOLE)
-        val execution = newExecution(project, myFixture.file.virtualFile, show)
-        service.startRun(execution)
-        val task = AlloyCommandTask(project, execution, AlloyCommandLauncher(project, options = ::slowOptions), testRootDisposable)
-        val running = ApplicationManager.getApplication().executeOnPooledThread { task.run(indicator) }
-        waitUntil("the analysis did not start solving") { execution.log.progress == "Solving..." }
-        return execution to running
-    }
-
     fun testCancellingTheIndicatorStopsTheAnalysis() {
         val indicator = EmptyProgressIndicator()
-        val (execution, running) = startSlowTask(indicator)
+        val (execution, running) = startTask(indicator = indicator)
         indicator.cancel()
         running.get(10, TimeUnit.SECONDS)
         UIUtil.dispatchAllInvocationEvents()
@@ -141,11 +155,12 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
         assertTrue(execution.isFinished())
         assertEquals(CommandState.Stopped, results.get(myFixture.file.virtualFile, show)!!.state)
         assertNull(service.activeExecution)
+        assertTrue(service.startRun(newExecution(project, file, show)))
     }
 
     fun testEditDuringARunOutdatesItsResult() {
         val indicator = EmptyProgressIndicator()
-        val (execution, running) = startSlowTask(indicator)
+        val (execution, running) = startTask(indicator = indicator)
         myFixture.type("x")
         execution.stop()
         running.get(10, TimeUnit.SECONDS)
@@ -155,7 +170,7 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
 
     fun testIndicatorFollowsTheAnalyzer() {
         val indicator = ProgressIndicatorBase()
-        val (execution, running) = startSlowTask(indicator)
+        val (execution, running) = startTask(indicator = indicator)
         waitUntil("the indicator did not follow") { indicator.text2 == "Solving..." }
         execution.stop()
         running.get(10, TimeUnit.SECONDS)
@@ -277,11 +292,14 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
                 if (fails) throw OutOfMemoryError("test")
                 gate.await()
                 TranslateAlloyToKodkod.execute_command(reporter, sigs, query, options)
-            }
+            }.also { followUps += it }
         }
         if (!fails) waitUntil("the vacuity check did not start") { results.get(file, check)?.vacuity == Vacuity.Checking }
         return execution
     }
+
+    /** The follow-up analyses that [executeWithGatedFollowUp] started. */
+    private val followUps = CopyOnWriteArrayList<AlloyAnalysis>()
 
     private val holding = "sig Node { succ: lone Node }\nfact acyclic { no n: Node | n in n.^succ }\nassert a { no iden & succ }\ncheck a for 3"
 
@@ -369,6 +387,76 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
         assertEquals(CommandState.NoCounterexample, result.state)
         assertEquals(Vacuity.Unknown(AlloyCommandExecution.VACUITY_STOPPED), result.vacuity)
         assertNull(service.activeExecution)
+        // Its analysis stopped too, although the gate never opened
+        val followUp = followUps.single()
+        assertTrue("the vacuity check did not stop", followUp.await(10, TimeUnit.SECONDS))
+        assertInstanceOf(followUp.end, AlloyAnalysisEvent.Stopped::class.java)
+    }
+
+    /** The events of the check of [model], by an analysis that parsed it, as a launch's does. */
+    private fun checkEvents(model: String): List<AlloyAnalysisEvent> {
+        val events = CopyOnWriteArrayList<AlloyAnalysisEvent>()
+        val analysis = AlloyAnalysisEngine.getInstance().execute("a", testRootDisposable, mapOf("/model.als" to model), "/model.als", 0, A4Options()) { events += it }
+        assertTrue(analysis.await(30, TimeUnit.SECONDS))
+        return events
+    }
+
+    /** An analysis that never runs, for an execution that the test feeds with events. */
+    private fun neverRuns(): AlloyAnalysis = AlloyAnalysis(A4Options()) {}
+
+    /** Starts the execution of `check a` in [model], with [followUp] for its vacuity check. */
+    private fun begin(model: String, followUp: AlloyCommandExecution.FollowUp): AlloyCommandExecution {
+        myFixture.configureByText("model.als", model)
+        val execution = newExecution(project, file, check)
+        assertTrue(service.startRun(execution))
+        execution.begin(::neverRuns, followUp)
+        return execution
+    }
+
+    /** As when the project closes before the check ends: its vacuity check stops as it starts. */
+    fun testVacuityCheckOfADisposedParentEndsTheExecution() {
+        val parent = Disposer.newDisposable("closed project").also(Disposer::dispose)
+        val engine = AlloyAnalysisEngine.getInstance()
+        val execution = begin(holding) { sigs, query, listener -> engine.execute("a (vacuity)", parent, sigs, query, A4Options(), listener) }
+        checkEvents(holding).forEach(execution::accept)
+        assertTrue(execution.isFinished())
+        val result = results.get(file, check)!!
+        assertEquals(CommandState.NoCounterexample, result.state)
+        assertEquals(Vacuity.Unknown(AlloyCommandExecution.VACUITY_STOPPED), result.vacuity)
+        assertNull(service.activeExecution)
+    }
+
+    /** The analyzer answered after the stop was requested: its answer stands, without vacuity check. */
+    fun testNoCounterexampleWhileStoppingStartsNoVacuityCheck() {
+        var started = false
+        val execution = begin(holding) { _, _, _ -> neverRuns().also { started = true } }
+        val events = checkEvents(holding)
+        (events.dropLast(1) + AlloyAnalysisEvent.Stopping(0) + events.last()).forEach(execution::accept)
+        assertTrue(execution.isFinished())
+        assertFalse(started)
+        val result = results.get(file, check)!!
+        assertEquals(CommandState.NoCounterexample, result.state)
+        assertNull(result.vacuity)
+    }
+
+    fun testEventsOfAnEarlierVacuityQueryAreIgnored() {
+        val model = "sig Node { succ: lone Node }\nfact acyclic { no n: Node | n in n.^succ }\n" +
+            "assert a { all n: Node | some n.succ implies n.succ != n }\ncheck a for 3"
+        val listeners = mutableListOf<(AlloyAnalysisEvent) -> Unit>()
+        val execution = begin(model) { _, _, listener -> neverRuns().also { listeners += listener } }
+        val unsat = checkEvents(model)
+        unsat.forEach(execution::accept)
+        assertEquals(1, listeners.size)
+        // The facts and the premise have no instance, so the facts alone are solved next
+        unsat.forEach(listeners[0])
+        assertEquals(2, listeners.size)
+        analysisEvents("sig A {}\nrun { some A } for 1").forEach(listeners[0])
+        assertFalse(execution.isFinished())
+        assertEquals(Vacuity.Checking, results.get(file, check)!!.vacuity)
+
+        unsat.forEach(listeners[1])
+        assertTrue(execution.isFinished())
+        assertInstanceOf(results.get(file, check)!!.vacuity, Vacuity.VacuousFacts::class.java)
     }
 
     fun testFailingVacuityCheckKeepsTheCheckResult() {

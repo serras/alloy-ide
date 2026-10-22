@@ -1,45 +1,22 @@
 package com.serranofp.alloy.viewer
 
 import com.intellij.openapi.diff.DiffColors
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.xmlb.XmlSerializer
-import com.serranofp.alloy.run.AlloyCommandRef
-import com.serranofp.alloy.run.AlloyCommandResults
-import com.serranofp.alloy.run.CommandLink
-import com.serranofp.alloy.run.CommandResult
-import com.serranofp.alloy.run.CommandState
-import com.serranofp.alloy.settings.AlloySettings
+import com.serranofp.alloy.run.waitUntil
 import edu.mit.csail.sdg.alloy4.Util
+import java.awt.event.KeyEvent
 import java.util.prefs.Preferences
 import javax.swing.text.AttributeSet
 import javax.swing.text.StyleConstants
 
-class AlloyInstanceTabsTest : BasePlatformTestCase() {
-    private val viewer get() = AlloyInstanceViewer.getInstance(project)
-    private val show = AlloyCommandRef("show", 0)
-
+class AlloyInstanceTabsTest : AlloyViewerTestCase() {
     override fun setUp() {
         super.setUp()
-        AlloyCommandResults.getInstance(project).clear()
-        viewer.clear()
-        viewer.selectedTab = AlloyInstanceViewer.VISUALIZATION
-        myFixture.configureByText("m.als", "pred show {}\nrun show for 3\n")
+        myFixture.configureByText("m.als", SHOW_FILE)
     }
-
-    private fun open(model: String) {
-        val results = AlloyCommandResults.getInstance(project)
-        val result = CommandResult(
-            CommandState.InstanceFound, "found", link = CommandLink.Solution(solve(model)),
-            documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation,
-        )
-        viewer.open(myFixture.file.virtualFile, show, result)
-        UIUtil.dispatchAllInvocationEvents()
-    }
-
-    private fun panel() = AlloyInstancePanel(project, testRootDisposable)
 
     private fun AlloyInstancePanel.tabs() = UIUtil.findComponentOfType(this, JBTabbedPane::class.java)!!
 
@@ -109,7 +86,7 @@ class AlloyInstanceTabsTest : BasePlatformTestCase() {
         panel.stateChanged()
         val tables = panel.tablePanes()
         assertEquals(listOf(model.solution.format(2), model.solution.format(1)), tables.tables())
-        assertEquals(listOf("State 2", "State 1 (loop)"), tables.captions)
+        assertEquals(listOf("State 2", "State 1 (loop)"), tables.shownCaptions)
     }
 
     fun testTableOfAStaticResultIsTheAnalyzersSingleTable() {
@@ -117,16 +94,16 @@ class AlloyInstanceTabsTest : BasePlatformTestCase() {
         open(STATIC)
         val tables = panel.tablePanes()
         assertEquals(listOf(viewer.session!!.model.solution.format(0)), tables.tables())
-        assertEquals(listOf(null), tables.captions)
+        assertEquals(listOf(null), tables.shownCaptions)
     }
 
     fun testTabsFollowTheState() {
         val panel = panel()
         open(LASSO)
         val model = viewer.session!!.model
-        // As clicking the successor in the trace path strip does
-        model.next()
-        panel.stateChanged()
+        // Right in the trace path strip selects the successor
+        UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!.press(KeyEvent.VK_RIGHT)
+        waitUntil("state 1 was not shown") { model.state == 1 }
         val table = panel.textAreas().first()
         assertEquals(TraceDiff.of(model.solution, 1, 2).text, panel.textPane().text)
         assertEquals(model.solution.format(1), table.text)

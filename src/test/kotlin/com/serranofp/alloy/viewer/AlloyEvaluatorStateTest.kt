@@ -81,12 +81,17 @@ class AlloyEvaluatorStateTest : BasePlatformTestCase() {
             evaluatorVisible = true
             evaluatorProportion = 0.4f
         }
-        val viewer = AlloyInstanceViewer(project)
-        viewer.loadState(roundTrip(state))
-        assertTrue(viewer.evaluatorVisible)
-        assertEquals(0.4f, viewer.evaluatorProportion)
-        val defaults = AlloyInstanceViewer(project)
-        assertFalse(defaults.evaluatorVisible)
-        assertEquals(AlloyInstanceViewer.EVALUATOR_PROPORTION, defaults.evaluatorProportion)
+        // The project's own viewer, whose state the test gives back
+        val viewer = AlloyInstanceViewer.getInstance(project)
+        try {
+            viewer.loadState(roundTrip(state))
+            assertTrue(viewer.evaluatorVisible)
+            assertEquals(0.4f, viewer.evaluatorProportion)
+            viewer.loadState(AlloyInstanceViewerState())
+            assertFalse(viewer.evaluatorVisible)
+            assertEquals(AlloyInstanceViewer.EVALUATOR_PROPORTION, viewer.evaluatorProportion)
+        } finally {
+            viewer.loadState(AlloyInstanceViewerState())
+        }
     }
 }

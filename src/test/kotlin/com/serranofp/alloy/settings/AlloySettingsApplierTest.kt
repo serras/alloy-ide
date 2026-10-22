@@ -45,13 +45,16 @@ class AlloySettingsApplierTest : BasePlatformTestCase() {
 
         val discovery = AlloySolvers().apply { discover = { listOf(AlloySolver("sat4j", "sat4j")) } }
         val page = AlloySettingsConfigurable(AlloySettings(), discovery, AlloySettingsApplier::settingsChanged)
-        page.createComponent()
-        discovery.load().get(10, TimeUnit.SECONDS)
-        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        page.checkVacuity.isSelected = false
-        page.apply()
-        assertEquals(Outdated.SettingsChanged, results.outdated(result, myFixture.editor.document))
-        page.disposeUIResources()
+        try {
+            page.createComponent()
+            discovery.load().get(10, TimeUnit.SECONDS)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            page.checkVacuity.isSelected = false
+            page.apply()
+            assertEquals(Outdated.SettingsChanged, results.outdated(result, myFixture.editor.document))
+        } finally {
+            page.disposeUIResources()
+        }
     }
 
     fun testGenerationIncreasesOnAChange() {
@@ -64,17 +67,20 @@ class AlloySettingsApplierTest : BasePlatformTestCase() {
     fun testGenerationUnchangedWhenNothingIsApplied() {
         val discovery = AlloySolvers().apply { discover = { listOf(AlloySolver("sat4j", "sat4j")) } }
         val page = AlloySettingsConfigurable(AlloySettings(), discovery, AlloySettingsApplier::settingsChanged)
-        page.createComponent()
-        discovery.load().get(10, TimeUnit.SECONDS)
-        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        try {
+            page.createComponent()
+            discovery.load().get(10, TimeUnit.SECONDS)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
 
-        val before = generation
-        page.apply()
-        assertEquals(before, generation)
+            val before = generation
+            page.apply()
+            assertEquals(before, generation)
 
-        page.skolemDepth.selectedItem = 3
-        page.apply()
-        assertTrue(generation > before)
-        page.disposeUIResources()
+            page.skolemDepth.selectedItem = 3
+            page.apply()
+            assertTrue(generation > before)
+        } finally {
+            page.disposeUIResources()
+        }
     }
 }

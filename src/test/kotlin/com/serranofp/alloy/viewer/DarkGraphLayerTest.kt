@@ -3,23 +3,18 @@ package com.serranofp.alloy.viewer
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
-import com.serranofp.alloy.run.AlloyCommandRef
-import com.serranofp.alloy.run.AlloyCommandResults
-import com.serranofp.alloy.run.CommandLink
-import com.serranofp.alloy.run.CommandResult
-import com.serranofp.alloy.run.CommandState
-import com.serranofp.alloy.settings.AlloySettings
+import com.serranofp.alloy.run.waitUntil
 import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import java.awt.Color
+import java.awt.event.KeyEvent
 import java.awt.image.BufferedImage
 import javax.swing.JLayer
 import javax.swing.JPanel
 import javax.swing.UIManager
 
 /** The graph's layer, painting with the dark mapping or without it, and following theme changes. */
-class DarkGraphLayerTest : BasePlatformTestCase() {
+class DarkGraphLayerTest : AlloyViewerTestCase() {
     private var dark = false
 
     private fun layer(): JLayer<*> {
@@ -42,30 +37,19 @@ class DarkGraphLayerTest : BasePlatformTestCase() {
 
     /** Stepping through a trace makes new graphs: the panes kept by the layers' UIs are only those shown. */
     fun testThePanelKeepsNoRemovedGraph() {
-        myFixture.configureByText("m.als", "pred show {}\nrun show for 3\n")
-        val viewer = AlloyInstanceViewer.getInstance(project)
-        AlloyCommandResults.getInstance(project).clear()
-        viewer.clear()
-        val panel = AlloyInstancePanel(project, testRootDisposable)
-        val results = AlloyCommandResults.getInstance(project)
-        val result = CommandResult(
-            CommandState.InstanceFound, "found", link = CommandLink.Solution(solve(LASSO)),
-            documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation,
-        )
-        viewer.open(myFixture.file.virtualFile, AlloyCommandRef("show", 0), result)
-        UIUtil.dispatchAllInvocationEvents()
-        try {
-            repeat(3) { state ->
-                viewer.session!!.model.goTo(state)
-                panel.stateChanged()
-            }
-            val shown = UIUtil.findComponentsOfType(panel, JLayer::class.java)
-            assertEquals(2, shown.size)
-            val listened = shown.flatMap { layer -> layer.ui.propertyChangeListeners.toList() }
-            assertSameElements(listened, shown)
-        } finally {
-            viewer.clear()
+        val panel = panelFor(LASSO)
+        val strip = UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!
+        val model = viewer.session!!.model
+        // Right ten times: states 1, 2, then the loop, each shown with new graphs
+        repeat(10) { step ->
+            strip.press(KeyEvent.VK_RIGHT)
+            val state = 1 + step % 2
+            waitUntil("state $state was not shown") { model.state == state && strip.geometry!!.selected == state }
         }
+        val shown = UIUtil.findComponentsOfType(panel, JLayer::class.java)
+        assertEquals(2, shown.size)
+        val listened = shown.flatMap { layer -> layer.ui.propertyChangeListeners.toList() }
+        assertSameElements(listened, shown)
     }
 
     private fun canvas(layer: JLayer<*>): Int {

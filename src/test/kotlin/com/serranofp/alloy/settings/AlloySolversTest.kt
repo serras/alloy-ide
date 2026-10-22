@@ -1,23 +1,27 @@
 package com.serranofp.alloy.settings
 
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class AlloySolversTest : BasePlatformTestCase() {
-    private val properties = listOf("alloy.native.exe.yices", "alloy.native.exe.plingeling")
-    private val saved = properties.associateWith { System.getProperty(it) }
+    private val properties = SolverProperties()
+    private val temporaryDirectories = mutableListOf<Path>()
 
     override fun setUp() {
         super.setUp()
-        properties.forEach(System::clearProperty)
+        properties.clear()
     }
 
     override fun tearDown() {
         try {
-            for ((property, value) in saved) {
-                if (value == null) System.clearProperty(property) else System.setProperty(property, value)
-            }
+            properties.restore()
+            temporaryDirectories.forEach { FileUtil.delete(it) }
+        } catch (e: Throwable) {
+            addSuppressedException(e)
         } finally {
             super.tearDown()
         }
@@ -25,7 +29,8 @@ class AlloySolversTest : BasePlatformTestCase() {
 
     /** A stand-in for an external solver's executable; listing a solver does not run it. */
     private fun executable(name: String): String {
-        val path = Files.writeString(Files.createTempDirectory("alloy-solvers").resolve(name), "#!/bin/sh\n")
+        val directory = Files.createTempDirectory("alloy-solvers").also { temporaryDirectories.add(it) }
+        val path = Files.writeString(directory.resolve(name), "#!/bin/sh\n")
         path.toFile().setExecutable(true)
         return path.toString()
     }
@@ -48,6 +53,18 @@ class AlloySolversTest : BasePlatformTestCase() {
         val ids = AlloySolvers.findSolvers { anything }.map { it.id }
         // JNI libraries could crash the IDE; electrod.elo only writes its input to a file
         assertFalse(ids.toString(), ids.any { it in setOf("minisat", "minisat.prover", "glucose", "electrod.elo") })
+        // Every executable now points at the stand-in, until the properties are restored
+        assertTrue(properties.names.all { System.getProperty(it) == anything })
+    }
+
+    /** Discovery looks only where it is told, and records every executable, found or not. */
+    fun testEveryExecutableIsRecorded() {
+        val asked = mutableListOf<String>()
+        AlloySolvers.findSolvers { asked += it; null }
+        assertEquals(properties.names.map { it.removePrefix(SolverProperties.PREFIX) }.sorted(), asked.sorted())
+        assertTrue(properties.names.all { System.getProperty(it) == SolverProperties.ABSENT })
+        // Once recorded, they are not looked for again
+        AlloySolvers.findSolvers { fail("$it looked for again"); null }
     }
 
     fun testExecutableNotOnThePathIsNotTakenFromTheJar() {
@@ -70,7 +87,7 @@ class AlloySolversTest : BasePlatformTestCase() {
     }
 
     fun testInterruptedWaitKeepsTheInterrupt() {
-        val release = java.util.concurrent.CountDownLatch(1)
+        val release = CountDownLatch(1)
         val solvers = AlloySolvers().apply { discover = { release.await(); emptyList() } }
         try {
             Thread.currentThread().interrupt()

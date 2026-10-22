@@ -1,5 +1,6 @@
 package com.serranofp.alloy.inspections
 
+import com.serranofp.alloy.PracticalAlloyCorpus
 import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.ExprUnary
@@ -14,7 +15,7 @@ class AlloyFrameAnalysisTest : TestCase() {
     private val analysis = AlloyFrameAnalysis()
 
     private fun fixture(path: String): CompModule =
-        CompUtil.parseEverything_fromFile(A4Reporter.NOP, null, "src/test/testData/practicalalloy/$path")
+        CompUtil.parseEverything_fromFile(A4Reporter.NOP, null, "${PracticalAlloyCorpus.TEST_DATA}/practicalalloy/$path")
 
     private fun model(text: String): CompModule = CompUtil.parseEverything_fromString(A4Reporter.NOP, text)
 

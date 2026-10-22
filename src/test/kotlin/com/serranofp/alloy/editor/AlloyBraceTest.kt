@@ -31,6 +31,12 @@ class AlloyBraceTest : BasePlatformTestCase() {
 
     fun testMatchesNestedBraces() = assertMatch("fact <caret>{ all x: A | { some x } }", "fact { all x: A | { some x } ".length)
 
+    /** Braces in comments and strings are not code, and do not pair with those around them. */
+    fun testBracesInCommentsAndStringsAreSkipped() = assertMatch(
+        "fact <caret>{ -- }\n /* } */ some \"}\" }",
+        "fact { -- }\n /* } */ some \"}\" ".length,
+    )
+
     private fun assertMatch(text: String, expectedOffset: Int) {
         myFixture.configureByText(AlloyFileType, text)
         val offset = BraceMatchingUtil.getMatchedBraceOffset(myFixture.editor, true, myFixture.file)

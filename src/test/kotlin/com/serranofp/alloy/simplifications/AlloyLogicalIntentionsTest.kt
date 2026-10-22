@@ -30,14 +30,6 @@ class AlloyLogicalIntentionsTest : AlloyIntentionTestCase() {
         assertEquals("p or x != y", invoked("not (not p and x = y)", "Apply De Morgan's law", params = "[x, y: Node]"))
     }
 
-    fun testNegatedMultiplicity() {
-        myFixture.enableInspections(AlloySimplifiableBooleanInspection())
-        assertEquals(
-            "some inbox and no outbox",
-            invoked("not (some inbox implies some outbox)", "Simplify to 'some inbox and no outbox'"),
-        )
-    }
-
     fun testBlockLinesAreNotADisjunction() {
         assertNotOffered("not p\n  not q", "Apply De Morgan's law", at = "q")
     }

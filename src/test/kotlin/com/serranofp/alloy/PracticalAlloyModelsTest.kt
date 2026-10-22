@@ -4,6 +4,7 @@ import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiErrorElement
+import com.intellij.psi.stubs.StubTextInconsistencyException
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
@@ -50,10 +51,15 @@ class PracticalAlloyModelsTest : BasePlatformTestCase() {
             true
         }
         assertNotEmpty(models)
+        // A moved or renamed model would leave its expected problems unchecked
+        val paths = models.map { "$folder/${VfsUtilCore.getRelativePath(it, root)}" }
+        assertEmpty("Expected problems of models that are not there", expected.keys.filter { it.startsWith("$folder/") } - paths.toSet())
 
         val failures = models.sortedBy { it.path }.mapNotNull { model ->
             val path = "$folder/${VfsUtilCore.getRelativePath(model, root)}"
             myFixture.configureFromExistingVirtualFile(model)
+            // The stubs that the index keeps agree with the tree that the editor builds
+            StubTextInconsistencyException.checkStubTextConsistency(myFixture.file)
             val parseErrors = PsiTreeUtil.findChildrenOfType(myFixture.file, PsiErrorElement::class.java)
             val problems = myFixture.doHighlighting(HighlightSeverity.WARNING).map { info ->
                 Problem(

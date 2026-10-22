@@ -1,78 +1,42 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.codeInsight.lookup.LookupElementBuilder
+import com.intellij.codeInsight.lookup.LookupManager
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
-import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.TestActionEvent
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.ui.UIUtil
-import com.serranofp.alloy.run.AlloyCommandRef
-import com.serranofp.alloy.run.AlloyCommandResults
-import com.serranofp.alloy.run.AlloyRunService
-import com.serranofp.alloy.run.CommandResult
-import com.serranofp.alloy.run.CommandState
 import com.serranofp.alloy.run.Outdated
 import com.serranofp.alloy.run.waitUntil
-import com.serranofp.alloy.settings.AlloySettings
 import com.serranofp.alloy.viewer.AlloyEvaluatorPanel.ValueNode
+import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import javax.swing.KeyStroke
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
 
-class AlloyEvaluatorPanelTest : BasePlatformTestCase() {
-    private val viewer get() = AlloyInstanceViewer.getInstance(project)
-    private val show = AlloyCommandRef("show", 0)
+class AlloyEvaluatorPanelTest : AlloyViewerTestCase() {
     private val stored get() = AlloyEvaluatorState.getInstance(project)
 
     override fun setUp() {
         super.setUp()
-        AlloyCommandResults.getInstance(project).clear()
-        viewer.clear()
         viewer.evaluatorVisible = true
-        myFixture.configureByText("m.als", "pred show {}\nrun show for 3\n")
+        myFixture.configureByText("m.als", SHOW_FILE)
         stored.setWatches(myFixture.file.virtualFile, emptyList())
     }
-
-    override fun tearDown() {
-        try {
-            viewer.stopEnumeration()
-            AlloyRunService.getInstance(project).activeExecution?.terminate()
-            viewer.clear()
-            viewer.evaluatorVisible = false
-            stored.loadState(AlloyEvaluatorWatches())
-        } finally {
-            super.tearDown()
-        }
-    }
-
-    private fun open(model: String, file: VirtualFile = myFixture.file.virtualFile) {
-        val results = AlloyCommandResults.getInstance(project)
-        val document = FileDocumentManager.getInstance().getDocument(file)!!
-        val result = CommandResult(
-            CommandState.InstanceFound, "found", link = link(model),
-            documentStamp = results.stamp(document), settingsGeneration = AlloySettings.getInstance().generation,
-        )
-        viewer.open(file, show, result)
-        UIUtil.dispatchAllInvocationEvents()
-    }
-
-    private fun panel() = AlloyInstancePanel(project, testRootDisposable)
 
     private fun AlloyInstancePanel.evaluator() = UIUtil.findComponentOfType(this, AlloyEvaluatorPanel::class.java)!!
 
     /** Waits for the evaluations to be delivered. */
     private fun AlloyEvaluatorPanel.settle(): AlloyEvaluatorPanel {
-        val deadline = System.currentTimeMillis() + 30_000
-        do {
-            assertTrue("the evaluations did not end", System.currentTimeMillis() < deadline)
-            Thread.sleep(5)
-            UIUtil.dispatchAllInvocationEvents()
-        } while (isEvaluating())
+        waitUntil("the evaluations did not end") { !isEvaluating() }
         return this
     }
 
@@ -116,14 +80,83 @@ class AlloyEvaluatorPanelTest : BasePlatformTestCase() {
         assertFalse(panel().evaluator().isVisible)
     }
 
-    fun testHiddenPanelEvaluatesWhenShown() {
+    /** Wraps the runner's evaluation, to count the evaluations it starts. */
+    private fun AlloyEvaluatorPanel.counted(): () -> Int {
+        val count = AtomicInteger()
+        val evaluate = runner.evaluate
+        runner.evaluate = { model, text, state -> count.incrementAndGet(); evaluate(model, text, state) }
+        return count::get
+    }
+
+    fun testHiddenPanelEvaluatesOnlyWhenShown() {
         viewer.evaluatorVisible = false
+        stored.setWatches(myFixture.file.virtualFile, listOf("Cur"))
+        val panel = panel()
+        val evaluator = panel.evaluator()
+        val evaluations = evaluator.counted()
+        open(LASSO)
+        assertFalse(evaluator.isVisible)
+        // As a click on state 1 in the trace path strip does
+        viewer.session!!.model.goTo(1)
+        panel.stateChanged()
+        UIUtil.dispatchAllInvocationEvents()
+        assertEquals(0, evaluations())
+        assertNull(evaluator.watch("Cur").result)
+
+        panel.setEvaluatorVisible(true)
+        assertEquals(EvaluationResult.Tuples(listOf("V2$0")), evaluator.settle().watch("Cur").result)
+        assertEquals(1, evaluations())
+    }
+
+    /** Such as a stack overflow: the row shows the failure, rather than evaluating forever. */
+    fun testAThrowingEvaluationShowsAnError() {
         val panel = panel()
         open(RING)
         val evaluator = panel.evaluator()
-        evaluator.addWatch("#Node")
-        panel.setEvaluatorVisible(true)
-        assertEquals(EvaluationResult.IntValue("2"), evaluator.settle().watch("#Node").result)
+        evaluator.runner.evaluate = { _, _, _ -> throw StackOverflowError() }
+        evaluator.evaluate("succ")
+        val row = evaluator.settle().rows().single()
+        val error = row.result as EvaluationResult.Error
+        assertTrue(error.message, error.message.contains("StackOverflowError"))
+        assertTrue(SimpleTextAttributes.ERROR_ATTRIBUTES in evaluator.attributes(row))
+    }
+
+    fun testTheFieldsKeys() {
+        val evaluator = panel().also { open(RING) }.evaluator()
+        val field = evaluator.field
+        field.text = "succ"
+        assertTrue(field.press(KeyEvent.VK_ENTER))
+        assertEquals("succ", evaluator.settle().rows().single { !it.watch }.expression)
+        field.text = "#Node"
+        val modifier = if (SystemInfo.isMac) InputEvent.META_DOWN_MASK else InputEvent.CTRL_DOWN_MASK
+        assertTrue(field.press(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, modifier or InputEvent.SHIFT_DOWN_MASK)))
+        assertEquals(listOf("#Node"), evaluator.watchExpressions())
+        assertTrue(field.press(KeyEvent.VK_UP))
+        assertEquals("succ", field.text)
+        assertTrue(field.press(KeyEvent.VK_DOWN))
+        assertEquals("#Node", field.text)
+        evaluator.settle()
+    }
+
+    /** While the completion popup shows, Enter and the arrows are its own: they accept or move the selection. */
+    fun testTheFieldsKeysAreThePopupsWhileItShows() {
+        val evaluator = panel().also { open(RING) }.evaluator()
+        val field = evaluator.field
+        field.addNotify()
+        val editor = field.getEditor(true)!!
+        // Before the popup: an edit that is not typing closes it
+        field.text = "su"
+        val lookup = LookupManager.getInstance(project).showLookup(editor, LookupElementBuilder.create("succ"))!!
+        try {
+            assertSame(lookup, LookupManager.getActiveLookup(editor))
+            for (key in listOf(KeyEvent.VK_ENTER, KeyEvent.VK_UP, KeyEvent.VK_DOWN)) assertFalse(field.press(key))
+            assertEmpty(evaluator.rows())
+        } finally {
+            lookup.hideLookup(true)
+            field.removeNotify()
+        }
+        assertTrue(field.press(KeyEvent.VK_ENTER))
+        evaluator.settle()
     }
 
     fun testEvaluatingARelation() {
@@ -257,6 +290,19 @@ class AlloyEvaluatorPanelTest : BasePlatformTestCase() {
         assertEquals(listOf("c", "b"), evaluator.watchExpressions())
         assertEquals(listOf("c", "b"), evaluator.watchRows().map { it.expression })
         assertEquals(listOf("c", "b"), stored.watches(file))
+    }
+
+    fun testEditingAWatchToNothingRemovesItAndMovingPastTheEndsDoesNothing() {
+        val evaluator = panel().also { open(RING) }.evaluator()
+        evaluator.addWatch("a")
+        evaluator.addWatch("b")
+        evaluator.moveWatch(0, -1)
+        evaluator.moveWatch(1, 1)
+        assertEquals(listOf("a", "b"), evaluator.watchExpressions())
+        evaluator.editWatch(0, "  ")
+        assertEquals(listOf("b"), evaluator.watchExpressions())
+        assertEquals(listOf("b"), stored.watches(myFixture.file.virtualFile))
+        evaluator.settle()
     }
 
     fun testWatchesFollowTheSelectedState() {

@@ -4,21 +4,19 @@ import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.command.undo.UndoManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.psi.PsiDocumentManager
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.settings.AlloySettings
 
-class AlloyCommandResultsTest : BasePlatformTestCase() {
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyCommandResultsTest : AlloyRunTestCase() {
     private val show = AlloyCommandRef("show", 0)
 
     private val instance by lazy { instanceLink() }
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", "sig A {}\nrun show for 3\ncheck noCycles for 3\n")
     }
 
@@ -78,6 +76,16 @@ class AlloyCommandResultsTest : BasePlatformTestCase() {
         recordShow(CommandState.Running, AlloyRunLog.RUNNING)
         assertEquals(CommandState.Running, showResult.state)
         assertFalse(results.isOutdated(showResult, document))
+    }
+
+    /** Results last for the IDE session, not for the editor. */
+    fun testCurrentAfterTheFileIsClosedAndReopened() {
+        recordShow()
+        val result = showResult
+        FileEditorManager.getInstance(project).closeFile(file)
+        myFixture.openFileInEditor(file)
+        assertSame(result, showResult)
+        assertNull(results.outdated(result, myFixture.editor.document))
     }
 
     fun testOtherCommandsAreUnaffected() {

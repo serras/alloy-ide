@@ -2,25 +2,23 @@ package com.serranofp.alloy.semantics
 
 import com.intellij.codeInsight.documentation.DocumentationManager
 import com.intellij.lang.LanguageDocumentation
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyLanguage
+import com.serranofp.alloy.psi.AlloyBinderDecl
+import com.serranofp.alloy.psi.AlloyEnumDecl
 import com.serranofp.alloy.psi.AlloyEnumMember
 import com.serranofp.alloy.psi.AlloyFieldDecl
-import com.serranofp.alloy.psi.AlloyFile
+import com.serranofp.alloy.psi.AlloyFunDecl
 import com.serranofp.alloy.psi.AlloyLetDecl
 import com.serranofp.alloy.psi.AlloyNamedDeclaration
 import com.serranofp.alloy.psi.AlloyParamDecl
 import com.serranofp.alloy.psi.AlloyPredDecl
-import java.util.concurrent.TimeUnit
+import com.serranofp.alloy.psi.AlloySigName
 
 class AlloyDocumentationTest : BasePlatformTestCase() {
     private fun analyze() {
-        ApplicationManager.getApplication().executeOnPooledThread<AlloyModelResult> {
-            ReadAction.compute<AlloyModelResult, Throwable> { AlloyModelService.getInstance(project).model(myFixture.file as AlloyFile) }
-        }.get(30, TimeUnit.SECONDS)
+        computeModel(myFixture.file)
     }
 
     /** The documentation at the caret, as Quick Documentation and hover get it. */
@@ -64,7 +62,8 @@ class AlloyDocumentationTest : BasePlatformTestCase() {
     fun testFieldSourceWithItsBound() {
         myFixture.configureByText("m.als", "sig Node { disj a, b: set Node }\npred p { some Node.b<caret> and some Undefined }")
         analyze()
-        assertTrue(documentation(), documentation().contains("b: set Node"))
+        val doc = documentation()
+        assertTrue(doc, doc.contains("b: set Node"))
     }
 
     fun testSignatureSource() {
@@ -81,22 +80,68 @@ class AlloyDocumentationTest : BasePlatformTestCase() {
     private fun <T : AlloyNamedDeclaration> declaration(type: Class<T>, name: String): T =
         PsiTreeUtil.findChildrenOfType(myFixture.file, type).single { it.name == name }
 
-    fun testSourceKeepsNestedBrackets() {
-        myFixture.configureByText(
-            "m.als",
-            "sig A { r: A -> A }\nsig B {}\nsig S { f: set (A + B), g: A }\npred p[x: A, y: x.r[A, A]] {}\nenum E { One, Two, Three }\nfact { let u = A, w = B | some u + w }",
-        )
-        assertEquals("f: set (A + B)", provider.source(declaration(AlloyFieldDecl::class.java, "f")))
-        assertEquals("y: x.r[A, A]", provider.source(declaration(AlloyParamDecl::class.java, "y")))
-        assertEquals("Two", provider.source(declaration(AlloyEnumMember::class.java, "Two")))
-        assertEquals("u = A", provider.source(declaration(AlloyLetDecl::class.java, "u")))
+    /** Each declaration named in the first column, by its PSI class, with its exact source and doc comment. */
+    private fun assertDocumented(text: String, vararg expected: Triple<Pair<Class<out AlloyNamedDeclaration>, String>, String, String?>) {
+        // With an error, as the source is shown when the analyzer has no explanation
+        myFixture.configureByText("m.als", "$text\npred broken { some Undefined }")
+        val failures = expected.mapNotNull { (declared, source, comment) ->
+            val (type, name) = declared
+            val declaration = declaration(type, name)
+            val actual = provider.source(declaration) to provider.docComment(declaration)
+            if (actual == source to comment) null else "$name: expected ${source to comment}, was $actual"
+        }
+        assertEmpty(failures.joinToString("\n"), failures)
     }
 
-    fun testDocCommentOfAFieldWithModifiersOrInAGroup() {
-        myFixture.configureByText("m.als", "sig A {\n  /** Contents */ var contents: set A,\n  /** Pair */ disj a, b: A\n}")
-        assertEquals("Contents", provider.docComment(declaration(AlloyFieldDecl::class.java, "contents")))
-        assertEquals("Pair", provider.docComment(declaration(AlloyFieldDecl::class.java, "b")))
-    }
+    private val field = AlloyFieldDecl::class.java
+    private val parameter = AlloyParamDecl::class.java
+
+    fun testSourceKeepsNestedBrackets() = assertDocumented(
+        "sig A { r: A -> A }\nsig B {}\nsig S { f: set (A + B), g: A }\npred p[x: A, y: x.r[A, A], z: A -> (A + B)] {}\n" +
+            "enum E { One, Two, Three }\nfact { let u = A, w = (B + A) | some u + w }\nfact { all n: A.r[A, A], m: n.r | some m }",
+        Triple(field to "f", "f: set (A + B)", null),
+        Triple(field to "g", "g: A", null),
+        Triple(parameter to "y", "y: x.r[A, A]", null),
+        Triple(parameter to "z", "z: A -> (A + B)", null),
+        Triple(AlloyPredDecl::class.java to "p", "pred p[x: A, y: x.r[A, A], z: A -> (A + B)]", null),
+        Triple(AlloyEnumMember::class.java to "Two", "Two", null),
+        Triple(AlloyLetDecl::class.java to "u", "u = A", null),
+        Triple(AlloyLetDecl::class.java to "w", "w = (B + A)", null),
+        Triple(AlloyBinderDecl::class.java to "n", "n: A.r[A, A]", null),
+        Triple(AlloyBinderDecl::class.java to "m", "m: n.r", null),
+    )
+
+    /** The first name of a group shows the whole group, which is how it gets its bound; a later one only itself. */
+    fun testSourceOfANameInAGroup() = assertDocumented(
+        "sig Node { disj a, b: set Node }\nfact { all x, y: Node | x = y }",
+        Triple(field to "a", "a, b: set Node", null),
+        Triple(field to "b", "b: set Node", null),
+        Triple(AlloyBinderDecl::class.java to "x", "x, y: Node", null),
+        Triple(AlloyBinderDecl::class.java to "y", "y: Node", null),
+    )
+
+    fun testDocCommentOfAFieldWithModifiersOrInAGroup() = assertDocumented(
+        "sig A {\n  /** Contents */ var contents: set A,\n  /** Pair */ disj a, b: A,\n  /** Hidden */ private h: A,\n" +
+            "  /** Both */ private var i, j: A,\n  /** Last */ k: A,\n  undocumented: A\n}",
+        Triple(field to "contents", "contents: set A", "Contents"),
+        Triple(field to "a", "a, b: A", "Pair"),
+        Triple(field to "b", "b: A", "Pair"),
+        Triple(field to "h", "h: A", "Hidden"),
+        Triple(field to "i", "i, j: A", "Both"),
+        Triple(field to "j", "j: A", "Both"),
+        Triple(field to "k", "k: A", "Last"),
+        Triple(field to "undocumented", "undocumented: A", null),
+    )
+
+    fun testDocCommentOfParagraphsWithModifiers() = assertDocumented(
+        "/** Abstract */\nabstract sig A {}\n/** Several */\none sig B, C extends A {}\n/** Private */\nprivate pred p {}\n/** Enum */\nenum E { M }\n" +
+            "// not a doc comment\nfun f: A { A }",
+        Triple(AlloySigName::class.java to "A", "abstract sig A", "Abstract"),
+        Triple(AlloySigName::class.java to "C", "one sig B, C extends A", "Several"),
+        Triple(AlloyPredDecl::class.java to "p", "private pred p", "Private"),
+        Triple(AlloyEnumDecl::class.java to "E", "enum E", "Enum"),
+        Triple(AlloyFunDecl::class.java to "f", "fun f: A", null),
+    )
 
     fun testExplanationOnlyOfTheDocumentedDeclaration() {
         // As completion asks for an item's documentation, with the caret on another reference

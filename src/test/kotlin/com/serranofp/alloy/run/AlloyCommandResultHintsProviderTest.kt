@@ -13,13 +13,13 @@ import com.intellij.codeInsight.hints.declarative.InlayTreeSink
 import com.intellij.codeInsight.hints.declarative.PresentationTreeBuilder
 import com.intellij.codeInsight.hints.declarative.SharedBypassCollector
 import com.intellij.codeInsight.hints.declarative.StringInlayActionPayload
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.SyntaxTraverser
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.settings.AlloySettings
 
-class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
-    private val results get() = AlloyCommandResults.getInstance(project)
+class AlloyCommandResultHintsProviderTest : AlloyRunTestCase() {
     private val show = AlloyCommandRef("show", 0)
     private val noCycles = AlloyCommandRef("noCycles", 1)
 
@@ -78,7 +78,6 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
-        results.clear()
         myFixture.configureByText("model.als", model)
     }
 
@@ -130,6 +129,36 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
         record(third, CommandState.NoInstance, "No instance found · 1 ms")
         assertEquals(listOf(5), hints().map { it.line })
         assertEquals(third, AlloyCommandResultHintsProvider.Codec.decode(AlloyCommandResultHintsProvider.Codec.encode(third)))
+    }
+
+    private fun insertAbove(prefix: String, text: String) {
+        val document = myFixture.editor.document
+        WriteCommandAction.runWriteCommandAction(project) { document.insertString(document.text.indexOf(prefix), text) }
+        PsiDocumentManager.getInstance(project).commitDocument(document)
+    }
+
+    fun testHintFollowsItsLabelWhenACommandIsInsertedAbove() {
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
+        insertAbove("run show", "run {} for 1\n")
+        val hint = hints().single()
+        assertEquals(3, hint.line)
+        assertEquals("Instance found · 4 ms (outdated)", hint.text)
+        assertEquals(show, AlloyCommandResultHintsProvider.Codec.decode((hint.action!!.payload as StringInlayActionPayload).text))
+    }
+
+    fun testRunningHintFollowsItsLabelWhenACommandIsInsertedAbove() {
+        record(show, CommandState.Running, "Running…")
+        insertAbove("run show", "run {} for 1\n")
+        val hint = hints().single()
+        assertEquals(3, hint.line)
+        assertNotNull(hint.action)
+    }
+
+    fun testMalformedPayloadsAreNoCommand() {
+        for (payload in listOf("", "x", "3", "x:show", "3:show:x")) {
+            assertNull(payload, AlloyCommandResultHintsProvider.Codec.decode(payload))
+        }
+        assertEquals(AlloyCommandRef(null, 3), AlloyCommandResultHintsProvider.Codec.decode("3:"))
     }
 
     fun testOutdatedAfterAnEdit() {

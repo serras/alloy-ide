@@ -2,8 +2,6 @@ package com.serranofp.alloy.run
 
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.ui.AnimatedIcon
 import java.util.concurrent.TimeUnit
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -11,12 +9,11 @@ import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.TestActionEvent
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.settings.AlloySettings
 
-class AlloyRunMarkersTest : BasePlatformTestCase() {
+class AlloyRunMarkersTest : AlloyRunTestCase() {
     private val model = """
         sig Node { succ: lone Node }
         pred show { some succ }
@@ -29,24 +26,9 @@ class AlloyRunMarkersTest : BasePlatformTestCase() {
         assert second {}
     """.trimIndent()
 
-    private val service get() = AlloyRunService.getInstance(project)
-    private val results get() = AlloyCommandResults.getInstance(project)
     private val contributor
         get() = RunLineMarkerContributor.EXTENSION.allForLanguage(AlloyLanguage)
             .filterIsInstance<AlloyRunLineMarkerContributor>().single()
-
-    override fun setUp() {
-        super.setUp()
-        results.clear()
-    }
-
-    override fun tearDown() {
-        try {
-            service.activeExecution?.terminate()
-        } finally {
-            super.tearDown()
-        }
-    }
 
     fun testMarkersOnlyOnCommandKeywords() {
         myFixture.configureByText("model.als", model)
@@ -71,18 +53,13 @@ class AlloyRunMarkersTest : BasePlatformTestCase() {
         assertEquals(listOf(AlloyCommandRef("noCycles", 1)), results.results(file).keys.toList())
         val result = results.get(file, AlloyCommandRef("noCycles", 1))!!
         assertEquals(result.toString(), CommandState.NoCounterexample, result.state)
-        assertEquals("Executing \"Check noCycles for 5\"", result.details.log[2].text)
+        assertEquals("Executing \"Check noCycles for 5\"", result.details.log.single { it.text.startsWith("Executing") }.text)
     }
 
     fun testRunningMarkerOpensAMenuWithStop() {
-        myFixture.configureByText("model.als", PIGEONHOLE)
+        val (execution, running) = startTask()
         val file = myFixture.file.virtualFile
         val show = AlloyCommandRef("show", 0)
-        val execution = newExecution(project, file, show)
-        service.startRun(execution)
-        val task = AlloyCommandTask(project, execution, AlloyCommandLauncher(project, options = ::slowOptions), testRootDisposable)
-        val running = ApplicationManager.getApplication().executeOnPooledThread { task.run(EmptyProgressIndicator()) }
-        waitUntil("the analysis did not start solving") { execution.log.progress == "Solving..." }
 
         val command = PsiTreeUtil.findChildOfType(myFixture.file, AlloyCommandDecl::class.java)!!
         val info = contributor.getInfo(command.firstChild)!!
@@ -145,6 +122,16 @@ class AlloyRunMarkersTest : BasePlatformTestCase() {
         assertEquals("Run show — passed last time (outdated)", tooltipAt("run show"))
     }
 
+    fun testStopOfAnotherCommandLeavesTheExecution() {
+        myFixture.configureByText("model.als", model)
+        val execution = newExecution(project, myFixture.file.virtualFile, AlloyCommandRef("show", 0))
+        assertTrue(service.startRun(execution))
+        val stop = AlloyStopCommandAction(commandAt("check noCycles"))
+        stop.actionPerformed(TestActionEvent.createTestEvent(stop, SimpleDataContext.getProjectContext(project)))
+        assertFalse(execution.isFinished())
+        assertSame(execution, service.activeExecution)
+    }
+
     fun testSpinnerWhileCheckingVacuity() {
         myFixture.configureByText("model.als", model)
         recordAt("check noCycles", Expectation.Passed, Vacuity.Checking)
@@ -167,7 +154,7 @@ class AlloyRunMarkersTest : BasePlatformTestCase() {
 
         val result = results.get(file, AlloyCommandRef("noCycles", 1))!!
         assertEquals(result.toString(), CommandState.NoCounterexample, result.state)
-        assertEquals("Executing \"Check noCycles for 5\"", result.details.log[2].text)
+        assertEquals("Executing \"Check noCycles for 5\"", result.details.log.single { it.text.startsWith("Executing") }.text)
         // Without `expect`, a fresh pass shows the run icon again
         assertSame(AllIcons.RunConfigurations.TestState.Run, infoAt("check noCycles").icon)
     }

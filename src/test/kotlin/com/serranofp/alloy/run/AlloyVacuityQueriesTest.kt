@@ -24,6 +24,10 @@ class AlloyVacuityQueriesTest : TestCase() {
         assert conditional { A implies B else C }
         assert block { { A implies B } }
         assert conjunction { A implies B and C }
+        assert nested { all n: Node | all m: Node | n in E implies m in E }
+        assert alwaysAll { always all n: Node | n in E implies B }
+        assert twoFormulas { A implies B
+          C }
     """.trimIndent()
 
     private fun parse(commands: String): CompModule = CompUtil.parseEverything_fromString(A4Reporter.NOP, "$model\n$commands")
@@ -65,6 +69,28 @@ class AlloyVacuityQueriesTest : TestCase() {
     fun testNoPremise() {
         assertNull(premise("disjunction"))
         assertNull(premise("conditional"))
+        // A block of several formulas is their conjunction, which has no premise
+        assertNull(premise("twoFormulas"))
+    }
+
+    fun testNestedQuantifiersGiveNestedExistentials() {
+        val (command, _) = check("nested")
+        val outer = AlloyVacuityQueries.premiseOf(AlloyVacuityQueries.assertionOf(command)!!)!!.deNOP() as ExprQt
+        assertEquals(ExprQt.Op.SOME, outer.op)
+        assertEquals("n", outer.decls.single().names.single().label)
+        val inner = outer.sub.deNOP() as ExprQt
+        assertEquals(ExprQt.Op.SOME, inner.op)
+        assertEquals("m", inner.decls.single().names.single().label)
+        assertEquals("n in this/E", inner.sub.toString())
+    }
+
+    fun testAlwaysOfAQuantifierGivesEventuallyAnExistential() {
+        val (command, _) = check("alwaysAll")
+        val premise = AlloyVacuityQueries.premiseOf(AlloyVacuityQueries.assertionOf(command)!!)!!.deNOP() as ExprUnary
+        assertEquals(ExprUnary.Op.EVENTUALLY, premise.op)
+        val quantified = premise.sub.deNOP() as ExprQt
+        assertEquals(ExprQt.Op.SOME, quantified.op)
+        assertEquals("n in this/E", quantified.sub.toString())
     }
 
     /** `implies` binds looser than `and`: the premise is `A`, the conclusion `B and C`. */

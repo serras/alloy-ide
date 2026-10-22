@@ -7,3 +7,6 @@
    line */ sig
 x // trailing sig
 -->x
+/* /* nested */ */
+/*/ open */
+a--b

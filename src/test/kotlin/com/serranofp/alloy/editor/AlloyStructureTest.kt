@@ -1,12 +1,14 @@
 package com.serranofp.alloy.editor
 
+import com.intellij.icons.AllIcons
 import com.intellij.ide.structureView.StructureViewTreeElement
-import com.intellij.lang.LanguageStructureViewBuilder
 import com.intellij.ide.structureView.TreeBasedStructureViewBuilder
+import com.intellij.lang.LanguageStructureViewBuilder
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.breadcrumbs.BreadcrumbsProvider
 import com.serranofp.alloy.AlloyLanguage
+import com.serranofp.alloy.psi.AlloyFieldDecl
 import com.serranofp.alloy.psi.AlloyPredDecl
 
 class AlloyStructureTest : BasePlatformTestCase() {
@@ -115,5 +117,51 @@ class AlloyStructureTest : BasePlatformTestCase() {
         val builder = LanguageStructureViewBuilder.getInstance().getStructureViewBuilder(myFixture.file) as TreeBasedStructureViewBuilder
         val element = builder.createStructureViewModel(myFixture.editor).currentEditorElement
         assertInstanceOf(element, AlloyPredDecl::class.java)
+    }
+
+    /** Fields are in the tree, so autoscroll from a field selects the field rather than its signature. */
+    fun testEditorElementOfAFieldIsTheField() {
+        myFixture.configureByText("m.als", model.replace("next: set Node", "ne<caret>xt: set Node"))
+        val builder = LanguageStructureViewBuilder.getInstance().getStructureViewBuilder(myFixture.file) as TreeBasedStructureViewBuilder
+        val element = builder.createStructureViewModel(myFixture.editor).currentEditorElement
+        assertInstanceOf(element, AlloyFieldDecl::class.java)
+        assertEquals("next", (element as AlloyFieldDecl).name)
+    }
+
+    fun testIconsOfTheEntries() {
+        myFixture.configureByText("m.als", model)
+        val builder = LanguageStructureViewBuilder.getInstance().getStructureViewBuilder(myFixture.file) as TreeBasedStructureViewBuilder
+        val root = builder.createStructureViewModel(myFixture.editor).root
+        val icons = root.children.associate { it.presentation.presentableText to it.presentation.getIcon(false) }
+        assertEquals(
+            mapOf(
+                "module graph" to AllIcons.Nodes.Module,
+                "Node" to AllIcons.Nodes.Class,
+                "Root, Leaf" to AllIcons.Nodes.Class,
+                "Color" to AllIcons.Nodes.Enum,
+                "acyclic" to AllIcons.Nodes.Static,
+                "fact" to AllIcons.Nodes.Static,
+                "show" to AllIcons.Nodes.Method,
+                "reach" to AllIcons.Nodes.Function,
+                "noCycles" to AllIcons.Nodes.Test,
+                "twice" to AllIcons.Nodes.Lambda,
+                "run show for 3" to AllIcons.RunConfigurations.TestState.Run,
+                "run {...} for 2 but 3 Node" to AllIcons.RunConfigurations.TestState.Run,
+                "check noCycles for 5" to AllIcons.RunConfigurations.TestState.Run,
+            ),
+            icons,
+        )
+        val node = root.children.single { it.presentation.presentableText == "Node" }
+        assertEquals(setOf(AllIcons.Nodes.Field), node.children.map { it.presentation.getIcon(false) }.toSet())
+        val color = root.children.single { it.presentation.presentableText == "Color" }
+        assertEquals(setOf(AllIcons.Nodes.Constant), color.children.map { it.presentation.getIcon(false) }.toSet())
+    }
+
+    /** A paragraph the parser could not finish is still listed, with those after it. */
+    fun testFileWithAParseError() {
+        myFixture.configureByText("m.als", "sig A { f: }\npred p[x: A {}\nfact named { some A }")
+        val builder = LanguageStructureViewBuilder.getInstance().getStructureViewBuilder(myFixture.file) as TreeBasedStructureViewBuilder
+        val root = builder.createStructureViewModel(myFixture.editor).root
+        assertEquals(listOf("A", "p", "named"), root.children.map { it.presentation.presentableText })
     }
 }
