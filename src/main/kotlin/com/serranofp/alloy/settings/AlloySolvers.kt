@@ -6,6 +6,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.execution.configurations.PathEnvironmentVariableUtil
 import kodkod.engine.satlab.SATFactory
+import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
@@ -33,11 +34,21 @@ class AlloySolvers {
         ).also { loading = it }
 
     /** The result, if discovery has finished. */
+    @TestOnly
     fun cached(): List<AlloySolver>? = synchronized(this) { loading }?.getNow(null)
 
-    /** Waits for discovery; used off the EDT before an analysis. */
-    fun ids(): Set<String> =
-        runCatching { load().get(DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS) }.getOrDefault(FALLBACK).mapTo(mutableSetOf()) { it.id }
+    /** Waits for discovery; used off the EDT before an analysis. An interrupted wait keeps the thread interrupted. */
+    fun ids(): Set<String> {
+        val solvers = try {
+            load().get(DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            FALLBACK
+        } catch (_: Exception) {
+            FALLBACK
+        }
+        return solvers.mapTo(mutableSetOf()) { it.id }
+    }
 
     companion object {
         const val DISCOVERY_TIMEOUT_SECONDS = 30L

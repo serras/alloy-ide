@@ -4,13 +4,16 @@ import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.execution.testframework.sm.ServiceMessageBuilder
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.run.AlloyCommandExecution
 import com.serranofp.alloy.run.AlloyCommandLauncher
@@ -21,11 +24,13 @@ import com.serranofp.alloy.run.AlloyRunService
 import com.serranofp.alloy.run.CommandState
 import com.serranofp.alloy.settings.AlloySettings
 import java.io.OutputStream
+import java.util.concurrent.ExecutionException
 
 /**
  * A suite as a "process" inside the IDE: on a background thread it takes the project's analysis, executes the
  * commands of [file] one at a time, as the gutter does, and prints the test runner's service messages for
  * them. Destroying it stops the command being executed and skips the rest, whose nodes stay not run.
+ * Detaching does the same, as nothing would follow a suite left running, but ends it as detached.
  */
 class AlloyCommandsProcessHandler(
     private val project: Project,
@@ -36,6 +41,9 @@ class AlloyCommandsProcessHandler(
 ) : ProcessHandler() {
     @Volatile
     private var destroyed = false
+
+    @Volatile
+    private var detached = false
 
     @Volatile
     private var running = false
@@ -49,14 +57,19 @@ class AlloyCommandsProcessHandler(
     override fun destroyProcessImpl() {
         destroyed = true
         // Before it started, nothing else ends it
-        if (!running) notifyProcessTerminated(1)
+        if (!running) ended(1)
     }
 
-    override fun detachProcessImpl() = destroyProcessImpl()
+    override fun detachProcessImpl() {
+        detached = true
+        destroyProcessImpl()
+    }
 
     override fun detachIsDefault(): Boolean = false
 
     override fun getProcessInput(): OutputStream? = null
+
+    private fun ended(exitCode: Int) = if (detached) notifyProcessDetached() else notifyProcessTerminated(exitCode)
 
     private class Test(val ref: AlloyCommandRef, val name: String)
 
@@ -65,7 +78,7 @@ class AlloyCommandsProcessHandler(
         val suite = service.startSuite()
         if (suite == null) {
             notifyTextAvailable("${AlloyRunService.BUSY_MESSAGE}\n", ProcessOutputTypes.STDERR)
-            notifyProcessTerminated(1)
+            ended(1)
             return
         }
         try {
@@ -77,7 +90,7 @@ class AlloyCommandsProcessHandler(
             }
         } finally {
             service.suiteFinished(suite)
-            notifyProcessTerminated(0)
+            ended(0)
         }
     }
 
@@ -87,11 +100,8 @@ class AlloyCommandsProcessHandler(
         AlloyCommands.commands(psiFile).map { command ->
             val ref = AlloyCommands.ref(command)
             Test(ref, "${command.firstChild.text} ${ref.displayName}")
-        }.filter { test -> only.isEmpty() || only.any { matches(it, test.ref) } }
+        }.filter { test -> only.isEmpty() || test.ref in only }
     }.executeSynchronously()
-
-    private fun matches(wanted: AlloyCommandRef, ref: AlloyCommandRef): Boolean =
-        if (wanted.label != null) ref.label != null && AlloyCommands.sameLabel(wanted.label, ref.label) else ref.label == null && wanted.index == ref.index
 
     /** Executes [test]; false if the suite ends with it, because it was stopped. */
     private fun run(service: AlloyRunService, suite: AlloyRunService.Suite, test: Test): Boolean {
@@ -104,22 +114,25 @@ class AlloyCommandsProcessHandler(
             service, results, file, test.ref, document?.let(results::stamp) ?: -1, AlloySettings.getInstance().generation,
         )
         if (!service.startRun(execution, suite)) {
-            print(ServiceMessageBuilder.testFailed(test.name).addAttribute("message", AlloyRunService.BUSY_MESSAGE))
-            print(ServiceMessageBuilder.testFinished(test.name))
+            failed(test, AlloyRunService.BUSY_MESSAGE)
             return false
         }
         val start = System.currentTimeMillis()
         val launched = ApplicationManager.getApplication().executeOnPooledThread { launcher().launch(execution, service) }
-        var stopRequested = false
-        while (!execution.waitFor(POLL_MILLIS)) {
-            if (destroyed && !stopRequested) {
-                stopRequested = true
-                execution.stop()
-            }
+        execution.awaitOrStop({ destroyed })
+        try {
+            launched.get()
+        } catch (e: ExecutionException) {
+            // A cancelled launch, which already ended the execution
+            thisLogger().debug(e)
         }
-        launched.get()
         val duration = System.currentTimeMillis() - start
-        val result = results.get(file, test.ref) ?: return false
+        val result = results.get(file, test.ref)
+        if (result == null) {
+            // Its file was deleted meanwhile
+            failed(test, AlloyBundle.message("run.tests.no.result"))
+            return false
+        }
         AlloyCommandTestResult.output(result).takeIf { it.isNotEmpty() }?.let {
             print(ServiceMessageBuilder.testStdOut(test.name).addAttribute("out", "$it\n"))
         }
@@ -132,15 +145,23 @@ class AlloyCommandsProcessHandler(
         return true
     }
 
+    private fun failed(test: Test, message: String) {
+        print(ServiceMessageBuilder.testFailed(test.name).addAttribute("message", message))
+        print(ServiceMessageBuilder.testFinished(test.name))
+    }
+
+    /**
+     * Commits the documents, so that the PSI where commands are found matches the text the analyzer reads.
+     * A commit is a write action, which is not allowed in any modality: while a modal dialog is open, the
+     * suite waits for it only if there is something to commit, which is rare as the editor cannot be typed in.
+     */
     private fun commitDocuments() {
-        ApplicationManager.getApplication().invokeAndWait { PsiDocumentManager.getInstance(project).commitAllDocuments() }
+        val documents = PsiDocumentManager.getInstance(project)
+        if (!documents.hasUncommitedDocuments()) return
+        ApplicationManager.getApplication().invokeAndWait({ documents.commitAllDocuments() }, ModalityState.nonModal())
     }
 
     private fun print(message: ServiceMessageBuilder) {
         notifyTextAvailable("$message\n", ProcessOutputTypes.STDOUT)
-    }
-
-    private companion object {
-        const val POLL_MILLIS = 100L
     }
 }

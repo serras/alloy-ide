@@ -69,6 +69,34 @@ class AlloyMissingFrameConditionTest : BasePlatformTestCase() {
         assertEmpty(problems())
     }
 
+    fun testStaticFieldOfTheSameNameMakesItAmbiguous() {
+        myFixture.configureByText("model.als", "sig A { var f, g : set A }\nsig B { f : set B }\npred e { g' = g }\n")
+        assertEquals(listOf("e" to "e does not constrain the next value of A <: f"), problems())
+    }
+
+    /** No signature is `var`, so the `value` fields of the meta model are not `var` either. */
+    fun testFrameOverTheMetaModelWithOnlyVarFields() {
+        val model = "sig Token {}\nsig File { var shared : set Token, var owner : lone Token }\n" +
+            "pred share[t : Token] {\n  shared' = shared + File->t\n  all v : var$ - File\$shared | v.value = v.value'\n}\n" +
+            "pred stutter { all v : var$ | v.value = v.value' }\n" +
+            "pred unframed[t : Token] { shared' = shared + File->t }\n"
+        myFixture.configureByText("model.als", model)
+        assertEquals(listOf("unframed" to "unframed does not constrain the next value of owner"), problems())
+    }
+
+    private val helper = "pred moveMsg[n : Node] { inbox' = inbox - n->n }\n" +
+        "pred send[n : Node] {\n  moveMsg[n]\n  outbox' = outbox\n}\n"
+
+    fun testEventOnlyCalledFromEventsIsNotReported() {
+        myFixture.configureByText("model.als", network + helper)
+        assertEmpty(problems())
+    }
+
+    fun testEventAlsoCalledFromAFactIsReported() {
+        myFixture.configureByText("model.als", network + helper + "fact { always (some n : Node | moveMsg[n] or send[n]) }\n")
+        assertEquals(listOf("moveMsg" to "moveMsg does not constrain the next value of outbox"), problems())
+    }
+
     fun testTypeErrorReportsNothing() {
         myFixture.configureByText("model.als", network + send + "fact { some Bogus }\n")
         assertEmpty(problems())

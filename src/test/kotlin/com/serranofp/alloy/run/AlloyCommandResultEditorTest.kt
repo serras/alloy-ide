@@ -2,10 +2,12 @@ package com.serranofp.alloy.run
 
 import com.intellij.execution.lineMarker.RunLineMarkerContributor
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.EditorCustomElementRenderer
 import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.event.EditorMouseEvent
 import com.intellij.openapi.editor.event.EditorMouseEventArea
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.AnimatedIcon
@@ -39,11 +41,14 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
 
     private val file get() = myFixture.file.virtualFile
 
-    private fun record(command: AlloyCommandRef, state: CommandState, summary: String, link: CommandLink? = null) {
+    private fun record(command: AlloyCommandRef, state: CommandState, summary: String, link: CommandLink? = null, vacuity: Vacuity? = null) {
         results.record(
             file,
             command,
-            CommandResult(state, summary, link = link, documentStamp = results.stamp(myFixture.editor.document), settingsGeneration = AlloySettings.getInstance().generation),
+            CommandResult(
+                state, summary, link = link, documentStamp = results.stamp(myFixture.editor.document),
+                settingsGeneration = AlloySettings.getInstance().generation, vacuity = vacuity,
+            ),
         )
         UIUtil.dispatchAllInvocationEvents()
     }
@@ -91,12 +96,21 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
 
     private val instance by lazy { instanceLink() }
 
-    private fun clickHintOfLine(line: Int, modifiers: Int = 0): EditorMouseEvent {
-        val editor = myFixture.editor
-        val offset = editor.document.getLineEndOffset(line)
-        val inlay = editor.inlayModel.addAfterLineEndElement(offset, false, object : EditorCustomElementRenderer {
+    /** The result hint at the end of [line], or another inlay when it has none. */
+    private fun hintOfLine(line: Int): Inlay<*> {
+        myFixture.doHighlighting()
+        return myFixture.editor.inlayModel.getAfterLineEndElementsForLogicalLine(line).firstOrNull() ?: otherInlay(line)
+    }
+
+    /** An end-of-line inlay that is not a hint, such as Git's inline blame. */
+    private fun otherInlay(line: Int): Inlay<*> =
+        myFixture.editor.inlayModel.addAfterLineEndElement(myFixture.editor.document.getLineEndOffset(line), false, object : EditorCustomElementRenderer {
             override fun calcWidthInPixels(inlay: Inlay<*>): Int = 10
         })!!
+
+    private fun clickHintOfLine(line: Int, modifiers: Int = 0, inlay: Inlay<*> = hintOfLine(line)): EditorMouseEvent {
+        val editor = myFixture.editor
+        val offset = inlay.offset
         val mouse = MouseEvent(editor.contentComponent, MouseEvent.MOUSE_CLICKED, 0, modifiers or InputEvent.BUTTON1_DOWN_MASK, 0, 0, 1, false, MouseEvent.BUTTON1)
         val event = EditorMouseEvent(
             editor, mouse, EditorMouseEventArea.EDITING_AREA, offset,
@@ -135,6 +149,30 @@ class AlloyCommandResultEditorTest : BasePlatformTestCase() {
         record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
         assertFalse(clickHintOfLine(1, InputEvent.CTRL_DOWN_MASK).isConsumed)
         assertFalse(clickHintOfLine(1, InputEvent.META_DOWN_MASK).isConsumed)
+    }
+
+    fun testClickOnAnotherInlayIsIgnored() {
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
+        assertFalse(clickHintOfLine(1, inlay = otherInlay(1)).isConsumed)
+    }
+
+    fun testClickBeforeTheEditIsCommittedIsIgnored() {
+        record(show, CommandState.InstanceFound, "Instance found · 4 ms", instance)
+        val hint = hintOfLine(1)
+        val document = myFixture.editor.document
+        // The hint moves to the first line, where the stale PSI still has `run show`
+        WriteCommandAction.runWriteCommandAction(project) { document.deleteString(0, document.getLineStartOffset(1)) }
+        assertFalse(PsiDocumentManager.getInstance(project).isCommitted(document))
+        assertFalse(clickHintOfLine(0, inlay = hint).isConsumed)
+    }
+
+    fun testPlainClickOnARunningVacuityCheckStops() {
+        val execution = newExecution(project, file, noCycles)
+        service.startRun(execution)
+        record(noCycles, CommandState.NoCounterexample, "No counterexample found · 3 ms, checking vacuity…", vacuity = Vacuity.Checking)
+        assertTrue(clickHintOfLine(2).isConsumed)
+        UIUtil.dispatchAllInvocationEvents()
+        assertTrue(execution.isFinished())
     }
 
     fun testClickOnALineWithoutResultIsIgnored() {

@@ -15,6 +15,7 @@ import com.intellij.psi.tree.IStubFileElementType
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloyNamedDeclaration
+import com.serranofp.alloy.psi.AlloyTypes
 import com.serranofp.alloy.psi.impl.AlloyAssertDeclImpl
 import com.serranofp.alloy.psi.impl.AlloyCommandDeclImpl
 import com.serranofp.alloy.psi.impl.AlloyFactDeclImpl
@@ -38,17 +39,18 @@ class AlloyNamedStubElementType(private val id: String) : IStubElementType<Alloy
     override fun createStub(psi: AlloyNamedDeclaration, parentStub: StubElement<out com.intellij.psi.PsiElement>?): AlloyNamedStub =
         AlloyNamedStub(parentStub, this, psi.name)
 
-    override fun createPsi(stub: AlloyNamedStub): AlloyNamedDeclaration = when (id) {
-        "SIG_NAME" -> AlloySigNameImpl(stub, this)
-        "FIELD_DECL" -> AlloyFieldDeclImpl(stub, this)
-        "ENUM_DECL" -> AlloyEnumDeclImpl(stub, this)
-        "ENUM_MEMBER" -> AlloyEnumMemberImpl(stub, this)
-        "PRED_DECL" -> AlloyPredDeclImpl(stub, this)
-        "FUN_DECL" -> AlloyFunDeclImpl(stub, this)
-        "ASSERT_DECL" -> AlloyAssertDeclImpl(stub, this)
-        "MACRO_DECL" -> AlloyMacroDeclImpl(stub, this)
-        "FACT_DECL" -> AlloyFactDeclImpl(stub, this)
-        "COMMAND_DECL" -> AlloyCommandDeclImpl(stub, this)
+    // By the constants rather than by their names, so that renaming a rule in the grammar does not compile
+    override fun createPsi(stub: AlloyNamedStub): AlloyNamedDeclaration = when (this) {
+        AlloyTypes.SIG_NAME -> AlloySigNameImpl(stub, this)
+        AlloyTypes.FIELD_DECL -> AlloyFieldDeclImpl(stub, this)
+        AlloyTypes.ENUM_DECL -> AlloyEnumDeclImpl(stub, this)
+        AlloyTypes.ENUM_MEMBER -> AlloyEnumMemberImpl(stub, this)
+        AlloyTypes.PRED_DECL -> AlloyPredDeclImpl(stub, this)
+        AlloyTypes.FUN_DECL -> AlloyFunDeclImpl(stub, this)
+        AlloyTypes.ASSERT_DECL -> AlloyAssertDeclImpl(stub, this)
+        AlloyTypes.MACRO_DECL -> AlloyMacroDeclImpl(stub, this)
+        AlloyTypes.FACT_DECL -> AlloyFactDeclImpl(stub, this)
+        AlloyTypes.COMMAND_DECL -> AlloyCommandDeclImpl(stub, this)
         else -> error("No stub-based PSI for $id")
     }
 

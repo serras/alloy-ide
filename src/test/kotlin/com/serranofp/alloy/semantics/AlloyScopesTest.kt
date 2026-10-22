@@ -21,6 +21,23 @@ class AlloyScopesTest : BasePlatformTestCase() {
         assertFalse(bound.names().contains("z"))
     }
 
+    fun testBinderInTheBoundsOfLaterBinders() {
+        val later = visible("sig A { next: set A }\nsig x {}\npred p { all x: A, y: <caret>x.next | some y }")
+        assertEquals(Layer.LOCAL, later.layerOf("x"))
+        assertFalse(later.names().contains("y"))
+        // Not in its own group's bound, even past a comma inside brackets
+        val own = visible("sig A { r: A -> A }\npred p { all x, y: A.r[A, <caret>A] | some x }")
+        assertFalse(own.names().contains("x"))
+        val comprehension = visible("sig A { next: set A }\nfact { some { x: A, y: <caret>x.next | some y } }")
+        assertEquals(Layer.LOCAL, comprehension.layerOf("x"))
+    }
+
+    fun testLetBindingInTheValuesOfLaterBindings() {
+        val later = visible("sig A {}\nfact { let x = A, y = <caret>x | some y }")
+        assertEquals(Layer.LOCAL, later.layerOf("x"))
+        assertFalse(later.names().contains("y"))
+    }
+
     fun testParametersInTheirParagraph() {
         val inside = visible("sig A {}\npred q[y: A] { all z: A | some <caret>y }")
         assertEquals(Layer.LOCAL, inside.layerOf("y"))

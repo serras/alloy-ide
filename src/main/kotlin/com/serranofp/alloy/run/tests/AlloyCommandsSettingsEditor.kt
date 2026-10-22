@@ -7,13 +7,14 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.panel
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyFileType
 import javax.swing.JComponent
 
 /** The file of an *Alloy Commands* configuration. */
 class AlloyCommandsSettingsEditor(project: Project) : SettingsEditor<AlloyCommandsRunConfiguration>() {
     internal val file = TextFieldWithBrowseButton().apply {
-        addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFileDescriptor(AlloyFileType).withTitle("Alloy File"))
+        addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFileDescriptor(AlloyFileType).withTitle(AlloyBundle.message("run.tests.editor.title")))
     }
 
     override fun resetEditorFrom(configuration: AlloyCommandsRunConfiguration) {
@@ -28,6 +29,6 @@ class AlloyCommandsSettingsEditor(project: Project) : SettingsEditor<AlloyComman
     }
 
     override fun createEditor(): JComponent = panel {
-        row("Alloy file:") { cell(file).align(AlignX.FILL) }
+        row(AlloyBundle.message("run.tests.editor.file")) { cell(file).align(AlignX.FILL) }
     }
 }

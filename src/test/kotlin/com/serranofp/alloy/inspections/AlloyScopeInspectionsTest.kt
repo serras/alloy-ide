@@ -85,6 +85,22 @@ class AlloyScopeInspectionsTest : BasePlatformTestCase() {
         assertEquals("sig Node { var inbox: set Message }\nsig Message {}\nrun {} for 3 but 2 Node, 2 steps, 3 Message", myFixture.editor.document.text)
     }
 
+    /** `A` must have its four `one` subsignatures, so its scope is raised above the overall scope of 3. */
+    fun testRaisedScopeIsNotTheDefaultScope() {
+        val inspection = AlloyUnscopedMutableSignatureInspection()
+        configure(inspection, "sig A {}\none sig B, C, D, E extends A {}\nsig N { var m: set A }\nsig Other {}\nrun {} for 3 but 2 Other")
+        assertEmpty(problems(inspection))
+    }
+
+    fun testExactParameterOfOneOfSeveralModules() {
+        val inspection = AlloyExactParameterScopeInspection()
+        configure(inspection, "open util/graph[State]\nopen util/ordering[State]\nsig State {}\nrun {} for 3 but 2 State")
+        assertEquals(
+            listOf("util/ordering makes the scope of State exactly 2, so configurations with fewer State atoms are not analyzed"),
+            problems(inspection).map { it.message },
+        )
+    }
+
     private val ordered = fixture("verifying-the-expected-properties") + "\ncheck at_most_one_leader for 3 but 2 Id\n"
 
     fun testExactParameterScope() {

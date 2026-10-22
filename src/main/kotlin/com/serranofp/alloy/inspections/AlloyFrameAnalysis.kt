@@ -1,8 +1,10 @@
 package com.serranofp.alloy.inspections
 
+import com.intellij.openapi.progress.ProgressManager
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.ExprBinary
 import edu.mit.csail.sdg.ast.ExprCall
+import edu.mit.csail.sdg.ast.ExprList
 import edu.mit.csail.sdg.ast.ExprUnary
 import edu.mit.csail.sdg.ast.Func
 import edu.mit.csail.sdg.ast.Sig
@@ -15,10 +17,10 @@ import edu.mit.csail.sdg.ast.VisitQuery
  */
 class AlloyFrameAnalysis {
     /**
-     * The mutable relations (`var` fields and `var sig`s) a body [mentions], those it [constrains] in the next
-     * state, under `'` or `after`, whether it constrains the [next] state at all, whether it uses an
-     * operator about the whole [future] of the trace, and whether it uses any [temporal] operator, past
-     * ones included.
+     * The mutable relations (`var` fields, `var sig`s, and the meta model) a body [mentions], those it
+     * [constrains] in the next state, under `'` or `after`, whether it constrains the [next] state at all,
+     * whether it uses an operator about the whole [future] of the trace, and whether it uses any [temporal]
+     * operator, past ones included.
      */
     data class Summary(
         val mentions: Set<Expr>,
@@ -62,6 +64,7 @@ class AlloyFrameAnalysis {
     fun isEvent(func: Func): Boolean = func.isPred && summary(func).let { it.next && !it.future }
 
     private fun walk(body: Expr): Summary {
+        ProgressManager.checkCanceled()
         val mentions = LinkedHashSet<Expr>()
         val constrains = LinkedHashSet<Expr>()
         var next = false
@@ -124,13 +127,15 @@ class AlloyFrameAnalysis {
                 return super.visit(x)
             }
 
+            // The meta model stands for every relation, so it counts as mutable: the analyzer makes the `value` of
+            // `File$shared` only as `var` as `File`, even when `shared` is `var`
             override fun visit(x: Sig): Unit? {
-                if (x.isVariable != null) mention(x)
+                if (isMutable(x)) mention(x)
                 return super.visit(x)
             }
 
             override fun visit(x: Field): Unit? {
-                if (x.isVariable != null) mention(x)
+                if (isMutable(x)) mention(x)
                 return super.visit(x)
             }
         })
@@ -140,9 +145,22 @@ class AlloyFrameAnalysis {
     companion object {
         private val EMPTY = Summary(emptySet(), emptySet(), next = false, future = false, temporal = false)
 
+        /** A `var sig`, or a signature of the meta model, such as `var$` or `File$shared`. */
+        fun isMutable(sig: Sig): Boolean = sig.isVariable != null || sig.isMeta != null
+
+        /** A `var` field, or a field of the meta model, such as `value`. */
+        fun isMutable(field: Field): Boolean = field.isVariable != null || field.sig.isMeta != null
+
+        /** The conjuncts of [body], flattened as the analyzer's `ExprList.makeAND` does. */
+        fun conjuncts(body: Expr): List<Expr> = when (val x = body.deNOP()) {
+            is ExprList if x.op == ExprList.Op.AND -> x.args.flatMap(::conjuncts)
+            is ExprBinary if x.op == ExprBinary.Op.AND -> conjuncts(x.left) + conjuncts(x.right)
+            else -> listOf(x)
+        }
+
         /**
          * The analyzer desugars `a ; b` into `a and after b`, with the `after` at the one column of `;`; a
-         * written `after` spans its keyword.
+         * written `after` spans its keyword. `AlloyFrameAnalysisTest` pins this convention of the analyzer.
          */
         fun isSequence(x: ExprUnary): Boolean = x.pos.y == x.pos.y2 && x.pos.x == x.pos.x2
     }

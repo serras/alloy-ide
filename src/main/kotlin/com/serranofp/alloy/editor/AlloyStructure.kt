@@ -16,6 +16,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.ui.breadcrumbs.BreadcrumbsProvider
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyAssertDecl
 import com.serranofp.alloy.psi.AlloyBinderDecl
@@ -75,18 +76,23 @@ object AlloyPresentation {
         else -> null
     }
 
-    /** The kind of a declaration in words, as completion shows it, or null for an element that declares nothing. */
+    /**
+     * The kind of a declaration in words, as completion and find usages show it, or null for an element that
+     * declares nothing.
+     */
     fun kind(element: PsiElement): String? = when (element) {
-        is AlloySigName -> "signature"
-        is AlloyFieldDecl -> "field"
-        is AlloyEnumDecl -> "enum"
-        is AlloyEnumMember -> "enum member"
-        is AlloyPredDecl -> "predicate"
-        is AlloyFunDecl -> "function"
-        is AlloyAssertDecl -> "assertion"
-        is AlloyMacroDecl -> "macro"
-        is AlloyParamDecl -> "parameter"
-        is AlloyBinderDecl, is AlloyLetDecl -> "binder"
+        is AlloySigName -> AlloyBundle.message("kind.signature")
+        is AlloyFieldDecl -> AlloyBundle.message("kind.field")
+        is AlloyEnumDecl -> AlloyBundle.message("kind.enum")
+        is AlloyEnumMember -> AlloyBundle.message("kind.enum.member")
+        is AlloyPredDecl -> AlloyBundle.message("kind.predicate")
+        is AlloyFunDecl -> AlloyBundle.message("kind.function")
+        is AlloyAssertDecl -> AlloyBundle.message("kind.assertion")
+        is AlloyMacroDecl -> AlloyBundle.message("kind.macro")
+        is AlloyFactDecl -> AlloyBundle.message("kind.fact")
+        is AlloyCommandDecl -> AlloyBundle.message("kind.command")
+        is AlloyParamDecl -> AlloyBundle.message("kind.parameter")
+        is AlloyBinderDecl, is AlloyLetDecl -> AlloyBundle.message("kind.binder")
         else -> null
     }
 
@@ -102,8 +108,17 @@ class AlloyStructureViewFactory : PsiStructureViewFactory {
         return object : TreeBasedStructureViewBuilder() {
             override fun createStructureViewModel(editor: Editor?): StructureViewModel =
                 StructureViewModelBase(psiFile, editor, AlloyStructureElement(psiFile))
-                    .withSuitableClasses(AlloyNamedDeclaration::class.java, AlloySigDecl::class.java, AlloyModuleDecl::class.java)
+                    // What the tree lists: paragraphs, fields and enum members, but no parameters or binders
+                    .withSuitableClasses(*SUITABLE_CLASSES)
         }
+    }
+
+    private companion object {
+        val SUITABLE_CLASSES = arrayOf(
+            AlloyModuleDecl::class.java, AlloySigDecl::class.java, AlloyFieldDecl::class.java, AlloyEnumDecl::class.java,
+            AlloyEnumMember::class.java, AlloyFactDecl::class.java, AlloyPredDecl::class.java, AlloyFunDecl::class.java,
+            AlloyAssertDecl::class.java, AlloyMacroDecl::class.java, AlloyCommandDecl::class.java,
+        )
     }
 }
 
@@ -116,8 +131,6 @@ class AlloyStructureElement(private val element: PsiElement) : StructureViewTree
 
     override fun getChildren(): Array<TreeElement> =
         AlloyPresentation.children(element).map(::AlloyStructureElement).toTypedArray()
-
-    // override fun navigationRequest(): NavigationRequest? = (element as? Navigatable)?.navigationRequest()
 
     override fun navigate(requestFocus: Boolean) {
         (element as? Navigatable)?.navigate(requestFocus)

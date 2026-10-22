@@ -47,6 +47,59 @@ class AlloyEvaluatorRunnerTest : BasePlatformTestCase() {
         assertEquals(listOf(Tuples(listOf("V2$0"))), delivered)
     }
 
+    fun testSupersededRequestsThatWaitAreSkipped() {
+        val link = link(LASSO)
+        val model = AlloySolutionModel(link.solution, module = link.module)
+        val runner = AlloyEvaluatorRunner(testRootDisposable)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val evaluated = mutableListOf<String>()
+        runner.evaluate = { m, text, state ->
+            if (text == "first") {
+                started.countDown()
+                release.await(30, TimeUnit.SECONDS)
+            }
+            synchronized(evaluated) { evaluated += text }
+            m.evaluate("Cur", state)
+        }
+        val delivered = mutableListOf<String>()
+        runner.submit(model, "first") { delivered += "first" }
+        assertTrue(started.await(30, TimeUnit.SECONDS))
+        // Queued behind the first, then superseded before its turn
+        runner.submit(model, "waiting") { delivered += "waiting" }
+        runner.invalidate()
+        runner.submit(model, "latest") { delivered += "latest" }
+        release.countDown()
+
+        dispatchUntil("the latest value did not arrive") { delivered.isNotEmpty() }
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals(listOf("first", "latest"), synchronized(evaluated) { evaluated.toList() })
+        assertEquals(listOf("latest"), delivered)
+    }
+
+    fun testAThrowingEvaluationDeliversAnError() {
+        val link = link(STATIC)
+        val runner = AlloyEvaluatorRunner(testRootDisposable)
+        runner.evaluate = { _, _, _ -> throw StackOverflowError() }
+        val delivered = mutableListOf<EvaluationResult>()
+        runner.submit(AlloySolutionModel(link.solution, module = link.module), "succ") { delivered += it }
+        dispatchUntil("no result arrived") { delivered.isNotEmpty() }
+        val error = delivered.single() as EvaluationResult.Error
+        assertTrue(error.message, error.message.contains("StackOverflowError"))
+    }
+
+    fun testEvaluationsHaveALargeStack() {
+        val link = link(STATIC)
+        val runner = AlloyEvaluatorRunner(testRootDisposable)
+        // As deep as the analysis thread allows, far beyond a pool thread's default stack
+        fun depth(n: Int): Int = if (n == 0) 0 else 1 + depth(n - 1)
+        runner.evaluate = { _, _, _ -> EvaluationResult.IntValue(depth(DEEP).toString()) }
+        val delivered = mutableListOf<EvaluationResult>()
+        runner.submit(AlloySolutionModel(link.solution, module = link.module), "deep") { delivered += it }
+        dispatchUntil("no result arrived") { delivered.isNotEmpty() }
+        assertEquals(EvaluationResult.IntValue(DEEP.toString()), delivered.single())
+    }
+
     fun testDisposedRunnerDeliversNothing() {
         val link = link(STATIC)
         val parent = Disposer.newDisposable()
@@ -68,5 +121,9 @@ class AlloyEvaluatorRunnerTest : BasePlatformTestCase() {
         Thread.sleep(50)
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         assertEmpty(delivered)
+    }
+
+    private companion object {
+        const val DEEP = 200_000
     }
 }

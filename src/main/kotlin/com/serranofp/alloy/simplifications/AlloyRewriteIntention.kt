@@ -7,19 +7,25 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyFileType
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.semantics.AlloyModelResult
 import com.serranofp.alloy.semantics.AlloyModelService
 import com.serranofp.alloy.viewer.isAlloyEvaluatorFragment
+import org.jetbrains.annotations.PropertyKey
 
 /**
  * Offers the rewrites of [rules] between equivalent forms on the innermost written node around the caret
- * that one of them matches. On the EDT it only uses the model already computed for the current text, so it
- * is offered once highlighting has run, and never while the model has errors.
+ * that one of them matches. It only uses the model already computed for the current text, on any thread, so
+ * it is offered once highlighting has run, and never while the model has errors: an intention popup never
+ * pays for a full analysis.
  */
-abstract class AlloyRewriteIntention(private val rules: List<AlloyRewriteRule>, private val family: String) : PsiElementBaseIntentionAction() {
-    override fun getFamilyName(): String = family
+abstract class AlloyRewriteIntention(
+    private val rules: List<AlloyRewriteRule>,
+    @PropertyKey(resourceBundle = "messages.AlloyBundle") private val family: String,
+) : PsiElementBaseIntentionAction() {
+    override fun getFamilyName(): String = AlloyBundle.message(family)
 
     override fun isAvailable(project: Project, editor: Editor, element: PsiElement): Boolean {
         val result = find(project, editor, element.containingFile) ?: return false
@@ -45,7 +51,7 @@ abstract class AlloyRewriteIntention(private val rules: List<AlloyRewriteRule>, 
 
     private fun find(project: Project, editor: Editor, psiFile: PsiFile?): AlloyRewriteResult? {
         val file = (psiFile as? AlloyFile)?.takeIf { it.virtualFile != null && !it.isAlloyEvaluatorFragment } ?: return null
-        val model = AlloyModelService.getInstance(project).availableModel(file) as? AlloyModelResult.Model ?: return null
+        val model = AlloyModelService.getInstance(project).cachedModel(file) as? AlloyModelResult.Model ?: return null
         val document = PsiDocumentManager.getInstance(project).getDocument(file) ?: return null
         if (!PsiDocumentManager.getInstance(project).isCommitted(document)) return null
         val index = AlloyRewriteIndex.of(model, file, document)

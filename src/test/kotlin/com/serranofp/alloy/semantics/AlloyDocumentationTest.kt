@@ -4,9 +4,16 @@ import com.intellij.codeInsight.documentation.DocumentationManager
 import com.intellij.lang.LanguageDocumentation
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
+import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyLanguage
+import com.serranofp.alloy.psi.AlloyEnumMember
+import com.serranofp.alloy.psi.AlloyFieldDecl
 import com.serranofp.alloy.psi.AlloyFile
+import com.serranofp.alloy.psi.AlloyLetDecl
+import com.serranofp.alloy.psi.AlloyNamedDeclaration
+import com.serranofp.alloy.psi.AlloyParamDecl
+import com.serranofp.alloy.psi.AlloyPredDecl
 import java.util.concurrent.TimeUnit
 
 class AlloyDocumentationTest : BasePlatformTestCase() {
@@ -67,6 +74,39 @@ class AlloyDocumentationTest : BasePlatformTestCase() {
         assertTrue(doc, doc.contains("abstract sig Node extends univ"))
         assertFalse(doc, doc.contains("next"))
         assertTrue(doc, doc.contains("A node."))
+    }
+
+    private val provider = AlloyDocumentationProvider()
+
+    private fun <T : AlloyNamedDeclaration> declaration(type: Class<T>, name: String): T =
+        PsiTreeUtil.findChildrenOfType(myFixture.file, type).single { it.name == name }
+
+    fun testSourceKeepsNestedBrackets() {
+        myFixture.configureByText(
+            "m.als",
+            "sig A { r: A -> A }\nsig B {}\nsig S { f: set (A + B), g: A }\npred p[x: A, y: x.r[A, A]] {}\nenum E { One, Two, Three }\nfact { let u = A, w = B | some u + w }",
+        )
+        assertEquals("f: set (A + B)", provider.source(declaration(AlloyFieldDecl::class.java, "f")))
+        assertEquals("y: x.r[A, A]", provider.source(declaration(AlloyParamDecl::class.java, "y")))
+        assertEquals("Two", provider.source(declaration(AlloyEnumMember::class.java, "Two")))
+        assertEquals("u = A", provider.source(declaration(AlloyLetDecl::class.java, "u")))
+    }
+
+    fun testDocCommentOfAFieldWithModifiersOrInAGroup() {
+        myFixture.configureByText("m.als", "sig A {\n  /** Contents */ var contents: set A,\n  /** Pair */ disj a, b: A\n}")
+        assertEquals("Contents", provider.docComment(declaration(AlloyFieldDecl::class.java, "contents")))
+        assertEquals("Pair", provider.docComment(declaration(AlloyFieldDecl::class.java, "b")))
+    }
+
+    fun testExplanationOnlyOfTheDocumentedDeclaration() {
+        // As completion asks for an item's documentation, with the caret on another reference
+        myFixture.configureByText("m.als", "sig Node {}\n/** Some. */\npred nonEmpty { some Node }\npred other {}\nrun { nonEm<caret>pty } for 3")
+        analyze()
+        val original = myFixture.file.findElementAt(myFixture.caretOffset)
+        val other = declaration(AlloyPredDecl::class.java, "other")
+        val doc = LanguageDocumentation.INSTANCE.forLanguage(AlloyLanguage).generateDoc(other, original)!!
+        assertTrue(doc, doc.contains("pred other"))
+        assertFalse(doc, doc.contains("nonEmpty"))
     }
 
     fun testLocalBinder() {

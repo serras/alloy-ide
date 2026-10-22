@@ -8,10 +8,9 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.xml.util.XmlStringUtil
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.psi.AlloyFile
-import com.serranofp.alloy.psi.AlloyModuleDecl
 import com.serranofp.alloy.psi.AlloyOpenDecl
-import com.serranofp.alloy.viewer.isAlloyEvaluatorFragment
 import edu.mit.csail.sdg.alloy4.Err
 import java.io.File
 
@@ -24,12 +23,11 @@ data class AlloyDiagnostic(val severity: HighlightSeverity, val message: String,
  */
 class AlloyExternalAnnotator : ExternalAnnotator<AlloyFile, List<AlloyDiagnostic>>() {
     // The evaluator's fragment is an expression, not a module
-    override fun collectInformation(file: PsiFile): AlloyFile? =
-        (file as? AlloyFile)?.takeIf { it.virtualFile != null && !it.isAlloyEvaluatorFragment }
+    override fun collectInformation(file: PsiFile): AlloyFile? = (file as? AlloyFile)?.takeIf { it.isAnalyzable }
 
-    override fun doAnnotate(file: AlloyFile): List<AlloyDiagnostic> = ReadAction.computeBlocking<List<AlloyDiagnostic>, Throwable> {
-        if (file.isValid) diagnostics(file) else emptyList()
-    }
+    // A write action cancels the parse, which then starts over; not so a blocking read action, which holds it off
+    override fun doAnnotate(file: AlloyFile): List<AlloyDiagnostic> =
+        ReadAction.nonBlocking<List<AlloyDiagnostic>> { if (file.isValid) diagnostics(file) else emptyList() }.executeSynchronously()
 
     override fun apply(file: PsiFile, diagnostics: List<AlloyDiagnostic>, holder: AnnotationHolder) {
         for ((severity, message, range) in diagnostics) {
@@ -61,13 +59,15 @@ class AlloyExternalAnnotator : ExternalAnnotator<AlloyFile, List<AlloyDiagnostic
         }
     }
 
-    /** The `open`s of [file] that lead to the module where [error] is; the whole file if there is none. */
+    /**
+     * The `open`s of [file] that lead to the module where [error] is, a project or a library module; the whole
+     * file if there is none.
+     */
     private fun errorsAtOpens(file: AlloyFile, error: Err, modules: AlloyModules): List<AlloyDiagnostic> {
-        val moduleName = file.children.filterIsInstance<AlloyModuleDecl>().firstOrNull()?.qualifiedName?.text.orEmpty()
+        val service = AlloyModelService.getInstance(file.project)
         val atOpens = file.children.filterIsInstance<AlloyOpenDecl>().mapNotNull { open ->
             val name = open.qualifiedNameList.firstOrNull() ?: return@mapNotNull null
-            val path = AlloyModelService.openedPath(file.virtualFile.path, moduleName, name.text) ?: return@mapNotNull null
-            val opened = modules.files.entries.firstOrNull { it.value.path == path }?.key ?: return@mapNotNull null
+            val opened = service.openedFilename(file, open) ?: return@mapNotNull null
             if (!modules.reaches(opened, error.pos.filename)) return@mapNotNull null
             AlloyDiagnostic(HighlightSeverity.ERROR, openedModuleMessage(name.text, error), name.textRange)
         }
@@ -76,6 +76,6 @@ class AlloyExternalAnnotator : ExternalAnnotator<AlloyFile, List<AlloyDiagnostic
 
     private fun openedModuleMessage(module: String, error: Err): String {
         val where = error.pos.filename.takeIf { it.isNotEmpty() }?.let { " (${File(it).name}:${error.pos.y})" }.orEmpty()
-        return "The opened module $module has errors$where:\n${error.msg}"
+        return AlloyBundle.message("annotator.opened.module.errors", module, where, error.msg)
     }
 }

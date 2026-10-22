@@ -8,7 +8,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CustomShortcutSet
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.ColoredTreeCellRenderer
@@ -21,6 +21,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyFileType
 import org.jetbrains.annotations.TestOnly
 import java.awt.BorderLayout
@@ -29,6 +30,7 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
 import javax.swing.BoxLayout
 import javax.swing.JButton
+import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTree
 import javax.swing.KeyStroke
@@ -42,7 +44,8 @@ import javax.swing.tree.TreePath
  * followed by one root per watch of the model file. [refresh] evaluates them all again for a session; a watch
  * whose value differs from its previous evaluation, in the same file, is highlighted as changed. The field is an
  * Alloy fragment (see [ALLOY_EVALUATOR_FRAGMENT]) with a history of the evaluated expressions, which Up and Down
- * go through, as in the debugger's evaluate field.
+ * go through, as in the debugger's evaluate field, which keeps what was being typed as the entry after the latest.
+ * A watch is added or edited in such a field too, with the same completion.
  */
 class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JPanel(BorderLayout()) {
     private val viewer = AlloyInstanceViewer.getInstance(project)
@@ -63,6 +66,9 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
     /** The entry of [history] shown in the field by Up and Down; -1 for none. */
     private var historyIndex = -1
 
+    /** What the field had when Up first left it, shown again after the latest entry. */
+    private var draft = ""
+
     private val roots = DefaultMutableTreeNode()
     private val treeModel = DefaultTreeModel(roots)
 
@@ -73,6 +79,8 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
         cellRenderer = Renderer()
     }
 
+    /** Read by the field's completion, off the EDT. */
+    @Volatile
     private var session: ViewerSession? = null
 
     /** The file whose watches are shown. */
@@ -98,7 +106,7 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
         fieldAction(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, modifier or InputEvent.SHIFT_DOWN_MASK)) { addWatch(field.text) }
         fieldAction(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0)) { historyUp() }
         fieldAction(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0)) { historyDown() }
-        val addButton = JButton(ADD_TO_WATCHES, AllIcons.Debugger.AddToWatch).apply { addActionListener { addWatch(field.text) } }
+        val addButton = JButton(AlloyBundle.message("viewer.evaluator.add.to.watches"), AllIcons.Debugger.AddToWatch).apply { addActionListener { addWatch(field.text) } }
         val fieldLine = JPanel(BorderLayout(JBUI.scale(4), 0)).apply {
             add(field, BorderLayout.CENTER)
             add(addButton, BorderLayout.EAST)
@@ -110,8 +118,8 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
             add(fieldLine.apply { alignmentX = LEFT_ALIGNMENT })
         }
         val decorated = ToolbarDecorator.createDecorator(tree)
-            .setAddAction { promptWatch(ADD_WATCH, "")?.let(::addWatch) }
-            .setAddActionName(ADD_WATCH)
+            .setAddAction { promptWatch(AlloyBundle.message("viewer.evaluator.add.watch"), "")?.let(::addWatch) }
+            .setAddActionName(AlloyBundle.message("viewer.evaluator.add.watch"))
             .setRemoveAction { selectedWatch()?.let(::removeWatch) }
             .setRemoveActionUpdater { selectedWatch() != null }
             .setEditAction { editSelectedWatch() }
@@ -150,18 +158,19 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
     @TestOnly
     internal fun history(): List<String> = history.toList()
 
-    /** Shows the previous expression of the history in the field. */
+    /** Shows the previous expression of the history in the field, keeping what was typed when it leaves it. */
     fun historyUp() {
         if (historyIndex + 1 >= history.size) return
+        if (historyIndex < 0) draft = field.text
         historyIndex++
         field.text = history[historyIndex]
     }
 
-    /** Shows the next expression of the history in the field, and after the latest one an empty field. */
+    /** Shows the next expression of the history in the field, and after the latest one what was typed before. */
     fun historyDown() {
         if (historyIndex < 0) return
         historyIndex--
-        field.text = if (historyIndex < 0) "" else history[historyIndex]
+        field.text = if (historyIndex < 0) draft else history[historyIndex]
     }
 
     /** Evaluates the expression of the field and every watch again, in [session] at its selected state. */
@@ -186,7 +195,7 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
     fun updateCaption() {
         val session = session ?: return
         val outdated = if (viewer.outdated(session) != null) OUTDATED else ""
-        caption.text = "Evaluating at state ${session.model.state}$outdated"
+        caption.text = AlloyBundle.message("viewer.evaluator.caption", session.model.state.toString()) + outdated
     }
 
     override fun setVisible(visible: Boolean) {
@@ -202,6 +211,7 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
         history.addFirst(text.trim())
         while (history.size > HISTORY_SIZE) history.removeLast()
         historyIndex = -1
+        draft = ""
         evaluation = ValueNode(text.trim(), watch = false)
         showRoots()
         // Superseding the requests still running: the watches still waiting are submitted again
@@ -288,11 +298,32 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
 
     private fun editSelectedWatch() {
         val index = selectedWatch() ?: return
-        promptWatch(EDIT_WATCH, watches[index].expression)?.let { editWatch(index, it) }
+        promptWatch(AlloyBundle.message("viewer.evaluator.edit.watch"), watches[index].expression)?.let { editWatch(index, it) }
     }
 
-    private fun promptWatch(title: String, initial: String): String? =
-        Messages.showInputDialog(project, "Expression:", title, null, initial, null)
+    private fun promptWatch(title: String, initial: String): String? = WatchDialog(title, initial).takeIf { it.showAndGet() }?.text
+
+    /** Asks for a watch's expression in an evaluator fragment, which completes the names of the shown model. */
+    private inner class WatchDialog(title: String, initial: String) : DialogWrapper(project) {
+        private val expression = EditorTextField(alloyEvaluatorDocument(project) { session?.model }, project, AlloyFileType, false, true).apply {
+            text = initial
+            setPreferredWidth(JBUI.scale(PROMPT_WIDTH))
+        }
+
+        val text: String get() = expression.text
+
+        init {
+            this.title = title
+            init()
+        }
+
+        override fun createCenterPanel(): JComponent = JPanel(BorderLayout(0, JBUI.scale(4))).apply {
+            add(JBLabel(AlloyBundle.message("viewer.evaluator.expression")), BorderLayout.NORTH)
+            add(expression, BorderLayout.CENTER)
+        }
+
+        override fun getPreferredFocusedComponent(): JComponent = expression
+    }
 
     private class Renderer : ColoredTreeCellRenderer() {
         override fun customizeCellRenderer(tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
@@ -310,17 +341,15 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
                 if (result == null) append(EVALUATING, SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 else append(rendered(result), if (value.changed) CHANGED_VALUE_ATTRIBUTES else SimpleTextAttributes.REGULAR_ATTRIBUTES)
             }
-            if (!value.watch) append(" (evaluated)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+            if (!value.watch) append(AlloyBundle.message("viewer.evaluator.evaluated.suffix"), SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
     }
 
     companion object {
-        const val ADD_TO_WATCHES = "Add to Watches"
-        const val ADD_WATCH = "Add Watch"
-        const val EDIT_WATCH = "Edit Watch"
-        const val EVALUATING = "Evaluating…"
-        const val OUTDATED = " (outdated result)"
+        val EVALUATING: String get() = AlloyBundle.message("viewer.evaluator.evaluating")
+        val OUTDATED: String get() = AlloyBundle.message("viewer.evaluator.outdated.suffix")
         const val HISTORY_SIZE = 50
+        private const val PROMPT_WIDTH = 400
 
         /** The debugger's "changed value" attributes (`XDebuggerUIConstants.CHANGED_VALUE_ATTRIBUTES`). */
         val CHANGED_VALUE_ATTRIBUTES = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, JBColor.namedColor("Debugger.Variables.changedValueForeground", JBColor.blue))
@@ -329,8 +358,7 @@ class AlloyEvaluatorPanel(private val project: Project, parent: Disposable) : JP
         fun rendered(result: EvaluationResult): String = when (result) {
             is EvaluationResult.Tuples -> when (result.tuples.size) {
                 0 -> "{}"
-                1 -> "{1 tuple}"
-                else -> "{${result.tuples.size} tuples}"
+                else -> AlloyBundle.message("viewer.evaluator.tuples", result.tuples.size)
             }
             is EvaluationResult.Bool -> result.value.toString()
             is EvaluationResult.IntValue -> result.value

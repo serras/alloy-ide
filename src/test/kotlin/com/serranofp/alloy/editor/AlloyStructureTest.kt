@@ -7,6 +7,7 @@ import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.breadcrumbs.BreadcrumbsProvider
 import com.serranofp.alloy.AlloyLanguage
+import com.serranofp.alloy.psi.AlloyPredDecl
 
 class AlloyStructureTest : BasePlatformTestCase() {
     private val model = """
@@ -106,5 +107,13 @@ class AlloyStructureTest : BasePlatformTestCase() {
     fun testBreadcrumbsWithATypeError() {
         myFixture.configureByText("m.als", model.replace("{ n.^next }", "{ n.^ne<caret>xt and Undefined }"))
         assertEquals(listOf("reach"), breadcrumbs())
+    }
+
+    /** Autoscroll from source selects what the tree lists: the predicate, as parameters and binders are not in it. */
+    fun testEditorElementOfAParameterIsItsParagraph() {
+        myFixture.configureByText("m.als", model.replace("pred show[n: Node]", "pred show[n<caret>: Node]"))
+        val builder = LanguageStructureViewBuilder.getInstance().getStructureViewBuilder(myFixture.file) as TreeBasedStructureViewBuilder
+        val element = builder.createStructureViewModel(myFixture.editor).currentEditorElement
+        assertInstanceOf(element, AlloyPredDecl::class.java)
     }
 }

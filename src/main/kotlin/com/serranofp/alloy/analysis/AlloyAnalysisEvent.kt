@@ -1,5 +1,6 @@
 package com.serranofp.alloy.analysis
 
+import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.alloy4.Err
 import edu.mit.csail.sdg.alloy4.ErrorWarning
 import edu.mit.csail.sdg.alloy4.Pair
@@ -72,11 +73,11 @@ sealed interface AlloyFailure {
     val message: String
 
     data object MemoryExhausted : AlloyFailure {
-        override val message = "The analysis ran out of memory"
+        override val message: String get() = AlloyBundle.message("analysis.failure.memory")
     }
 
     data object StackExhausted : AlloyFailure {
-        override val message = "The analysis ran out of stack space"
+        override val message: String get() = AlloyBundle.message("analysis.failure.stack")
     }
 
     /** An error the analyzer reports about the model, such as a higher-order quantifier it cannot skolemize. */

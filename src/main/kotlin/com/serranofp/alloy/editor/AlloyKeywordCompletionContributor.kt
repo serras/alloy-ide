@@ -25,9 +25,10 @@ class AlloyKeywordCompletionContributor : CompletionContributor() {
         ) {
             // The evaluator offers the names of its model only
             if (parameters.originalFile.isAlloyEvaluatorFragment) return
+            // Keywords start paragraphs and expressions, not names
             when (AlloyCompletionContext.of(parameters.position)) {
-                AlloyCompletionContext.None, AlloyCompletionContext.ModulePath, is AlloyCompletionContext.Qualified -> return
-                else -> {}
+                AlloyCompletionContext.NotAReference, AlloyCompletionContext.Names -> {}
+                else -> return
             }
             for (keyword in KEYWORDS) {
                 result.addElement(LookupElementBuilder.create(keyword).bold())

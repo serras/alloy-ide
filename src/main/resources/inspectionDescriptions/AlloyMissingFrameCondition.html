@@ -5,7 +5,7 @@ next state, so that it can change freely when the event occurs.
 <p>A predicate is an event when it constrains the next state, with <code>'</code> or <code>after</code>, directly or
 through the predicates and macros it calls, and uses no <code>always</code>, <code>eventually</code>,
 <code>until</code>, <code>releases</code> or <code>;</code>. A relation is constrained when it is mentioned under
-<code>'</code> or <code>after</code> in any branch of the body. In this example, <code>outbox</code> is not:</p>
+<code>'</code> or <code>after</code> in any branch of the body. An event that only other events call is framed by them, and is not reported. In this example, <code>outbox</code> is not constrained:</p>
 <pre><code>pred send[n: Node] {
   some i: n.outbox | inbox' = inbox + n.succ->i
 }</code></pre>

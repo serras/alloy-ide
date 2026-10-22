@@ -5,7 +5,8 @@ import java.awt.geom.Point2D
 
 /** The strip's geometry, on the lasso of [LASSO]: states 0, 1 and 2, then back to state 1. */
 class TraceStripLayoutTest : TestCase() {
-    private fun lasso(selected: Int) = TraceStripLayout(3, 1, selected, scale = 1f)
+    /** The lasso of [LASSO], whose successor the model gives: after the last state, the loop target. */
+    private fun lasso(selected: Int) = TraceStripLayout(3, 1, selected, if (selected < 2) selected + 1 else 1, scale = 1f)
 
     private fun assertNear(expected: Double, actual: Double) = assertEquals(expected, actual, 1e-9)
 
@@ -21,7 +22,6 @@ class TraceStripLayoutTest : TestCase() {
     fun testHighlightedPair() {
         assertEquals(setOf(0, 1), lasso(0).highlighted)
         assertEquals(setOf(2, 1), lasso(2).highlighted)
-        assertEquals(1, lasso(2).successor)
     }
 
     fun testStraightArrowsJoinConsecutiveCircles() {
@@ -49,7 +49,7 @@ class TraceStripLayoutTest : TestCase() {
     }
 
     fun testSelfLoopLeavesAndReturnsToTheSameCircle() {
-        val layout = TraceStripLayout(2, 1, 1, scale = 1f)
+        val layout = TraceStripLayout(2, 1, 1, 1, scale = 1f)
         assertEquals(setOf(1), layout.highlighted)
         val curve = layout.loopCurve
         val circle = layout.circles[1]
@@ -68,15 +68,15 @@ class TraceStripLayoutTest : TestCase() {
     }
 
     fun testPreferredWidthIsLinear() {
-        val widths = (1..5).map { TraceStripLayout(it, 0, 0, scale = 1f).preferredWidth }
+        val widths = (1..5).map { TraceStripLayout(it, 0, 0, minOf(1, it - 1), scale = 1f).preferredWidth }
         assertEquals(1, widths.zipWithNext { a, b -> b - a }.distinct().size)
         assertEquals(TraceStripLayout.SPACING, widths[1] - widths[0])
-        val long = TraceStripLayout(5, 0, 0, scale = 1f)
+        val long = TraceStripLayout(5, 0, 0, 1, scale = 1f)
         assertTrue(long.circles.last().maxX <= long.preferredWidth)
     }
 
     fun testScale() {
-        val layout = TraceStripLayout(3, 1, 0, scale = 2f)
+        val layout = TraceStripLayout(3, 1, 0, 1, scale = 2f)
         assertEquals(2 * TraceStripLayout.HEIGHT, layout.height)
         assertEquals(2 * lasso(0).preferredWidth, layout.preferredWidth)
         assertNear(4.0 * TraceStripLayout.RADIUS, layout.circles[0].width)

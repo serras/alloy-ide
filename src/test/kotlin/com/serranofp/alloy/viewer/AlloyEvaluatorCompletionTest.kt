@@ -9,7 +9,7 @@ class AlloyEvaluatorCompletionTest : BasePlatformTestCase() {
     /** The names offered for [text], or the one completion inserted. */
     private fun variants(model: AlloySolutionModel, text: String): List<String> {
         myFixture.configureByText("evaluator.als", text)
-        myFixture.file.putUserData(ALLOY_EVALUATOR_FRAGMENT) { model }
+        myFixture.file.virtualFile.putUserData(ALLOY_EVALUATOR_FRAGMENT) { model }
         myFixture.completeBasic()
         return myFixture.lookupElementStrings ?: listOf(myFixture.editor.document.text)
     }
@@ -17,6 +17,11 @@ class AlloyEvaluatorCompletionTest : BasePlatformTestCase() {
     fun testFieldName() {
         // `sub` is from util/integer, which every model opens
         assertSameElements(variants(model(MODEL), "su<caret>"), "succ", "sub")
+    }
+
+    /** A name may contain `"`, but not start with one. */
+    fun testPrefixStartsAtTheName() {
+        assertSameElements(variants(model(MODEL), "\"su<caret>"), "succ", "sub")
     }
 
     fun testAtoms() {

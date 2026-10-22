@@ -6,6 +6,7 @@ import com.intellij.openapi.components.SimplePersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
+import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.translator.A4Options
 import kodkod.engine.satlab.SATFactory
 import java.util.concurrent.atomic.AtomicLong
@@ -31,8 +32,10 @@ class AlloySettingsState : BaseState() {
     companion object {
         const val DEFAULT_SOLVER = "sat4j"
         val SKOLEM_DEPTHS = 0..4
-        val CORE_MINIMIZATION_LABELS = listOf("Slow", "Medium", "Fast")
-        val CORE_GRANULARITY_LABELS = listOf("Top-level", "Flatten once", "Flatten twice", "Expand quantifiers")
+        val CORE_MINIMIZATION_LABELS: List<String>
+            get() = listOf("slow", "medium", "fast").map { AlloyBundle.message("settings.core.minimization.$it") }
+        val CORE_GRANULARITY_LABELS: List<String>
+            get() = listOf("top.level", "flatten.once", "flatten.twice", "expand.quantifiers").map { AlloyBundle.message("settings.core.granularity.$it") }
     }
 }
 
@@ -81,7 +84,7 @@ class AlloySettings : SimplePersistentStateComponent<AlloySettingsState>(AlloySe
     fun solverFallbackWarning(available: () -> Collection<String>): String? {
         val solver = state.solver ?: return null
         if (effectiveSolver(available) == solver) return null
-        return "The solver $solver is not available, using ${AlloySettingsState.DEFAULT_SOLVER} instead\n"
+        return AlloyBundle.message("settings.solver.fallback", solver, AlloySettingsState.DEFAULT_SOLVER) + "\n"
     }
 
     companion object {

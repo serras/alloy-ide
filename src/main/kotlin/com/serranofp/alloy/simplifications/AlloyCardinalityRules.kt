@@ -1,5 +1,6 @@
 package com.serranofp.alloy.simplifications
 
+import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.ExprBinary
 import edu.mit.csail.sdg.ast.ExprConstant
@@ -8,17 +9,15 @@ import edu.mit.csail.sdg.ast.Sig
 
 /** The simplifications of "Emptiness or cardinality test can be simplified". */
 object AlloyCardinalityRules {
-    private val family = AlloyRewriteFamily.CARDINALITY
-
     /** `not some e` → `no e`, and `not no e` → `some e` */
-    val negatedMultiplicity: AlloyRewriteRule = AlloySimplification(family) { node ->
-        val not = unary(node, ExprUnary.Op.NOT) ?: return@AlloySimplification null
+    val negatedMultiplicity: AlloyRewriteRule = rule { node ->
+        val not = unary(node, ExprUnary.Op.NOT) ?: return@rule null
         val (test, operator) = unary(not.sub, ExprUnary.Op.SOME)?.let { it to AlloyOperator.NO }
             ?: unary(not.sub, ExprUnary.Op.NO)?.let { it to AlloyOperator.SOME }
-            ?: return@AlloySimplification null
-        val operand = slice(test.sub) ?: return@AlloySimplification null
-        val keyword = operator.keyword
-        rewrite(node, AlloyPiece.Op(operator, operand), "Negated '${if (test.op == ExprUnary.Op.SOME) "some" else "no"}'", { "Replace with '$keyword'" }, uses = listOf(not, test))
+            ?: return@rule null
+        val operand = slice(test.sub) ?: return@rule null
+        val message = AlloyBundle.message("simplification.negated.multiplicity", AlloyOperator.of(test)!!.keyword)
+        rewrite(node, AlloyPiece.Op(operator, operand), message, replaceWith(operator.keyword), uses = listOf(not, test))
     }
 
     /**
@@ -47,31 +46,31 @@ object AlloyCardinalityRules {
     )
 
     /** `#e = 0` → `no e`, `#e > 0` → `some e`, `#e = 1` → `one e`, `#e =< 1` → `lone e`, and their equivalent and mirrored forms */
-    val cardinality: AlloyRewriteRule = AlloySimplification(family) { node ->
-        val comparison = binary(node, *CARDINALITY_COMPARISONS) ?: return@AlloySimplification null
+    val cardinality: AlloyRewriteRule = rule { node ->
+        val comparison = binary(node, *CARDINALITY_COMPARISONS) ?: return@rule null
         val (card, number, op) = unary(comparison.left, ExprUnary.Op.CARDINALITY)?.let { Triple(it, number(comparison.right), comparison.op) }
             ?: unary(comparison.right, ExprUnary.Op.CARDINALITY)?.let { Triple(it, number(comparison.left), mirrored(comparison.op)) }
-            ?: return@AlloySimplification null
-        if (number == null) return@AlloySimplification null
-        val operator = multiplicity(op, number.num) ?: return@AlloySimplification null
-        val operand = slice(card.sub) ?: return@AlloySimplification null
-        val keyword = operator.keyword
-        rewrite(node, AlloyPiece.Op(operator, operand), "Cardinality test", { "Replace with '$keyword'" }, uses = listOf(comparison, card, number))
+            ?: return@rule null
+        if (number == null) return@rule null
+        val operator = multiplicity(op, number.num) ?: return@rule null
+        val operand = slice(card.sub) ?: return@rule null
+        val message = AlloyBundle.message("simplification.cardinality.test")
+        rewrite(node, AlloyPiece.Op(operator, operand), message, replaceWith(operator.keyword), uses = listOf(comparison, card, number))
     }
 
     /** `e = none` → `no e`, and `e != none` → `some e`, for a set `e` */
-    val none: AlloyRewriteRule = AlloySimplification(family) { node ->
-        val comparison = binary(node, ExprBinary.Op.EQUALS, ExprBinary.Op.NOT_EQUALS) ?: return@AlloySimplification null
+    val none: AlloyRewriteRule = rule { node ->
+        val comparison = binary(node, ExprBinary.Op.EQUALS, ExprBinary.Op.NOT_EQUALS) ?: return@rule null
         val (set, none) = when {
             isNone(comparison.right) -> comparison.left to strip(comparison.right)
             isNone(comparison.left) -> comparison.right to strip(comparison.left)
-            else -> return@AlloySimplification null
+            else -> return@rule null
         }
-        if (set.type().arity() != 1 || set.type().is_int || set.type().is_small_int) return@AlloySimplification null
+        if (set.type().arity() != 1 || set.type().is_int || set.type().is_small_int) return@rule null
         val operator = if (comparison.op == ExprBinary.Op.EQUALS) AlloyOperator.NO else AlloyOperator.SOME
-        val operand = slice(set) ?: return@AlloySimplification null
-        val keyword = operator.keyword
-        rewrite(node, AlloyPiece.Op(operator, operand), "Comparison with 'none'", { "Replace with '$keyword'" }, uses = listOf(comparison, none))
+        val operand = slice(set) ?: return@rule null
+        val message = AlloyBundle.message("simplification.comparison.with.none")
+        rewrite(node, AlloyPiece.Op(operator, operand), message, replaceWith(operator.keyword), uses = listOf(comparison, none))
     }
 
     private fun AlloyRewriteContext.number(node: Expr): ExprConstant? =

@@ -61,6 +61,21 @@ class DarkGraphicsTest : BasePlatformTestCase() {
         graphics.dispose()
     }
 
+    /** A copy's background is its original's, mapped once: `clearRect` paints the canvas, not a mapping of it. */
+    fun testCopiesClearWithTheCanvas() {
+        val image = BufferedImage(2, 1, BufferedImage.TYPE_INT_RGB)
+        val graphics = DarkGraphics(image.createGraphics().apply { background = Color.WHITE }, palette)
+        assertEquals(Color.WHITE, graphics.background)
+        graphics.clearRect(0, 0, 1, 1)
+        val copy = graphics.create()
+        assertEquals(Color.WHITE, (copy as DarkGraphics).background)
+        copy.clearRect(1, 0, 1, 1)
+        copy.dispose()
+        graphics.dispose()
+        assertEquals(palette.canvas.rgb, image.getRGB(0, 0) or (0xFF shl 24))
+        assertEquals(palette.canvas.rgb, image.getRGB(1, 0) or (0xFF shl 24))
+    }
+
     fun testColorsByRole() {
         assertEquals(palette.canvas, palette.fill(Color.WHITE))
         assertEquals(palette.foreground, palette.draw(Color.BLACK))

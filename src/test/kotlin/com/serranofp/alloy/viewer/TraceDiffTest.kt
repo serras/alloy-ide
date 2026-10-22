@@ -10,6 +10,11 @@ private const val FIELD = "abstract sig N { var f: set N }\none sig N1, N2 exten
 class TraceDiffTest : BasePlatformTestCase() {
     private fun TraceDiff.line(label: String) = lines.single { it.label == label }
 
+    private fun TraceDiff.Line.marked(mark: TraceDiff.Mark) = tuples.filter { it.mark == mark }.map { it.text }
+    private val TraceDiff.Line.kept get() = marked(TraceDiff.Mark.KEPT)
+    private val TraceDiff.Line.added get() = marked(TraceDiff.Mark.ADDED)
+    private val TraceDiff.Line.removed get() = marked(TraceDiff.Mark.REMOVED)
+
     fun testLinesFollowTheAnalyzersText() {
         for (model in listOf(LASSO, FIELD)) {
             val solution = solve(model)

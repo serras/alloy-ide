@@ -3,17 +3,21 @@ package com.serranofp.alloy.semantics
 import com.intellij.lang.LanguageRefactoringSupport
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.command.undo.UndoManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.refactoring.rename.RenameUtil
 import com.intellij.refactoring.util.CommonRefactoringUtil
 import com.intellij.openapi.ui.TestDialog
 import com.intellij.openapi.ui.TestDialogManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyBinderDecl
+import com.serranofp.alloy.psi.AlloyElementFactory
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloySigName
 import java.util.concurrent.TimeUnit
@@ -98,6 +102,38 @@ class AlloyRenameTest : BasePlatformTestCase() {
         val message = refused("B")
         assertTrue(message, message.contains("b.als has errors"))
         assertEquals("sig A {}", a.text)
+    }
+
+    fun testKeywordsAndNonIdentifiersAreNotValidNames() {
+        val file = myFixture.configureByText("m.als", "sig A {}")
+        val sig = PsiTreeUtil.findChildOfType(file, AlloySigName::class.java)!!
+        for (name in listOf("sig", "all", "always", "Int", "this", "steps", "a b", "1a", "a/b", "x'", "")) {
+            assertFalse(name, RenameUtil.isValidName(project, sig, name))
+        }
+        for (name in listOf("Node", "a\"b", "set_of")) assertTrue(name, RenameUtil.isValidName(project, sig, name))
+        assertThrows(IllegalArgumentException::class.java) { AlloyElementFactory.identifier(project, "a b") }
+    }
+
+    fun testCancelledCheckAbortsTheRename() {
+        val file = myFixture.configureByText("m.als", "sig A {}")
+        AlloyModelService.getInstance(project).parse = { _, _, _ -> throw ProcessCanceledException() }
+        try {
+            assertNull(AlloyRenameProcessor().substituteElementToRename(PsiTreeUtil.findChildOfType(file, AlloySigName::class.java)!!, null))
+        } finally {
+            AlloyModelService.getInstance(project).parse = edu.mit.csail.sdg.parser.CompUtil::parseEverything_fromFile
+        }
+    }
+
+    fun testRefusedOnAReadOnlyProjectFile() {
+        val file = myFixture.configureByText("m.als", "sig A {}")
+        WriteAction.runAndWait<Throwable> { file.virtualFile.isWritable = false }
+        try {
+            val message = AlloyRenameProcessor().refusal(PsiTreeUtil.findChildOfType(file, AlloySigName::class.java)!!)!!
+            assertTrue(message, message.contains("m.als is read-only"))
+            assertFalse(message, message.contains("library"))
+        } finally {
+            WriteAction.runAndWait<Throwable> { file.virtualFile.isWritable = true }
+        }
     }
 
     fun testRefusedOnALibraryDeclaration() {

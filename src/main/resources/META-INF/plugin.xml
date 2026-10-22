@@ -49,6 +49,7 @@
         <usageTypeProvider implementation="com.serranofp.alloy.semantics.AlloyUsageTypeProvider"/>
         <renamePsiElementProcessor implementation="com.serranofp.alloy.semantics.AlloyRenameProcessor"/>
         <lang.refactoringSupport language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyRefactoringSupportProvider"/>
+        <lang.namesValidator language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyNamesValidator"/>
         <lang.documentationProvider language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyDocumentationProvider"/>
         <lang.psiStructureViewFactory language="Alloy" implementationClass="com.serranofp.alloy.editor.AlloyStructureViewFactory"/>
         <breadcrumbsInfoProvider implementation="com.serranofp.alloy.editor.AlloyBreadcrumbsProvider"/>

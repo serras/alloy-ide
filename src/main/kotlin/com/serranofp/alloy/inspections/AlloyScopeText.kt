@@ -12,6 +12,7 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiWhiteSpace
+import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyTypes
@@ -149,33 +150,48 @@ sealed interface AlloyScopeEdit {
 }
 
 /**
- * Applies [edit] to the scope of the [part]th command of [decl], found again in the PSI when applied; the
- * number it writes is then selected by a template, for the user to change it at once.
+ * Applies [edit] to the scope of the [part]th command of [decl], and of each of [others] (other commands, as
+ * their `=>` chain and part), found again in the PSI when applied. When there is only one, the number it writes
+ * is then selected by a template, for the user to change it at once.
  */
 class AlloyScopeFix(
     decl: AlloyCommandDecl,
     private val part: Int,
     private val edit: AlloyScopeEdit,
     private val text: String,
+    private val family: String,
+    others: List<Pair<AlloyCommandDecl, Int>> = emptyList(),
 ) : LocalQuickFixAndIntentionActionOnPsiElement(decl) {
+    private val others = others.map { (decl, part) -> SmartPointerManager.createPointer(decl) to part }
+
     override fun getText(): String = text
 
-    override fun getFamilyName(): String = text
+    override fun getFamilyName(): String = family
 
     override fun invoke(project: Project, file: PsiFile, editor: Editor?, startElement: PsiElement, endElement: PsiElement) {
         val decl = startElement as? AlloyCommandDecl ?: return
         val documents = PsiDocumentManager.getInstance(project)
         val document = documents.getDocument(file) ?: return
-        val scope = AlloyScopeText.of(decl, part)
-        val number = when {
-            scope != null -> edit.apply(scope, document)
-            else -> edit.applyWithoutScope(AlloyScopeText.endOf(decl, part) ?: return, document) ?: return
+        // In an intention preview, [file] is a copy
+        val targets = listOf(decl to part) + others.mapNotNull { (pointer, part) ->
+            val other = pointer.element ?: return@mapNotNull null
+            (if (other.containingFile == file) other else PsiTreeUtil.findSameElementInCopy(other, file)) to part
         }
+        // Each edit is placed before it is applied, last one first, so that none moves the place of the next
+        val edits = targets.mapNotNull { (decl, part) ->
+            val scope = AlloyScopeText.of(decl, part)
+            when {
+                scope != null -> scope.range.startOffset to { edit.apply(scope, document) }
+                else -> AlloyScopeText.endOf(decl, part)?.let { end -> end to { edit.applyWithoutScope(end, document) } }
+            }
+        }.sortedByDescending { it.first }
+        val numbers = edits.map { it.second() }
         documents.commitDocument(document)
-        if (number == null || editor == null || IntentionPreviewUtils.isIntentionPreviewActive()) return
+        val number = numbers.singleOrNull() ?: return
+        if (editor == null || IntentionPreviewUtils.isIntentionPreviewActive()) return
         val container = PsiTreeUtil.getParentOfType(file.findElementAt(number.startOffset), AlloyCommandDecl::class.java) ?: return
         val builder = TemplateBuilderImpl(container)
-        builder.replaceRange(number.shiftLeft(container.textRange.startOffset), number.substring(document.immutableCharSequence.toString()))
+        builder.replaceRange(number.shiftLeft(container.textRange.startOffset), document.getText(number))
         builder.run(editor, true)
     }
 }

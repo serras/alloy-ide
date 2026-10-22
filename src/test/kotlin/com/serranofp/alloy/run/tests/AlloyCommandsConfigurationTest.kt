@@ -56,7 +56,7 @@ class AlloyCommandsConfigurationTest : BasePlatformTestCase() {
         val factory = AlloyCommandsConfigurationType.getInstance().factory
         val configuration = AlloyCommandsRunConfiguration(project, factory, "All commands in a.als").apply {
             fileUrl = "file:///models/a.als"
-            commands = listOf(AlloyCommandRef("show", 0), AlloyCommandRef(null, 2), AlloyCommandRef("this/safety", 3))
+            commands = listOf(AlloyCommandRef("show", 0), AlloyCommandRef(null, 2), AlloyCommandRef("this/safety", 3), AlloyCommandRef("show", 4, occurrence = 1))
         }
         val element = Element("configuration")
         configuration.writeExternal(element)
@@ -65,6 +65,7 @@ class AlloyCommandsConfigurationTest : BasePlatformTestCase() {
         read.readExternal(element)
         assertEquals("file:///models/a.als", read.fileUrl)
         assertEquals(configuration.commands, read.commands)
+        assertEquals(listOf(0, 0, 0, 1), read.commands.map { it.occurrence })
     }
 
     fun testSettingsEditorKeepsTheFile() {

@@ -10,6 +10,7 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.icons.AllIcons
 import com.intellij.patterns.PlatformPatterns.psiElement
 import com.intellij.util.ProcessingContext
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyLanguage
 import edu.mit.csail.sdg.ast.Func
 import edu.mit.csail.sdg.parser.CompModule
@@ -27,17 +28,20 @@ class AlloyEvaluatorCompletionContributor : CompletionContributor() {
 
     private object NameProvider : CompletionProvider<CompletionParameters>() {
         override fun addCompletions(parameters: CompletionParameters, context: ProcessingContext, result: CompletionResultSet) {
-            val model = parameters.originalFile.getUserData(ALLOY_EVALUATOR_FRAGMENT)?.invoke() ?: return
+            val model = parameters.originalFile.alloyEvaluatorModel?.invoke() ?: return
             // The fragment does not parse as a module, so the prefix is read from the text: a name, possibly qualified
             val text = parameters.editor.document.charsSequence
             var start = parameters.offset
             while (start > 0 && isNamePart(text[start - 1])) start--
+            // A name starts with a letter (or `$`, as skolems do): `"abc` and `2x` complete `abc` and `x`
+            while (start < parameters.offset && !Character.isJavaIdentifierStart(text[start])) start++
             val names = result.withPrefixMatcher(text.substring(start, parameters.offset))
             for (name in NamesProvider.names(model)) names.addElement(name.lookup())
             names.stopHere()
         }
 
-        private fun isNamePart(c: Char) = Character.isJavaIdentifierPart(c) || c == '\'' || c == '"' || c == '/'
+        /** As the lexer reads a name, which may contain `"` but not `'` (a prime), and its qualifier. */
+        private fun isNamePart(c: Char) = Character.isJavaIdentifierPart(c) || c == '"' || c == '/'
     }
 
     internal object NamesProvider {
@@ -52,16 +56,16 @@ class AlloyEvaluatorCompletionContributor : CompletionContributor() {
                 declared.mapTo(this) { (name, alias) ->
                     if (alias != null && counts.getValue(name.text) > 1) name.copy(text = "$alias/${name.text}") else name
                 }
-                model.solution.allAtoms.mapTo(this) { Name(it.label, "atom", AllIcons.Nodes.Constant) }
-                model.solution.allSkolems.mapTo(this) { Name(it.label, "skolem", AllIcons.Nodes.Variable) }
+                model.solution.allAtoms.mapTo(this) { Name(it.label, AlloyBundle.message("viewer.completion.atom"), AllIcons.Nodes.Constant) }
+                model.solution.allSkolems.mapTo(this) { Name(it.label, AlloyBundle.message("viewer.completion.skolem"), AllIcons.Nodes.Variable) }
             }.distinct()
         }
 
         /** The signatures, fields, predicates and functions declared in [module]. */
         private fun declarations(module: CompModule): List<Name> {
             val sigs = module.allSigs.flatMap { sig ->
-                listOf(Name(simple(sig.label), "signature", AllIcons.Nodes.Class)) +
-                        sig.fields.map { Name(it.label, "field", AllIcons.Nodes.Field) }
+                listOf(Name(simple(sig.label), AlloyBundle.message("viewer.completion.signature"), AllIcons.Nodes.Class)) +
+                        sig.fields.map { Name(it.label, AlloyBundle.message("viewer.completion.field"), AllIcons.Nodes.Field) }
             }
             // Commands without a name get a function such as `run$1`
             val funcs = module.allFunc.filter { '$' !in it.label }.map(::func)
@@ -69,7 +73,10 @@ class AlloyEvaluatorCompletionContributor : CompletionContributor() {
             return (sigs + funcs).distinctBy { it.text }
         }
 
-        private fun func(func: Func) = Name(simple(func.label), if (func.isPred) "predicate" else "function", AllIcons.Nodes.Function)
+        private fun func(func: Func): Name {
+            val kind = AlloyBundle.message(if (func.isPred) "viewer.completion.predicate" else "viewer.completion.function")
+            return Name(simple(func.label), kind, AllIcons.Nodes.Function)
+        }
 
         /** `this/Node` and `util/ordering/first` are `Node` and `first`. */
         private fun simple(label: String) = label.substringAfterLast('/')

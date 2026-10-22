@@ -9,12 +9,17 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.psi.SmartPointerManager
 import com.intellij.ui.awt.RelativePoint
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import java.awt.event.MouseEvent
 
 /** Stops the running analysis of a command. */
 class AlloyStopCommandAction(command: AlloyCommandDecl) :
-    AnAction("Stop", "Stop the analysis of ${AlloyCommands.ref(command).displayName}", AllIcons.Actions.Suspend), DumbAware {
+    AnAction(
+        AlloyBundle.message("run.action.stop"),
+        AlloyBundle.message("run.action.stop.description", AlloyCommands.ref(command).displayName),
+        AllIcons.Actions.Suspend,
+    ), DumbAware {
     private val pointer = SmartPointerManager.createPointer(command)
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -34,7 +39,7 @@ class AlloyStopCommandAction(command: AlloyCommandDecl) :
  * opens a menu with [group], which holds the Stop action.
  */
 class AlloyRunningCommandMenuAction(command: AlloyCommandDecl) :
-    AnAction("Running ${AlloyCommands.ref(command).displayName}…", null, AllIcons.Actions.Suspend), DumbAware {
+    AnAction(AlloyBundle.message("run.action.running", AlloyCommands.ref(command).displayName), null, AllIcons.Actions.Suspend), DumbAware {
     val group = DefaultActionGroup(AlloyStopCommandAction(command))
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

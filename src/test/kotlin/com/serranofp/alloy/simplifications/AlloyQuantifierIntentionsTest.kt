@@ -12,6 +12,11 @@ class AlloyQuantifierIntentionsTest : AlloyIntentionTestCase() {
         assertEquals("not (some n: Node | n.succ = n)", invoked("all n: Node | n.succ != n", "Move negation out of quantifier", at = "all"))
     }
 
+    fun testNegationMovedInBeforeASequence() {
+        // The quantifier's body would take in the `;`
+        assertEquals("(some n: Node | no n.inbox) ; p", invoked("not (all n: Node | some n.inbox) ; p", "Move negation into quantifier", at = "all"))
+    }
+
     fun testNotOfferedWithoutANegation() {
         assertNotOffered("all n: Node | some n.inbox", "Move negation out of quantifier", at = "all")
         assertNotOffered("no n: Node | some n.inbox", "Move negation out of quantifier", at = "no")

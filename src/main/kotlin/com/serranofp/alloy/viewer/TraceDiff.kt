@@ -20,9 +20,6 @@ class TraceDiff(val lines: List<Line>) {
      * printed without braces.
      */
     data class Line(val label: String, val tuples: List<Tuple>, val braces: Boolean = true) {
-        val kept: List<String> get() = tuples.filter { it.mark == Mark.KEPT }.map { it.text }
-        val added: List<String> get() = tuples.filter { it.mark == Mark.ADDED }.map { it.text }
-        val removed: List<String> get() = tuples.filter { it.mark == Mark.REMOVED }.map { it.text }
         val isChanged: Boolean get() = tuples.any { it.mark != Mark.KEPT }
 
         /** The line as the analyzer prints it, with the tuples of both states. */

@@ -1,29 +1,11 @@
 package com.serranofp.alloy.simplifications
 
+import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.ExprBinary
 import edu.mit.csail.sdg.ast.ExprList
+import edu.mit.csail.sdg.ast.ExprQt
 import edu.mit.csail.sdg.ast.ExprUnary
-
-/** A simplification of [family], which an inspection reports. */
-internal class AlloySimplification(
-    override val family: AlloyRewriteFamily,
-    private val rule: AlloyRewriteContext.(Expr) -> AlloyRewrite?,
-) : AlloyRewriteRule {
-    override val kind: AlloyRewriteKind get() = AlloyRewriteKind.SIMPLIFICATION
-
-    override fun match(node: Expr, context: AlloyRewriteContext): AlloyRewrite? = context.rule(node)
-}
-
-/** A rewrite of [family] between equivalent forms, which an intention offers. */
-internal class AlloyEquivalence(
-    override val family: AlloyRewriteFamily,
-    private val rule: AlloyRewriteContext.(Expr) -> AlloyRewrite?,
-) : AlloyRewriteRule {
-    override val kind: AlloyRewriteKind get() = AlloyRewriteKind.EQUIVALENCE
-
-    override fun match(node: Expr, context: AlloyRewriteContext): AlloyRewrite? = context.rule(node)
-}
 
 /** A rewrite of [node], with the parentheses written around it, by [replacement]. */
 internal fun AlloyRewriteContext.rewrite(
@@ -40,7 +22,11 @@ internal fun AlloyRewriteContext.rewrite(
 
 /** "Simplify to '…'", or [otherwise] when the replacement is long or spans lines. */
 internal fun simplifyTo(otherwise: String): (String) -> String =
-    { if (it.length <= 40 && '\n' !in it) "Simplify to '$it'" else otherwise }
+    { if (it.length <= 40 && '\n' !in it) AlloyBundle.message("simplification.fix.simplify.to", it) else otherwise }
+
+/** "Replace with '[text]'", whatever the replacement. */
+internal fun replaceWith(text: String): (String) -> String =
+    { AlloyBundle.message("simplification.fix.replace.with", text) }
 
 /** [node], stripped, if it is written with the unary operator [op]. */
 internal fun AlloyRewriteContext.unary(node: Expr, op: ExprUnary.Op): ExprUnary? =
@@ -54,9 +40,21 @@ internal fun AlloyRewriteContext.binary(node: Expr, vararg op: ExprBinary.Op): E
 internal fun AlloyRewriteContext.list(node: Expr, op: ExprList.Op): ExprList? =
     (strip(node) as? ExprList)?.takeIf { it.op == op && written(it) }
 
+/** [node], stripped, if it is a written quantifier of one of [ops]. */
+internal fun AlloyRewriteContext.quantifier(node: Expr, vararg ops: ExprQt.Op): ExprQt? =
+    (strip(node) as? ExprQt)?.takeIf { it.op in ops && written(it) }
+
+/** `quantifier` with the declarations of [qt] as written and [body]. */
+internal fun AlloyRewriteContext.bind(quantifier: String, qt: ExprQt, body: AlloyPiece?): AlloyPiece? {
+    val decls = decls(qt) ?: return null
+    return AlloyPiece.Bind(quantifier, source.document.getText(decls), decls, body ?: return null)
+}
+
 /**
  * A rewrite of two adjacent operands of the `and` [list], `[first]` and `[first] + 1`, together, which
- * [combine] turns into one; the text between them, a line break or an `and`, goes too.
+ * [combine] turns into one; the text between them, a line break or an `and`, goes too. The first pair that
+ * can be applied is taken: one that [combine] accepts may still drop more than operators, such as the `}`
+ * between two flattened block lines.
  */
 internal fun AlloyRewriteContext.adjacentConjuncts(
     list: ExprList,
@@ -70,7 +68,8 @@ internal fun AlloyRewriteContext.adjacentConjuncts(
         val first = source(list.args[i]) ?: continue
         val second = source(list.args[i + 1]) ?: continue
         val range = first.range.union(second.range)
-        return AlloyRewrite(range, replacement, message, listOf(list), discards, operandsPosition(list, i, i + 1), fixName)
+        val rewrite = AlloyRewrite(range, replacement, message, listOf(list), discards, operandsPosition(list, i, i + 1), fixName)
+        if (applicable(rewrite)) return rewrite
     }
     return null
 }

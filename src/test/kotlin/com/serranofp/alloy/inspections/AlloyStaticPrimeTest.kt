@@ -22,6 +22,12 @@ class AlloyStaticPrimeTest : BasePlatformTestCase() {
         assertEquals(listOf("succ'" to "succ is static, so succ' is the same as succ"), problems())
     }
 
+    /** The analyzer's span starts at `succ`, inside the parentheses; the one in the comment is not counted. */
+    fun testParenthesesInACommentAreNotBalanced() {
+        myFixture.configureByText("model.als", network + "pred step { inbox' = inbox + (succ /* ) */)' }\n")
+        assertEquals(listOf("(succ /* ) */)'"), problems().map { it.first })
+    }
+
     fun testPredicateParameterPrimed() {
         myFixture.configureByText("model.als", network + "pred unchanged[r: Node -> Node] { r' = r }\n")
         assertEquals(

@@ -6,6 +6,7 @@ import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.DropDownLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.util.ui.JBUI
+import com.serranofp.alloy.AlloyBundle
 import javax.swing.BoxLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -67,7 +68,7 @@ class AlloyProjectionChooser(private val changed: () -> Unit) {
     }
 
     companion object {
-        const val NONE = "None"
-        const val CLEAR_ALL = "Clear all"
+        val NONE: String get() = AlloyBundle.message("viewer.projection.none")
+        val CLEAR_ALL: String get() = AlloyBundle.message("viewer.projection.clear.all")
     }
 }

@@ -1,11 +1,14 @@
 package com.serranofp.alloy.run
 
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.vfs.VirtualFile
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.analysis.AlloyAnalysis
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 import com.serranofp.alloy.run.AlloyRunLog.Outcome
 import edu.mit.csail.sdg.ast.Command
 import edu.mit.csail.sdg.ast.Sig
+import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -31,9 +34,16 @@ class AlloyCommandExecution(
     private var analysis: AlloyAnalysis? = null
     private var finished = false
     private var stopping = false
-    /** The command's `expect` (-1 without one): from its text at launch, then from the analyzer's command. */
-    private var expects = -1
     private val done = CountDownLatch(1)
+
+    /**
+     * Set by [stop], which stops the analysis it finds outside this lock: if that analysis ends meanwhile, no
+     * follow-up may start in its place, or the stop would be lost.
+     */
+    private var stopRequested = false
+
+    /** The project modules that the analysis reads besides [file]; see [CommandResult.modules]. */
+    private var modules: Set<VirtualFile> = emptySet()
 
     /** Starts the analyses of the vacuity check, or null when it is turned off. */
     private var followUp: FollowUp? = null
@@ -58,6 +68,12 @@ class AlloyCommandExecution(
         record(CommandState.Running, AlloyRunLog.RUNNING)
     }
 
+    /** The modules of the model being analyzed, known once it was read. */
+    @Synchronized
+    fun analyzes(modules: Set<VirtualFile>) {
+        this.modules = modules - file
+    }
+
     /**
      * Starts the analysis, unless the execution already ended (it was stopped while the model was read).
      * With [followUp], a check without counterexample goes on with its vacuity check.
@@ -74,10 +90,7 @@ class AlloyCommandExecution(
     fun accept(event: AlloyAnalysisEvent) {
         if (finished || checked != null) return
         log.accept(event)
-        if (event is AlloyAnalysisEvent.Executing) {
-            expects = event.command.expects
-            executing = event
-        }
+        if (event is AlloyAnalysisEvent.Executing) executing = event
         when (event) {
             is AlloyAnalysisEvent.Sat -> finish(state(), log.summary, link = CommandLink.Solution(event.solution, event.module))
             is AlloyAnalysisEvent.Unsat -> if (!startVacuityCheck()) finish(state(), log.summary)
@@ -100,7 +113,7 @@ class AlloyCommandExecution(
         val followUp = followUp ?: return false
         val executing = executing ?: return false
         val module = executing.module ?: return false
-        if (log.outcome != Outcome.NoCounterexample || stopping) return false
+        if (log.outcome != Outcome.NoCounterexample || stopping || stopRequested) return false
         val queries = AlloyVacuityQueries.of(executing.command, module)
         this.queries = queries
         checked = state()
@@ -114,7 +127,15 @@ class AlloyCommandExecution(
         val queryLog = AlloyRunLog()
         vacuityLogs += queryLog
         val number = vacuityLogs.size
-        val started = followUp.start(sigs, query) { acceptVacuity(number, it) }
+        val started = try {
+            followUp.start(sigs, query) { acceptVacuity(number, it) }
+        } catch (e: Throwable) {
+            // Such as a thread that cannot be created: the check's result stands, without its vacuity
+            thisLogger().warn("The vacuity check of ${command.displayName} did not start", e)
+            vacuity = Vacuity.Unknown(e.message ?: e.toString())
+            finish(checked!!, log.summary(vacuity))
+            return
+        }
         // The follow-up may already have ended, for example if the project closed
         if (!finished) analysis = started
     }
@@ -137,11 +158,15 @@ class AlloyCommandExecution(
                 }
                 finish(state, log.summary(vacuity))
             }
-            is AlloyAnalysisEvent.Unsat -> if (premiseQuery) {
+            is AlloyAnalysisEvent.Unsat -> if (premiseQuery && !stopRequested) {
                 record(CommandState.NoCounterexample, log.summary(vacuity))
                 solve(followUp!!, executing!!.module!!.allReachableSigs, queries.factsOnly)
             } else {
-                vacuity = Vacuity.VacuousFacts(queryLog.timeMillis ?: 0, queryLog.coreSize ?: 0, queries.premise?.toString())
+                vacuity = if (premiseQuery) {
+                    Vacuity.Unknown(VACUITY_STOPPED)
+                } else {
+                    Vacuity.VacuousFacts(queryLog.timeMillis ?: 0, queryLog.coreSize ?: 0, queries.premise?.toString())
+                }
                 finish(state, log.summary(vacuity))
             }
             is AlloyAnalysisEvent.Failed -> {
@@ -165,12 +190,10 @@ class AlloyCommandExecution(
     }
 
     /** The `expect` written in the command, read before the model is analyzed, so that a failure also has one. */
-    @Synchronized
-    fun expect(expects: Int) {
-        this.expects = expects
-    }
+    fun expect(expects: Int) = log.expect(expects)
 
     private fun expectation(state: CommandState): Expectation? {
+        val expects = log.expects
         if (expects < 0) return null
         val found = when (state) {
             CommandState.InstanceFound, CommandState.CounterexampleFound -> true
@@ -190,9 +213,9 @@ class AlloyCommandExecution(
 
     /** Ends the execution with a short [summary] for the hint and the [details] of the cause. */
     @Synchronized
-    fun fail(summary: String, details: String, state: CommandState = CommandState.Failed) {
+    fun fail(summary: String, details: String) {
         if (finished) return
-        finish(state, summary, failure = details)
+        finish(CommandState.Failed, summary, failure = details)
     }
 
     /** Ends the execution with what the log holds so far, for example when the project closes. */
@@ -211,6 +234,7 @@ class AlloyCommandExecution(
         running?.stop()
     }
 
+    @TestOnly
     @Synchronized
     fun isFinished(): Boolean = finished
 
@@ -221,6 +245,21 @@ class AlloyCommandExecution(
     fun waitFor(timeoutMillis: Long): Boolean = done.await(timeoutMillis, TimeUnit.MILLISECONDS)
 
     /**
+     * Waits until the execution ends, calling [onPoll] meanwhile, and stops it once [isCancelled]: how the
+     * background task and the suite follow their execution.
+     */
+    fun awaitOrStop(isCancelled: () -> Boolean, onPoll: () -> Unit = {}) {
+        var stopped = false
+        while (!waitFor(POLL_MILLIS)) {
+            onPoll()
+            if (!stopped && isCancelled()) {
+                stopped = true
+                stop()
+            }
+        }
+    }
+
+    /**
      * Stops the analysis, or the vacuity check's, which then reports that it stopped; before it started, ends
      * the execution.
      */
@@ -228,6 +267,7 @@ class AlloyCommandExecution(
         // Outside this lock: the analysis delivers its Stopping event to accept() while it holds its own
         val running = synchronized(this) {
             if (finished) return
+            stopRequested = true
             analysis
         }
         if (running != null) running.stop() else terminate()
@@ -242,14 +282,15 @@ class AlloyCommandExecution(
 
     private fun record(state: CommandState, summary: String, link: CommandLink? = null, failure: String? = null) {
         val details = CommandDetails(warnings.toList(), log.lines, failure, vacuityLogs.flatMap { it.lines })
-        results.record(
-            file, command, CommandResult(state, summary, details, link, documentStamp, settingsGeneration, expectation(state), vacuity),
-        )
+        val result = CommandResult(state, summary, details, link, documentStamp, settingsGeneration, expectation(state), vacuity, modules)
+        results.record(file, command, result)
     }
 
     companion object {
-        const val MODEL_HAS_ERRORS = "Model has errors"
-        const val COMMAND_NOT_FOUND = "Command not found"
-        const val VACUITY_STOPPED = "The vacuity check was stopped"
+        private const val POLL_MILLIS = 100L
+
+        val MODEL_HAS_ERRORS: String get() = AlloyBundle.message("run.failure.model.has.errors")
+        val COMMAND_NOT_FOUND: String get() = AlloyBundle.message("run.failure.command.not.found")
+        val VACUITY_STOPPED: String get() = AlloyBundle.message("run.failure.vacuity.stopped")
     }
 }

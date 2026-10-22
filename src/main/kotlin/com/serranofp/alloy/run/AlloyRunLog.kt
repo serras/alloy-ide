@@ -1,11 +1,13 @@
 package com.serranofp.alloy.run
 
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 
 /**
  * The output of one execution, as the hint's tooltip shows it, built from the [AlloyAnalysisEvent]s of an
  * analysis. It keeps the wording of the 6.2.0 language server that the plugin used before, which follows the
  * desktop application's `SimpleReporter`: command, solver line, counts, the result in bold with its time.
+ * That wording is the analyzer's, so it is not translated; the [summary] of the hint is.
  *
  * Events arrive on the analysis thread while the progress indicator reads [progress] from another one,
  * so every member is synchronized and returns a snapshot.
@@ -25,7 +27,6 @@ class AlloyRunLog {
 
     /** What the events so far said about the command and the solver, to word the next lines. */
     private var check = false
-    private var expects = -1
     private var translatedAt = 0L
     private var solvedAt = 0L
     private var minimizingAt: Long? = null
@@ -67,9 +68,15 @@ class AlloyRunLog {
     var outcome: Outcome = Outcome.None
         private set
 
+    /**
+     * The command's `expect` (-1 without one): the analyzer's once it executes the command, before that the
+     * one the execution read from its text (see [expect]), so that a failure also has one.
+     */
     @get:Synchronized
-    var unexpected: Boolean = false
+    var expects: Int = -1
         private set
+
+    private var unexpected = false
 
     /** The solving time reported with the outcome. */
     @get:Synchronized
@@ -81,14 +88,16 @@ class AlloyRunLog {
     var coreSize: Int? = null
         private set
 
-    @get:Synchronized
-    var completed: Boolean = false
-        private set
+    private enum class Ending { Completed, Stopped, Failed }
 
-    /** How the analysis ended: [COMPLETED], [STOPPED] or [FAILURE]. */
-    @get:Synchronized
-    var completionText: String? = null
-        private set
+    /** How the analysis ended, null while it runs. */
+    private var ending: Ending? = null
+
+    /** The `expect` written in the command, read before the analyzer executes it. */
+    @Synchronized
+    fun expect(expects: Int) {
+        this.expects = expects
+    }
 
     @Synchronized
     fun accept(event: AlloyAnalysisEvent) {
@@ -102,6 +111,10 @@ class AlloyRunLog {
             }
             is AlloyAnalysisEvent.Translating -> {
                 translatedAt = event.timeMillis
+                // A new translation starts a new block: the earlier one's progress lines are no longer replaced
+                solvedAt = 0L
+                minimizingAt = null
+                minimized = null
                 solving = SolvingCounts()
                 val steps = if (event.maxTrace < 1) "" else " Steps=${event.minTrace}..${event.maxTrace}"
                 val skolem = if (event.skolemDepth == 0) "" else " SkolemDepth=${event.skolemDepth}"
@@ -140,7 +153,7 @@ class AlloyRunLog {
                 append("$outcome${expectation(found = true)}. ", bold = true)
                 append("${millis}ms.\n\n")
                 found(if (check) Outcome.CounterexampleFound else Outcome.InstanceFound, millis, unexpected = expects == 0)
-                completed(COMPLETED)
+                ending = Ending.Completed
             }
             is AlloyAnalysisEvent.Unsat -> {
                 val minimizingAt = minimizingAt
@@ -163,10 +176,10 @@ class AlloyRunLog {
                 }
                 coreSize = if (event.core.a.isEmpty() && event.core.b.isEmpty()) 0 else minimized?.after ?: event.core.a.size
                 found(if (check) Outcome.NoCounterexample else Outcome.NoInstance, millis, unexpected = expects == 1)
-                completed(COMPLETED)
+                ending = Ending.Completed
             }
-            is AlloyAnalysisEvent.Failed -> completed(FAILURE)
-            is AlloyAnalysisEvent.Stopped -> completed(STOPPED)
+            is AlloyAnalysisEvent.Failed -> ending = Ending.Failed
+            is AlloyAnalysisEvent.Stopped -> ending = Ending.Stopped
         }
     }
 
@@ -195,11 +208,6 @@ class AlloyRunLog {
         this.outcome = outcome
         this.unexpected = unexpected
         timeMillis = millis
-    }
-
-    private fun completed(text: String) {
-        completed = true
-        completionText = text
     }
 
     /**
@@ -247,34 +255,30 @@ class AlloyRunLog {
     @Synchronized
     fun summary(vacuity: Vacuity?): String {
         val found = when (outcome) {
-            Outcome.InstanceFound -> "Instance found"
-            Outcome.CounterexampleFound -> "Counterexample found"
-            Outcome.NoInstance -> "No instance found"
-            Outcome.NoCounterexample -> "No counterexample found"
-            Outcome.None -> return when {
-                !completed -> RUNNING
-                completionText == STOPPED -> STOPPED
-                else -> FAILED
+            Outcome.InstanceFound -> AlloyBundle.message("run.summary.instance.found")
+            Outcome.CounterexampleFound -> AlloyBundle.message("run.summary.counterexample.found")
+            Outcome.NoInstance -> AlloyBundle.message("run.summary.no.instance")
+            Outcome.NoCounterexample -> AlloyBundle.message("run.summary.no.counterexample")
+            Outcome.None -> return when (ending) {
+                null -> RUNNING
+                Ending.Stopped -> STOPPED
+                Ending.Completed, Ending.Failed -> FAILED
             }
         }
         return buildString {
             append(found)
-            if (unexpected) append(", contrary to expectation") else if (expects >= 0) append(", as expected")
-            if (vacuity is Vacuity.VacuousFacts || vacuity is Vacuity.VacuousPremise) append(" (vacuous)")
-            timeMillis?.let { append(" · $it ms") }
-            if (vacuity == Vacuity.Checking) append(", checking vacuity…")
+            if (unexpected) append(AlloyBundle.message("run.summary.contrary")) else if (expects >= 0) append(AlloyBundle.message("run.summary.as.expected"))
+            if (vacuity is Vacuity.VacuousFacts || vacuity is Vacuity.VacuousPremise) append(AlloyBundle.message("run.summary.vacuous"))
+            timeMillis?.let { append(AlloyBundle.message("run.summary.time", it.toString())) }
+            if (vacuity == Vacuity.Checking) append(AlloyBundle.message("run.summary.checking.vacuity"))
         }
     }
 
     companion object {
-        const val RUNNING = "Running…"
-        const val STOPPING = "Stopping…"
-        const val STOPPED = "Stopped before completion"
-        const val FAILED = "Analysis failed"
-        const val CHECKING_VACUITY = "Checking vacuity…"
-
-        /** What [completionText] says when the analysis ended with a result, or with a failure. */
-        private const val COMPLETED = ""
-        private const val FAILURE = "failure"
+        val RUNNING: String get() = AlloyBundle.message("run.summary.running")
+        val STOPPING: String get() = AlloyBundle.message("run.summary.stopping")
+        val STOPPED: String get() = AlloyBundle.message("run.summary.stopped")
+        val FAILED: String get() = AlloyBundle.message("run.summary.failed")
+        val CHECKING_VACUITY: String get() = AlloyBundle.message("run.progress.checking.vacuity")
     }
 }

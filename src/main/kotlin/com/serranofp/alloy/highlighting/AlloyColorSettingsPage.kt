@@ -5,6 +5,7 @@ import com.intellij.openapi.fileTypes.SyntaxHighlighter
 import com.intellij.openapi.options.colors.AttributesDescriptor
 import com.intellij.openapi.options.colors.ColorDescriptor
 import com.intellij.openapi.options.colors.ColorSettingsPage
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyIcons
 import javax.swing.Icon
 
@@ -43,21 +44,21 @@ class AlloyColorSettingsPage : ColorSettingsPage {
     override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey>? = null
 
     override fun getAttributeDescriptors(): Array<AttributesDescriptor> = arrayOf(
-        AttributesDescriptor("Keyword", AlloyHighlighterColors.KEYWORD),
-        AttributesDescriptor("Temporal operator", AlloyHighlighterColors.TEMPORAL_OPERATOR),
-        AttributesDescriptor("Operator", AlloyHighlighterColors.OPERATOR),
-        AttributesDescriptor("Identifier", AlloyHighlighterColors.IDENTIFIER),
-        AttributesDescriptor("Number", AlloyHighlighterColors.NUMBER),
-        AttributesDescriptor("String", AlloyHighlighterColors.STRING),
-        AttributesDescriptor("Comments//Line comment", AlloyHighlighterColors.LINE_COMMENT),
-        AttributesDescriptor("Comments//Block comment", AlloyHighlighterColors.BLOCK_COMMENT),
-        AttributesDescriptor("Comments//Doc comment", AlloyHighlighterColors.DOC_COMMENT),
-        AttributesDescriptor("Braces and Operators//Braces", AlloyHighlighterColors.BRACES),
-        AttributesDescriptor("Braces and Operators//Parentheses", AlloyHighlighterColors.PARENTHESES),
-        AttributesDescriptor("Braces and Operators//Brackets", AlloyHighlighterColors.BRACKETS),
-        AttributesDescriptor("Braces and Operators//Comma", AlloyHighlighterColors.COMMA),
-        AttributesDescriptor("Braces and Operators//Dot", AlloyHighlighterColors.DOT),
-        AttributesDescriptor("Bad character", AlloyHighlighterColors.BAD_CHARACTER),
+        AttributesDescriptor(AlloyBundle.message("color.keyword"), AlloyHighlighterColors.KEYWORD),
+        AttributesDescriptor(AlloyBundle.message("color.temporal.operator"), AlloyHighlighterColors.TEMPORAL_OPERATOR),
+        AttributesDescriptor(AlloyBundle.message("color.operator"), AlloyHighlighterColors.OPERATOR),
+        AttributesDescriptor(AlloyBundle.message("color.identifier"), AlloyHighlighterColors.IDENTIFIER),
+        AttributesDescriptor(AlloyBundle.message("color.number"), AlloyHighlighterColors.NUMBER),
+        AttributesDescriptor(AlloyBundle.message("color.string"), AlloyHighlighterColors.STRING),
+        AttributesDescriptor(AlloyBundle.message("color.line.comment"), AlloyHighlighterColors.LINE_COMMENT),
+        AttributesDescriptor(AlloyBundle.message("color.block.comment"), AlloyHighlighterColors.BLOCK_COMMENT),
+        AttributesDescriptor(AlloyBundle.message("color.doc.comment"), AlloyHighlighterColors.DOC_COMMENT),
+        AttributesDescriptor(AlloyBundle.message("color.braces"), AlloyHighlighterColors.BRACES),
+        AttributesDescriptor(AlloyBundle.message("color.parentheses"), AlloyHighlighterColors.PARENTHESES),
+        AttributesDescriptor(AlloyBundle.message("color.brackets"), AlloyHighlighterColors.BRACKETS),
+        AttributesDescriptor(AlloyBundle.message("color.comma"), AlloyHighlighterColors.COMMA),
+        AttributesDescriptor(AlloyBundle.message("color.dot"), AlloyHighlighterColors.DOT),
+        AttributesDescriptor(AlloyBundle.message("color.bad.character"), AlloyHighlighterColors.BAD_CHARACTER),
     )
 
     override fun getColorDescriptors(): Array<ColorDescriptor> = ColorDescriptor.EMPTY_ARRAY

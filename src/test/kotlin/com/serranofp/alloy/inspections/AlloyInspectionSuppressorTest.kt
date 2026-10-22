@@ -24,6 +24,16 @@ class AlloyInspectionSuppressorTest : BasePlatformTestCase() {
         assertEquals(listOf("a", "b"), reported())
     }
 
+    fun testDashDashComment() {
+        myFixture.configureByText("model.als", "-- noinspection AlloyTest\npred a {}\npred b {}")
+        assertEquals(listOf("b"), reported())
+    }
+
+    fun testTrailingCommentOfThePreviousParagraph() {
+        myFixture.configureByText("model.als", "pred a {} // noinspection AlloyTest\npred b {}")
+        assertEquals(listOf("a", "b"), reported())
+    }
+
     fun testSuppressionAmongOtherComments() {
         myFixture.configureByText("model.als", "// noinspection AlloyOther, AlloyTest\n/** A predicate. */\npred a {}\nrun b {} for 3")
         assertEquals(listOf("for 3"), reported())

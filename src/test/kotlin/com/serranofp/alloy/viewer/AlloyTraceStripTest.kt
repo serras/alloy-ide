@@ -2,14 +2,19 @@ package com.serranofp.alloy.viewer
 
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
+import com.intellij.openapi.actionSystem.KeyboardShortcut
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.testFramework.TestActionEvent
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
 import java.awt.Point
+import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
 import javax.swing.JPanel
+import javax.swing.KeyStroke
 import javax.swing.UIManager
 import kotlin.math.roundToInt
 
@@ -23,7 +28,7 @@ class AlloyTraceStripTest : BasePlatformTestCase() {
 
     private fun strip(traceLength: Int = 3, loopState: Int = 1, selected: Int = 0) =
         AlloyTraceStrip(testRootDisposable, { dark }) { clicked += it }.apply {
-            show(traceLength, loopState, selected)
+            show(traceLength, loopState, selected, if (selected + 1 < traceLength) selected + 1 else loopState)
             size = preferredSize
             JPanel(null).apply { background = surrounding; isOpaque = true; add(scrollPane) }
         }
@@ -144,15 +149,47 @@ class AlloyTraceStripTest : BasePlatformTestCase() {
 
     fun testClickingACircleSelectsItsState() {
         val strip = strip()
-        strip.dispatchEvent(event(strip, MouseEvent.MOUSE_CLICKED, center(strip, 2)))
+        strip.dispatchEvent(event(strip, MouseEvent.MOUSE_PRESSED, center(strip, 2)))
         assertEquals(listOf(2), clicked)
+    }
+
+    fun testOtherButtonsDoNotSelect() {
+        val strip = strip()
+        val point = center(strip, 2)
+        strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), 0, point.x, point.y, 1, true, MouseEvent.BUTTON3))
+        assertEquals(emptyList<Int>(), clicked)
+    }
+
+    /** Runs the strip's action for [key], as pressing it in the focused strip does. */
+    private fun AlloyTraceStrip.press(key: Int) {
+        val stroke = KeyStroke.getKeyStroke(key, 0)
+        val action = ActionUtil.getActions(this).single { action -> action.shortcutSet.shortcuts.any { (it as? KeyboardShortcut)?.firstKeyStroke == stroke } }
+        action.actionPerformed(TestActionEvent.createTestEvent(action))
+    }
+
+    fun testKeysStepThroughTheTrace() {
+        val strip = strip()
+        assertTrue(strip.isFocusable)
+        strip.press(KeyEvent.VK_RIGHT)
+        strip.press(KeyEvent.VK_END)
+        // Nothing before the first state
+        strip.press(KeyEvent.VK_LEFT)
+        strip.press(KeyEvent.VK_HOME)
+        assertEquals(listOf(1, 2), clicked)
+        // After the last state, the loop target; before it, the state on its left
+        val last = strip(selected = 2)
+        clicked.clear()
+        last.press(KeyEvent.VK_RIGHT)
+        last.press(KeyEvent.VK_LEFT)
+        last.press(KeyEvent.VK_HOME)
+        assertEquals(listOf(1, 1, 0), clicked)
     }
 
     fun testClickingBetweenCirclesDoesNothing() {
         val strip = strip()
         val (first, second) = strip.geometry!!.circles
         val between = Point(((first.maxX + second.minX) / 2).roundToInt(), first.centerY.roundToInt())
-        strip.dispatchEvent(event(strip, MouseEvent.MOUSE_CLICKED, between))
+        strip.dispatchEvent(event(strip, MouseEvent.MOUSE_PRESSED, between))
         assertEquals(emptyList<Int>(), clicked)
     }
 
@@ -171,14 +208,14 @@ class AlloyTraceStripTest : BasePlatformTestCase() {
 
     fun testRevealScrollsToTheHighlightedPair() {
         val strip = AlloyTraceStrip(testRootDisposable, { dark })
-        strip.show(30, 0, 0)
+        strip.show(30, 0, 0, 1)
         val pane = strip.scrollPane
         pane.setSize(200, strip.preferredSize.height + 20)
         pane.doLayout()
         pane.viewport.doLayout()
         assertTrue(strip.width > 200)
 
-        strip.show(30, 0, 25)
+        strip.show(30, 0, 25, 26)
         strip.reveal()
         val visible = pane.viewport.viewRect
         assertTrue("$visible", visible.contains(strip.geometry!!.circles[25].bounds))
@@ -187,7 +224,7 @@ class AlloyTraceStripTest : BasePlatformTestCase() {
 
     fun testRevealPrefersTheSelectedStateWhenThePairDoesNotFit() {
         val strip = AlloyTraceStrip(testRootDisposable, { dark })
-        strip.show(30, 0, 29)
+        strip.show(30, 0, 29, 0)
         val pane = strip.scrollPane
         pane.setSize(200, strip.preferredSize.height + 20)
         pane.doLayout()

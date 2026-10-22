@@ -1,5 +1,7 @@
 package com.serranofp.alloy.inspections
 
+import com.intellij.codeInsight.intention.IntentionActionDelegate
+import com.intellij.codeInsight.intention.PriorityAction
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
@@ -67,6 +69,31 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
         )
     }
 
+    fun testAfterWithAFutureOperator() {
+        for (fact in listOf(
+            "fact { after always (inbox' = inbox) }",
+            "fact { after eventually some inbox }",
+            "fact { after (some inbox until no inbox) }",
+            "fact { after after always some inbox }",
+        )) {
+            myFixture.configureByText("model.als", "$network$fact\n")
+            assertEmpty(fact, problems())
+        }
+    }
+
+    fun testPrimeOnAStaticExpression() {
+        myFixture.configureByText("model.als", network + "fact { succ' = succ }\n")
+        assertEmpty(problems())
+    }
+
+    /** Wrapping would also make `no inbox`, about the first state, an invariant. */
+    fun testNoWrapForAFactWithAConjunctAboutTheFirstState() {
+        myFixture.configureByText("model.als", network + "fact {\n  no inbox\n  all n: Node | n.inbox' = n.inbox\n}\n")
+        assertEquals(listOf(weak("n.inbox'", "n.inbox' constrains only the transition out of the first state$notAlways")), problems())
+        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("n.inbox'"))
+        assertNull(myFixture.getAvailableIntention("Wrap in always"))
+    }
+
     fun testSequenceOperator() {
         myFixture.configureByText("model.als", network + "fact { no inbox ; some inbox }\n")
         assertEmpty(problems())
@@ -86,7 +113,9 @@ class AlloyFactOnlyAtStartTest : BasePlatformTestCase() {
         myFixture.configureByText("model.als", network + "fact inbox_bound { all n: Node | lone n.inbox }\n")
         assertEquals(listOf(information("fact inbox_bound")), problems())
         myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("inbox_bound"))
-        assertNotNull(myFixture.getAvailableIntention("Wrap in always"))
+        // The fact may as well be about the initial state
+        val wrap = IntentionActionDelegate.unwrap(myFixture.getAvailableIntention("Wrap in always")!!)
+        assertEquals(PriorityAction.Priority.LOW, (wrap as PriorityAction).priority)
     }
 
     fun testInitialStateFactIsNotHighlighted() {

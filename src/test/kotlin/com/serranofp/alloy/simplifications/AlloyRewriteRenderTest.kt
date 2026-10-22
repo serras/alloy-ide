@@ -141,6 +141,13 @@ class AlloyRewriteRenderTest : BasePlatformTestCase() {
         check("not (some z: A | some z.r) implies a", "(no z: A | some z.r) implies a", rules = arrayOf(negatedSome))
     }
 
+    fun testQuantifierBeforeASequence() {
+        // A quantifier's body takes in the `;` after it, as does the last of a flattened `and`
+        check("not (some z: A | some z.r) ; a", "(no z: A | some z.r) ; a", rules = arrayOf(negatedSome))
+        check("b and not (some z: A | some z.r) ; a", "b and (no z: A | some z.r) ; a", rules = arrayOf(negatedSome))
+        check("b ; not (some z: A | some z.r)", "b ; no z: A | some z.r", "b ; (no z: A | some z.r)", rules = arrayOf(negatedSome))
+    }
+
     fun testQuantifierOnABlockLine() {
         check("not (some z: A | some z.r)\n  a", "no z: A | some z.r\n  a", "(no z: A | some z.r) and a", rules = arrayOf(negatedSome))
     }

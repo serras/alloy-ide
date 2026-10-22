@@ -6,7 +6,7 @@ import javax.swing.Icon
 object AlloyFileType : LanguageFileType(AlloyLanguage) {
     override fun getName(): String = "Alloy"
 
-    override fun getDescription(): String = "Alloy model"
+    override fun getDescription(): String = AlloyBundle.message("filetype.description")
 
     override fun getDefaultExtension(): String = "als"
 

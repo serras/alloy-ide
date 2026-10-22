@@ -1,5 +1,15 @@
 package com.serranofp.alloy.simplifications
 
+import com.intellij.codeInspection.InspectionManager
+import com.intellij.codeInspection.ProblemDescriptor
+import com.intellij.codeInspection.ProblemHighlightType
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.util.TextRange
+import com.intellij.psi.SmartPointerManager
+import java.util.concurrent.TimeUnit
+
 class AlloySimplifiableBooleanTest : AlloySimplificationTestCase() {
     override val inspection = AlloySimplifiableBooleanInspection()
 
@@ -125,12 +135,43 @@ class AlloySimplifiableBooleanTest : AlloySimplificationTestCase() {
     fun testFixDoesNothingAfterAnEdit() {
         model("fact { not not p }\n")
         myFixture.doHighlighting()
-        val fix = AlloyRewriteFix("not not q", "q", "Remove double negation")
-        val descriptor = com.intellij.codeInspection.InspectionManager.getInstance(project).createProblemDescriptor(
+        val start = myFixture.file.text.indexOf("not not p")
+        val range = SmartPointerManager.getInstance(project).createSmartPsiFileRangePointer(myFixture.file, TextRange(start, start + 9))
+        val fix = AlloyRewriteFix(range, "not not q", "q", "Remove double negation")
+        val descriptor = InspectionManager.getInstance(project).createProblemDescriptor(
             myFixture.file.children.last { it.text.startsWith("fact") },
-            com.intellij.openapi.util.TextRange(7, 16), "Double negation", com.intellij.codeInspection.ProblemHighlightType.WEAK_WARNING, true,
+            TextRange(7, 16), "Double negation", ProblemHighlightType.WEAK_WARNING, true,
         )
-        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project) { fix.applyFix(project, descriptor) }
+        WriteCommandAction.runWriteCommandAction(project) { fix.applyFix(project, descriptor) }
         assertEquals("fact { not not p }\n", myFixture.file.text.removePrefix(header))
+    }
+
+    fun testFixesOfOneParagraphFollowTheEarlierOnes() {
+        model("fact { not not p and not not q and not not a }\n")
+        val manager = InspectionManager.getInstance(project)
+        val descriptors = ApplicationManager.getApplication().executeOnPooledThread<List<ProblemDescriptor>> {
+            ReadAction.computeBlocking<List<ProblemDescriptor>, Throwable> { inspection.checkFile(myFixture.file, manager, true)!!.toList() }
+        }.get(60, TimeUnit.SECONDS)
+        // As a batch fix may apply them: each after the ones before it, which moved its text
+        for (descriptor in descriptors.sortedBy { it.textRangeInElement.startOffset }) {
+            WriteCommandAction.runWriteCommandAction(project) { descriptor.fixes!!.single().applyFix(project, descriptor) }
+        }
+        assertEquals("fact { p and q and a }\n", myFixture.file.text.removePrefix(header))
+    }
+
+    fun testFixPreview() {
+        model("fact { some Node and not not p }\n")
+        myFixture.doHighlighting()
+        myFixture.editor.caretModel.moveToOffset(myFixture.file.text.indexOf("not not p"))
+        assertEquals("p", myFixture.getIntentionPreviewText(myFixture.findSingleIntention("Remove double negation")))
+    }
+
+    fun testShiftNeedsNoParentheses() {
+        assertEquals(listOf("i != i << 1", "i > i >> 1"), fixed("not (i = i << 1)", "not (i =< i >> 1)", params = "[i: Int]"))
+    }
+
+    fun testRedundantParenthesesDropped() {
+        // Where the replacement is a node in parentheses that its place does not need; operands keep theirs
+        assertEquals(listOf("a or b", "a or b"), fixed("not (not (a or b))", "(not not (a or b))"))
     }
 }

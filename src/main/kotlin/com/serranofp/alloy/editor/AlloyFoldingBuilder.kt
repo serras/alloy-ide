@@ -71,6 +71,7 @@ class AlloyFoldingBuilder : FoldingBuilderEx(), DumbAware {
         }
     }
 
+    /** Required by `FoldingBuilder`, but never asked for: every descriptor above has its own placeholder. */
     override fun getPlaceholderText(node: ASTNode): String = "..."
 
     override fun isCollapsedByDefault(node: ASTNode): Boolean = false

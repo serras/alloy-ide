@@ -7,10 +7,14 @@ import com.intellij.openapi.editor.colors.EditorColors
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.serranofp.alloy.psi.AlloyBinderDecl
+import com.serranofp.alloy.psi.AlloyCommandDecl
+import com.serranofp.alloy.psi.AlloyFactDecl
 import com.serranofp.alloy.psi.AlloyFieldDecl
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloyPredDecl
 import com.serranofp.alloy.psi.AlloyRef
+import com.serranofp.alloy.psi.AlloySigName
 import java.util.concurrent.TimeUnit
 
 class AlloyFindUsagesTest : BasePlatformTestCase() {
@@ -78,5 +82,14 @@ class AlloyFindUsagesTest : BasePlatformTestCase() {
         assertEquals(listOf("f", "f", "f"), highlighted.map { it.first })
         assertEquals(file.text.indexOf("f:"), highlighted.first().second)
         assertEquals(2, PsiTreeUtil.findChildrenOfType(file, AlloyRef::class.java).count { it.text == "f" })
+    }
+
+    fun testKindsAsCompletionShowsThem() {
+        val file = myFixture.configureByText("m.als", "sig A {}\nfact named { all x: A | some x }\nrun named {} for 3")
+        val provider = AlloyFindUsagesProvider()
+        assertEquals("binder", provider.getType(PsiTreeUtil.findChildOfType(file, AlloyBinderDecl::class.java)!!))
+        assertEquals("signature", provider.getType(PsiTreeUtil.findChildOfType(file, AlloySigName::class.java)!!))
+        assertEquals("fact", provider.getType(PsiTreeUtil.findChildOfType(file, AlloyFactDecl::class.java)!!))
+        assertEquals("command", provider.getType(PsiTreeUtil.findChildOfType(file, AlloyCommandDecl::class.java)!!))
     }
 }

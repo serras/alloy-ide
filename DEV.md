@@ -45,6 +45,9 @@ Add `open util/ordering[A]` and `fact { some first }` to `a.als`.
 - [ ] *External Libraries* in the *Project* view shows "Alloy 6.2.0", which lists the bundled `util` modules; opening one shows it read-only.
 - [ ] With Reader mode enabled for library sources (*Settings | Editor | Reader Mode*), Cmd/Ctrl-clicking `first` opens `util/ordering` in Reader mode.
 - [ ] *Go to Symbol* finds the `first` of `util/ordering` only with "All places"; with "Project files" it does not appear.
+- [ ] Renaming a declaration to `sig` or to `a b` from the rename dialog shows a validation message, not an IDE error.
+- [ ] In a project with many files, cancelling the "Checking the Alloy models" progress of a rename aborts the rename quietly.
+- [ ] In the *Structure* view with *Autoscroll from Source* on, placing the caret on a parameter or binder selects its predicate.
 
 ### Inline command results
 
@@ -75,6 +78,11 @@ Use a model with `sig Node { succ: lone Node }`, `pred show { some succ }`, `run
 - [ ] While the vacuity check of a slow check runs (for example, a check on the pigeonhole model whose facts take long to solve), the hint already says "No counterexample found · <n> ms, checking vacuity…", the gutter icon is the spinner, and the status-bar task says "Checking vacuity…". Clicking another run icon shows "An Alloy analysis is already running".
 - [ ] Stopping that check from the spinner's *Stop* item, or cancelling its status-bar task, during the vacuity check keeps "No counterexample found · <n> ms" with the run icon, and the tooltip says "Vacuity was not determined. The vacuity check was stopped."
 - [ ] Turning off *Command results* in *Settings | Editor | Inlay Hints* hides the hints.
+- [ ] With `check X for 3` and `check X for 6`, clicking the second gutter icon runs `for 6` and shows the hint on that line.
+- [ ] With Git inline blame shown on a command line, clicking the blame text does not open the instance.
+- [ ] While a vacuity check runs, a plain click on its hint stops it.
+- [ ] With `main.als` opening `lib.als`, editing `lib.als` dims the hints of `main.als` as outdated.
+- [ ] Running two Plingeling or Yices checks at the same time, in one project or two, and stopping one lets the other finish normally; a `yices` started from the IDE terminal survives both stops.
 
 ### Test runner
 
@@ -90,6 +98,9 @@ Use `a.als` with `sig Node { succ: lone Node }`, `fact acyclic { no n: Node | n 
 - [ ] With a type error in `a.als`, every node failed with "Model has errors".
 - [ ] While a command runs from the gutter, running *All commands in a.als* executes no command, and the Run tool window says "An Alloy analysis is already running". While the suite runs, clicking a gutter icon shows "An Alloy analysis is already running" in the editor.
 - [ ] Clicking *Stop* while `run big` (the second of three commands) is solving aborts it: its hint says "Stopped before completion", the third command is not executed, and neither node is shown as passed. A gutter icon can be clicked right after.
+- [ ] With `check X for 3` and `check X for 6`, the suite has two nodes, and each navigates to its own command.
+- [ ] Opening *Settings* while a suite runs does not stall it, unless an edit is pending commit.
+- [ ] Detaching a running *Alloy Commands* suite (if the UI offers it) stops it and frees the analysis.
 
 ### Instance viewer
 
@@ -107,6 +118,10 @@ Use the model of the inline command results checklist, a model that opens `util/
 - [ ] The *Projection* link names the projected signatures, or "None"; with `util/ordering[State]` it starts on `State`. Its popup has a checkbox for each signature that can be projected over: checking one shows the graph for one of its atoms, with an atom selector for it below the graphs, and several can be checked at once. For the temporal model, there is a single selector per projected signature, and picking an atom changes both graphs; the atom stays chosen while stepping, as long as it exists. *Clear all* unchecks every one and shows the whole instance again.
 - [ ] Under a dark theme (*Dark* or *Darcula*), the *Visualization* tab has the IDE's dark background and no white area: node outlines and black edges are light, node labels are light on dark, muted fills, and the magic layout's colors keep their hue (a gold signature is a dark gold, a blue one a dark blue), each distinguishable from the canvas. Colored edges and their labels are lightened and stand out. Selecting a node or an edge stays visible. Under a light theme, the graph has the visualizer's own colors on white.
 - [ ] With an instance shown, switching the IDE theme from light to dark (and back) in *Settings | Appearance* redraws the graph in the new colors right away, without opening the result again.
+- [ ] Clicking the hint of a large instance shows an "Opening the instance" progress, and the IDE keeps painting.
+- [ ] Right-click (Ctrl-click on macOS) on the canvas around a graph shows the zoom popup.
+- [ ] The Text and Table tabs use the editor font, and follow a change of it.
+- [ ] Graphs in a dark theme look as before.
 
 #### Trace path strip
 
@@ -120,6 +135,9 @@ Also use a lasso of three states that loops back to state 1: `abstract sig V {}`
 - [ ] Hovering circle 0 shows "State 0"; hovering circle 1 shows that state 2 loops back to it.
 - [ ] With `run { some X and after no X } for 3 but 15..20 steps` in the temporal model, in a narrow tool window, the strip is below the toolbar and scrolls horizontally, without a vertical scroll bar, and the horizontal one does not hide the circles; clicking a circle keeps the highlighted pair in view, and at the last state, when the loop target is far away, the selected state.
 - [ ] Under a light theme, highlighted circles are white, dimmed ones grey, and numbers and arrows black. Under a dark theme (*Dark* or *Darcula*), the strip shows the toolbar's background, the arrows, outlines and numbers are light, dimmed circles have the toolbar's background, and highlighted circles are lighter. Switching the theme in *Settings | Appearance* redraws the strip in the new colors right away.
+- [ ] Clicking through a long trace in the strip keeps the IDE responsive.
+- [ ] After clicking a circle, Right, Left, Home and End step through the trace, and the focused strip outlines the selected circle in the focus color.
+- [ ] A click with a slight mouse movement still selects the state.
 
 #### Evaluator
 
@@ -132,6 +150,7 @@ Use the lasso of the trace path strip checklist, and the model of the inline com
 - [ ] The watches toolbar adds, removes, edits (also with a double-click or F2) and moves watches up and down. After restarting the IDE, opening a result of the same file shows its watches, evaluated; a result of another file shows that file's own watches.
 - [ ] Typing in the file adds "(outdated result)" to the caption, and evaluating still shows the values of the shown result.
 - [ ] With `sig R { r: R -> R }` and `run many { #R = 30 } for 30`, a watch `all a, b, c, d, e: R | a->b->c in r implies c->d->e in r` shows "Evaluating…" for a while, and the IDE stays responsive meanwhile. With the lasso and a slow watch, clicking another state during the evaluation ends with the values of that state.
+- [ ] The *Add Watch* and *Edit Watch* dialogs offer Alloy completion.
 
 ### Analyzer settings
 
@@ -143,6 +162,7 @@ Use the lasso of the trace path strip checklist, and the model of the inline com
 - [ ] Applying a change while `run big` is running lets it go on; its result is shown as outdated when it arrives.
 - [ ] Turning off *Check vacuity of passing checks* and applying shows earlier results as outdated; a check that then finds no counterexample ends right away, without "checking vacuity…" in its hint and without a *Vacuity check* section in its tooltip. Turning it back on brings the vacuity check back.
 - [ ] A saved solver that is no longer available is shown as "(unavailable)", and the next run uses sat4j and shows a warning about it in the tooltip of its hint.
+- [ ] Opening *Settings | Languages & Frameworks | Alloy*, closing it before the solver discovery finishes, and reopening it shows no errors.
 
 ### Inspections
 
@@ -163,6 +183,9 @@ Instead of the two files, open copies of the book's models from `src/test/testDa
 - [ ] In the model of `send`, `pred step { inbox' = inbox + succ' }` highlights `succ'` as a weak warning saying that `succ` is static, so `succ'` is the same as `succ`; "Remove the prime" leaves `succ`. `pred unchanged[r: Node -> Node] { r' = r }` highlights `r'`, saying that parameters keep their value across states and suggesting the macro `let unchanged[r] { r' = r }`.
 - [ ] In the model of `send`, adding `fact { #Node =< 8 }` and `run example {} for 3` highlights `8` as a weak warning saying that `example` uses 4-bit integers (-8..7), so `8` is read as `-8`. "Set the bitwidth of example to 5 int" writes `for 3 but 5 int`, with the `5` selected so that typing replaces it, and the warning goes away.
 - [ ] Introducing a type error in any of these files removes the inspections' warnings until it is fixed; only the analyzer's error is shown.
+- [ ] With a literal out of range for four or more commands of the same bitwidth, Alt+Enter offers one "Set the bitwidth of a, b, c and N more commands to K int"; applying it edits every command, and its preview does not touch the file.
+- [ ] On `fact init { no inbox }`, "Wrap in always" is listed after the other actions, including the suppress options.
+- [ ] On a fact mixing `no inbox` with a frame condition, Alt+Enter on the warning does not offer "Wrap in always".
 
 ### Simplifications
 
@@ -179,3 +202,7 @@ Instead of the two files, use a model with `sig Node { succ: one Node, var inbox
 - [ ] One intention per kind, each with Alt+Enter on the formula and its preview checked first: "Replace 'implies' with 'or'" turns `some inbox implies no outbox` into `no inbox or no outbox`, and "Replace 'or' with 'implies'" turns it back into `some inbox implies no outbox`; "Move negation into quantifier" turns `not (all n: Node | some n.inbox)` into `some n: Node | no n.inbox`; "Move negation into temporal operator" turns `not always some inbox` into `eventually no inbox`; "Distribute temporal operator" turns `always (some inbox and lone outbox)` into `always some inbox and always lone outbox`; "Swap join with transpose" turns `some n.~succ` (in `pred s[n: Node]`) into `some succ.n`.
 - [ ] With the caret on `before` in `fact { not before p }` or in `fact { before not p }`, Alt+Enter offers no "Move negation" intention.
 - [ ] Right after typing a new formula, before highlighting has finished, Alt+Enter may not offer the intentions yet; once the file is highlighted, it does. While the file has a type error, none is offered.
+- [ ] Alt+Enter on a formula before the first highlighting pass finishes offers no Alloy intention and does not freeze; the intentions appear once highlighting finishes.
+- [ ] In a large model, typing quickly restarts highlighting without lag from the simplification inspections.
+- [ ] *Fix all 'Boolean formula can be simplified' problems in file* on `fact { not not p and not not q }` gives `p and q`.
+- [ ] The preview of a simplification quick-fix shows the diff.

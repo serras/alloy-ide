@@ -4,6 +4,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.Disposer
+import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.alloy4.Err
 import edu.mit.csail.sdg.alloy4.ErrorFatal
@@ -27,8 +28,10 @@ class AlloyAnalysisEngine {
     /**
      * Starts [body] on a new thread. It must pass the reporter and options it gets to the analyzer, so that
      * the analysis reports its steps and can be stopped. [listener] gets every event, one at a time, on the
-     * analysis thread or the thread calling [AlloyAnalysis.stop]. Disposing [parent], such as the project,
-     * stops the analysis.
+     * analysis thread or the thread calling [AlloyAnalysis.stop]. It is called while the analysis holds its
+     * own lock, so it must not wait for a thread that uses the analysis ([AlloyAnalysis.stop],
+     * [AlloyAnalysis.state], [AlloyAnalysis.end]), as `invokeAndWait` to such an EDT would: that deadlocks.
+     * Disposing [parent], such as the project, stops the analysis.
      */
     fun start(
         name: String,
@@ -142,7 +145,7 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
         val end = try {
             val solution = body(reporter, options)
             when {
-                solution == null -> failed(IllegalStateException("The analyzer returned no solution"))
+                solution == null -> failed(IllegalStateException(AlloyBundle.message("analysis.failure.no.solution")))
                 solution.satisfiable() -> AlloyAnalysisEvent.Sat(solution, module, reporter.resultTime ?: System.currentTimeMillis())
                 else -> AlloyAnalysisEvent.Unsat(solution, solution.highLevelCore(), reporter.resultTime ?: System.currentTimeMillis())
             }
@@ -232,14 +235,13 @@ class AlloyAnalysis internal constructor(options: A4Options, private val listene
             emit(AlloyAnalysisEvent.Minimized(before, after, now()))
         }
 
+        // Not checkpoints: once the solver has answered, a stop would only throw the answer away
         override fun resultSAT(command: Any?, solvingTime: Long, solution: Any?) {
             resultTime = now()
-            checkpoint()
         }
 
         override fun resultUNSAT(command: Any?, solvingTime: Long, solution: Any?) {
             resultTime = now()
-            checkpoint()
         }
     }
 }

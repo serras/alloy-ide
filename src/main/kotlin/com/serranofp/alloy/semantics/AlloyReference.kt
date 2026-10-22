@@ -1,7 +1,5 @@
 package com.serranofp.alloy.semantics
 
-import com.intellij.openapi.editor.Document
-import com.intellij.openapi.editor.impl.DocumentImpl
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
@@ -14,6 +12,7 @@ import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.ResolveResult
 import com.intellij.psi.impl.source.resolve.ResolveCache
 import com.intellij.psi.util.PsiTreeUtil
+import com.serranofp.alloy.lexer.AlloyTokenSets
 import com.serranofp.alloy.psi.AlloyAssertDecl
 import com.serranofp.alloy.psi.AlloyBinderDecl
 import com.serranofp.alloy.psi.AlloyElementFactory
@@ -32,9 +31,10 @@ import com.serranofp.alloy.psi.AlloyPredDecl
 import com.serranofp.alloy.psi.AlloySigDecl
 import com.serranofp.alloy.psi.AlloySigName
 import com.serranofp.alloy.psi.AlloyTypes
-import com.serranofp.alloy.psi.AlloyBlock
+import com.serranofp.alloy.psi.declarationNodes
 import com.serranofp.alloy.psi.AlloyComprehension
 import com.serranofp.alloy.psi.AlloyQuantifierExpr
+import edu.mit.csail.sdg.ast.Clause
 
 /**
  * A use of a name. With a model that type-checks for the current text, it resolves to exactly what the
@@ -44,8 +44,9 @@ import com.serranofp.alloy.psi.AlloyQuantifierExpr
 class AlloyReference(element: PsiElement) : PsiReferenceBase.Poly<PsiElement>(element, TextRange(0, element.textLength), false) {
     override fun multiResolve(incompleteCode: Boolean): Array<ResolveResult> {
         val file = element.containingFile as? AlloyFile ?: return ResolveResult.EMPTY_ARRAY
-        // Until the model is computed (only off the EDT) a result by name would outlive it in the cache
-        if (AlloyModelService.getInstance(element.project).availableModel(file) == null) return resolveTargets()
+        // Until the model is computed (only off the EDT) a result by name would outlive it in the cache; a file
+        // that is not a module never gets a model, and resolves by name only
+        if (file.isAnalyzable && AlloyModelService.getInstance(element.project).availableModel(file) == null) return resolveTargets()
         return ResolveCache.getInstance(element.project).resolveWithCaching(this, RESOLVER, false, incompleteCode)
     }
 
@@ -54,28 +55,26 @@ class AlloyReference(element: PsiElement) : PsiReferenceBase.Poly<PsiElement>(el
         return targets.map(::PsiElementResolveResult).toTypedArray()
     }
 
-    /** The declaration the analyzer resolved this use to, if the model type-checks for the current text. */
-    fun exactTarget(): AlloyNamedDeclaration? {
+    /**
+     * What the analyzer resolved this use to (`CompModule.find` and `Expr.referenced`), if the model type-checks
+     * for the current text: what it refers to, and its declaration if that is in a file, such as a signature
+     * rather than a built-in.
+     */
+    fun exactResolution(): AlloyResolution? {
         val file = element.containingFile as? AlloyFile ?: return null
+        if (!file.isAnalyzable) return null
         val model = AlloyModelService.getInstance(element.project).availableModel(file) as? AlloyModelResult.Model ?: return null
-        val filename = AlloyPositions.filename(file.virtualFile ?: return null)
-        val document = model.modules.contents[filename]?.let(::DocumentImpl) ?: return null
+        val filename = AlloyPositions.filename(file.virtualFile)
+        val lines = model.modules.lines(filename) ?: return null
         val start = element.textRange.startOffset
-        if (start >= document.textLength) return null
-        val target = model.module.find(AlloyPositions.pos(filename, document, TextRange(start, start)))?.referenced() ?: return null
-        return declarationAt(target.pos(), model.modules, element.manager)
+        if (start >= lines.length) return null
+        val pos = AlloyPositions.pos(filename, lines, TextRange(start, start))
+        val referenced = AlloyExprIndex.of(model).find(pos)?.referenced() ?: return null
+        return AlloyResolution(referenced, declarationAt(referenced.pos(), model.modules, element.manager))
     }
 
-    /** How the analyzer explains what this use refers to, if the model type-checks for the current text. */
-    fun exactExplanation(): String? {
-        val file = element.containingFile as? AlloyFile ?: return null
-        val model = AlloyModelService.getInstance(element.project).availableModel(file) as? AlloyModelResult.Model ?: return null
-        val filename = AlloyPositions.filename(file.virtualFile ?: return null)
-        val document = model.modules.contents[filename]?.let(::DocumentImpl) ?: return null
-        val start = element.textRange.startOffset
-        if (start >= document.textLength) return null
-        return model.module.find(AlloyPositions.pos(filename, document, TextRange(start, start)))?.referenced()?.explain()
-    }
+    /** The declaration the analyzer resolved this use to, if the model type-checks for the current text. */
+    fun exactTarget(): AlloyNamedDeclaration? = exactResolution()?.declaration
 
     /** Whether this use resolves through the analyzer, rather than by name. */
     fun isExact(): Boolean = exactTarget() != null
@@ -98,9 +97,10 @@ class AlloyReference(element: PsiElement) : PsiReferenceBase.Poly<PsiElement>(el
         fun declarationAt(pos: edu.mit.csail.sdg.alloy4.Pos, modules: AlloyModules, manager: PsiManager): AlloyNamedDeclaration? {
             val virtualFile = AlloyPositions.file(pos.filename, modules.files) ?: return null
             val file = manager.findFile(virtualFile) as? AlloyFile ?: return null
-            val document: Document = modules.contents[pos.filename]?.let(::DocumentImpl)
-                ?: FileDocumentManager.getInstance().getDocument(virtualFile) ?: return null
-            val offset = AlloyPositions.textRange(pos, document).startOffset
+            // The text the analyzer saw, or for a library module (which never changes) its file's
+            val offset = modules.lines(pos.filename)?.let { AlloyPositions.textRange(pos, it).startOffset }
+                ?: FileDocumentManager.getInstance().getDocument(virtualFile)?.let { AlloyPositions.textRange(pos, it).startOffset }
+                ?: return null
             val declarations = generateSequence(file.findElementAt(offset)) { it.parent.takeUnless { parent -> parent is PsiFile } }
                 .filterIsInstance<AlloyNamedDeclaration>()
                 .toList()
@@ -109,6 +109,9 @@ class AlloyReference(element: PsiElement) : PsiReferenceBase.Poly<PsiElement>(el
         }
     }
 }
+
+/** What the analyzer resolved a use to: the expression it refers to, and where that is declared. */
+class AlloyResolution(val referenced: Clause, val declaration: AlloyNamedDeclaration?)
 
 /**
  * Resolution by name, for a model that does not type-check (or is not computed yet), innermost scope first:
@@ -174,21 +177,20 @@ object AlloyScopes {
         val offset = reference.textRange.startOffset
         return generateSequence(reference.parent) { it.parent }.takeWhile { it !is AlloyFile }.map { scope ->
             when (scope) {
-                is AlloyQuantifierExpr, is AlloyComprehension ->
-                    if (offset >= bodyStart(scope)) scope.children.filterIsInstance<AlloyBinderDecl>() else emptyList()
-                is AlloyLetExpr -> if (offset >= bodyStart(scope)) scope.children.filterIsInstance<AlloyLetDecl>() else emptyList()
+                is AlloyQuantifierExpr, is AlloyComprehension, is AlloyLetExpr ->
+                    scope.children.filter { (it is AlloyBinderDecl || it is AlloyLetDecl) && offset >= scopeStart(it as AlloyNamedDeclaration) }
+                        .map { it as AlloyNamedDeclaration }
                 is AlloyPredDecl, is AlloyFunDecl, is AlloyMacroDecl -> scope.children.filterIsInstance<AlloyParamDecl>()
                 else -> emptyList()
             }
         }
     }
 
-    /** Where the body of a binder starts: after its `|`, or at its block. Nothing is in scope before it. */
-    private fun bodyStart(scope: PsiElement): Int {
-        val bar = scope.node.findChildByType(AlloyTypes.BAR)
-        if (bar != null) return bar.startOffset
-        return scope.children.filterIsInstance<AlloyBlock>().firstOrNull()?.textRange?.startOffset ?: Int.MAX_VALUE
-    }
+    /**
+     * Where a binder comes into scope: after its group, as in `all x: A, y: x.next | ...`, where the bound of `y`
+     * already sees `x`; a `let` binding is in scope after its value. Nothing sees it before.
+     */
+    private fun scopeStart(binder: AlloyNamedDeclaration): Int = declarationNodes(binder).last().textRange.endOffset
 
     private fun enclosingFields(reference: PsiElement): List<AlloyNamedDeclaration> {
         val sig = PsiTreeUtil.getParentOfType(reference, AlloySigDecl::class.java) ?: return emptyList()
@@ -229,15 +231,13 @@ object AlloyScopes {
             // `private a, b: A` is one group; the bound of the group before it ends the walk
             val group = generateSequence(declaration.prevSibling) { it.prevSibling }
                 .filterNot { it is PsiWhiteSpace || it is PsiComment }
-                .takeWhile { it is AlloyFieldDecl || it.node.elementType in FIELD_GROUP_TOKENS }
+                .takeWhile { it is AlloyFieldDecl || it.node.elementType in AlloyTokenSets.FIELD_GROUP }
             group.any { it.node.elementType == AlloyTypes.PRIVATE }
         }
         is AlloySigName -> declaration.parent.node.findChildByType(AlloyTypes.PRIVATE) != null
         is AlloyEnumMember -> PsiTreeUtil.getParentOfType(declaration, AlloyEnumDecl::class.java)?.node?.findChildByType(AlloyTypes.PRIVATE) != null
         else -> declaration.node.findChildByType(AlloyTypes.PRIVATE) != null
     }
-
-    private val FIELD_GROUP_TOKENS = setOf(AlloyTypes.PRIVATE, AlloyTypes.VAR, AlloyTypes.DISJ, AlloyTypes.COMMA)
 
     private inline fun <T> List<T>.ifNotEmpty(action: (List<T>) -> Unit) {
         if (isNotEmpty()) action(this)

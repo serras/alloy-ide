@@ -21,7 +21,7 @@ class AlloyCommandResultTooltipTest : TestCase() {
 
     fun testOutdatedByAnEdit() {
         assertEquals(
-            "<html><i>Outdated: the file changed after this analysis</i><br>Solving...</html>",
+            "<html><i>Outdated: the file or a module it opens changed after this analysis</i><br>Solving...</html>",
             html(CommandDetails(log = listOf(line(Span("Solving...")))), Outdated.FileChanged),
         )
     }
@@ -32,7 +32,7 @@ class AlloyCommandResultTooltipTest : TestCase() {
 
     fun testSolverWarningComesFirst() {
         assertEquals(
-            "<html><i>Outdated: the file changed after this analysis</i><br>" +
+            "<html><i>Outdated: the file or a module it opens changed after this analysis</i><br>" +
                 "The solver minisat is not available, using sat4j instead<br>Starting the solver...</html>",
             html(
                 CommandDetails(listOf("The solver minisat is not available, using sat4j instead"), listOf(line(Span("Starting the solver...")))),

@@ -18,7 +18,8 @@ class AlloyTestInspection : AlloyModelInspection() {
         for (command in context.model.module.allCommands) {
             if (!context.inFile(command.pos)) continue
             val decl = context.commandDecl(command.pos) ?: continue
-            context.register(holder, decl, context.scopeRange(decl, command.pos) ?: decl.textRange, "command", type = WEAK)
+            val scope = AlloyScopeText.of(decl, context.part(decl, command.pos))
+            context.register(holder, decl, scope?.range ?: decl.textRange, "command", type = WEAK)
             for (scope in command.scope) {
                 context.scopeItemRange(decl, scope.pos)?.let { context.register(holder, decl, it, "scope item", type = WEAK) }
             }

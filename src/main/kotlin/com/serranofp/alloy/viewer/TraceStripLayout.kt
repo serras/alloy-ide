@@ -14,18 +14,18 @@ import kotlin.math.ceil
 /**
  * The geometry of the trace path strip, everything but its painting: a circle per state of a trace of
  * [traceLength] states, left to right, a straight arrow between consecutive states, and a curve above them from
- * the last state back to [loopState]. The [selected] state and its [successor], the two the tabs show, are
- * [highlighted]. Every length is Alloy's, multiplied by [scale].
+ * the last state back to [loopState]. The [selected] state and its [successor] (as the model decides it), the two
+ * the tabs show, are [highlighted]. Every length is Alloy's, multiplied by [scale].
  */
 class TraceStripLayout(
     val traceLength: Int,
     val loopState: Int,
     val selected: Int,
-    val successor: Int = if (selected + 1 < traceLength) selected + 1 else loopState,
+    val successor: Int,
     private val scale: Float = JBUIScale.scale(1f),
 ) {
     init {
-        require(traceLength > 0 && loopState in 0 until traceLength && selected in 0 until traceLength)
+        require(traceLength > 0 && loopState in 0 until traceLength && selected in 0 until traceLength && successor in 0 until traceLength)
     }
 
     private fun scaled(length: Int): Double = length * scale.toDouble()

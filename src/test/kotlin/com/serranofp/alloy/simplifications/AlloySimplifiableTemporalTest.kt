@@ -10,6 +10,10 @@ class AlloySimplifiableTemporalTest : AlloySimplificationTestCase() {
         )
     }
 
+    fun testRedundantParenthesesDropped() {
+        assertEquals(listOf("always p", "always eventually p"), fixed("always (always p)", "eventually (always eventually p)"))
+    }
+
     fun testAbsorbedOperators() {
         assertEquals(
             listOf("always eventually n.acts", "eventually always n.waits"),

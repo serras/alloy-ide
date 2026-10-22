@@ -2,9 +2,12 @@ package com.serranofp.alloy.run
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.diagnostic.ControlFlowException
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.impl.DocumentImpl
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiManager
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.analysis.AlloyAnalysisEngine
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 import com.serranofp.alloy.psi.AlloyFile
@@ -14,6 +17,7 @@ import com.serranofp.alloy.semantics.AlloyPositions
 import com.serranofp.alloy.settings.AlloySettings
 import com.serranofp.alloy.settings.AlloySolvers
 import edu.mit.csail.sdg.translator.A4Options
+import java.util.concurrent.CancellationException
 
 /**
  * Starts a command inside the IDE: takes the model of the file from [AlloyModelService], finds the
@@ -38,23 +42,33 @@ class AlloyCommandLauncher(
     private class NotFound(val summary: String, val details: String) : Found
 
     /**
-     * Runs on a background thread; every failure ends [execution] with a summary and its cause. Disposing
-     * [parent] stops the analysis.
+     * Runs on a background thread; every failure ends [execution] with a summary and its cause, so that the
+     * project's analysis is never left taken. A cancellation, such as that of the task while the model is
+     * read, stops the execution and goes on. Disposing [parent] stops the analysis.
      */
     fun launch(execution: AlloyCommandExecution, parent: Disposable) {
+        try {
+            start(execution, parent)
+        } catch (e: Throwable) {
+            if (e is ControlFlowException || e is CancellationException) {
+                execution.terminate()
+                throw e
+            }
+            thisLogger().warn("Launching ${execution.command.displayName} failed", e)
+            execution.fail(AlloyRunLog.FAILED, AlloyBundle.message("run.failure.analyzer", e.message ?: e.toString()))
+        }
+    }
+
+    private fun start(execution: AlloyCommandExecution, parent: Disposable) {
         solverWarning()?.let(execution::warn)
-        val fileName = execution.file.name
         val target = when (val found = ReadAction.nonBlocking<Found> { find(execution) }.executeSynchronously()) {
             is Target -> found
-            is NotFound, null -> {
-                execution.fail(found.summary, found.details)
-                return
-            }
+            is NotFound -> return execution.fail(found.summary, found.details)
         }
         val warnings = target.model.warnings
         if (warnings.isNotEmpty() && !nonFatalWarnings()) {
             warnings.forEach { execution.accept(AlloyAnalysisEvent.Warning(it, System.currentTimeMillis())) }
-            execution.fail(AlloyRunLog.FAILED, "$fileName has warnings. $WARNINGS_ARE_FATAL")
+            execution.fail(AlloyRunLog.FAILED, AlloyBundle.message("run.failure.warnings", execution.file.name, WARNINGS_ARE_FATAL))
             return
         }
         val options = options().apply { originalFilename = target.filename }
@@ -73,19 +87,23 @@ class AlloyCommandLauncher(
     private fun find(execution: AlloyCommandExecution): Found {
         val fileName = execution.file.name
         val psiFile = PsiManager.getInstance(project).findFile(execution.file) as? AlloyFile
-            ?: return NotFound(AlloyRunLog.FAILED, "$fileName is not an Alloy file")
+            ?: return NotFound(AlloyRunLog.FAILED, AlloyBundle.message("run.failure.not.alloy", fileName))
         val psiCommand = AlloyCommands.find(psiFile, execution.command)
         psiCommand?.let { execution.expect(AlloyCommands.expects(it)) }
-        val model = when (val result = AlloyModelService.getInstance(project).model(psiFile)) {
-            is AlloyModelResult.Model -> result
-            is AlloyModelResult.Errors ->
-                return NotFound(AlloyCommandExecution.MODEL_HAS_ERRORS, "$fileName has errors, see the problems reported in the editor")
-            is AlloyModelResult.Unavailable ->
-                return NotFound(AlloyRunLog.FAILED, "The Alloy analyzer failed: ${result.cause.message ?: result.cause}")
-        }
-        val notFound = NotFound(AlloyCommandExecution.COMMAND_NOT_FOUND, "Command ${execution.command.displayName} was not found in $fileName")
-        if (psiCommand == null) return notFound
+        val result = AlloyModelService.getInstance(project).model(psiFile)
         val filename = AlloyPositions.filename(execution.file)
+        val modules = result.modules
+        execution.analyzes(modules.files.filterKeys { modules.reaches(filename, it) }.values.toSet())
+        val model = when (result) {
+            is AlloyModelResult.Model -> result
+            is AlloyModelResult.Errors -> return NotFound(AlloyCommandExecution.MODEL_HAS_ERRORS, AlloyBundle.message("run.failure.errors", fileName))
+            is AlloyModelResult.Unavailable ->
+                return NotFound(AlloyRunLog.FAILED, AlloyBundle.message("run.failure.analyzer", result.cause.message ?: result.cause.toString()))
+        }
+        val notFound = NotFound(
+            AlloyCommandExecution.COMMAND_NOT_FOUND, AlloyBundle.message("run.failure.command.missing", execution.command.displayName, fileName),
+        )
+        if (psiCommand == null) return notFound
         val text = model.modules.contents[filename] ?: return notFound
         val document = DocumentImpl(text)
         // A command's position starts at its keyword, or at the last command of a `=>` chain
@@ -96,8 +114,6 @@ class AlloyCommandLauncher(
     }
 
     companion object {
-        const val WARNINGS_ARE_FATAL =
-            "Warnings often indicate errors in the model. To analyze it anyway, turn on Non-fatal warnings in " +
-                "Settings | Languages & Frameworks | Alloy."
+        val WARNINGS_ARE_FATAL: String get() = AlloyBundle.message("run.failure.warnings.fatal")
     }
 }

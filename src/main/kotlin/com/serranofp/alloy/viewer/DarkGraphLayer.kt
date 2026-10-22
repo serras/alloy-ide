@@ -11,41 +11,38 @@ import javax.swing.JLayer
 import javax.swing.plaf.LayerUI
 
 /**
- * Paints a visualizer graph through [DarkGraphics] while [isDark], and as it is otherwise. The palette is taken
- * from the IDE theme when first needed, and again after the theme changes.
+ * The dark mapping of the visualizer graphs of one tool window: whether it applies ([isDark]), and the palette,
+ * taken from the IDE theme when first needed and again after the theme changes. Each graph gets its own
+ * [DarkGraphLayerUI] from [layer]: a `LayerUI` listens to every layer it is installed on until it is replaced
+ * there, so one shared by all graphs would keep every graph ever shown alive.
  */
-class DarkGraphLayerUI(private val isDark: () -> Boolean = { !JBColor.isBright() }) : LayerUI<JComponent>() {
+class DarkGraphTheme(private val isDark: () -> Boolean = { !JBColor.isBright() }) {
     private var palette: DarkPalette? = null
 
-    override fun paint(g: Graphics, c: JComponent) {
-        if (!isDark()) return super.paint(g, c)
-        val dark = DarkGraphics(g.create() as Graphics2D, palette ?: DarkPalette.ide().also { palette = it })
-        try {
-            super.paint(dark, c)
-        } finally {
-            dark.dispose()
-        }
-    }
+    /** The palette to paint with, or null to paint as it is. */
+    internal fun palette(): DarkPalette? = if (!isDark()) null else palette ?: DarkPalette.ide().also { palette = it }
 
-    /** Forgets the palette, after the IDE theme changed. */
-    fun themeChanged() {
-        palette = null
-    }
+    /** [view] in a layer of its own that paints through this mapping. */
+    fun layer(view: JComponent): JLayer<JComponent> = JLayer(view, DarkGraphLayerUI(this))
 
     /** Takes the new palette and calls [repaint] whenever the IDE theme changes, until [parent] is disposed. */
     fun followTheme(parent: Disposable, repaint: () -> Unit) {
         ApplicationManager.getApplication().messageBus.connect(parent).subscribe(LafManagerListener.TOPIC, LafManagerListener {
-            themeChanged()
+            palette = null
             repaint()
         })
     }
+}
 
-    companion object {
-        /** [view] in a layer that follows the IDE theme, repainted when it changes, until [parent] is disposed. */
-        fun wrap(view: JComponent, parent: Disposable, ui: DarkGraphLayerUI = DarkGraphLayerUI()): JLayer<JComponent> {
-            val layer = JLayer(view, ui)
-            ui.followTheme(parent, layer::repaint)
-            return layer
+/** Paints one visualizer graph through [DarkGraphics] while its [theme] is dark, and as it is otherwise. */
+class DarkGraphLayerUI(private val theme: DarkGraphTheme) : LayerUI<JComponent>() {
+    override fun paint(g: Graphics, c: JComponent) {
+        val palette = theme.palette() ?: return super.paint(g, c)
+        val dark = DarkGraphics(g.create() as Graphics2D, palette)
+        try {
+            super.paint(dark, c)
+        } finally {
+            dark.dispose()
         }
     }
 }

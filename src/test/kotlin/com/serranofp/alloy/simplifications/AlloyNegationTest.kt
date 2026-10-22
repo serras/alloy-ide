@@ -1,6 +1,8 @@
 package com.serranofp.alloy.simplifications
 
+import com.intellij.openapi.util.TextRange
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import edu.mit.csail.sdg.ast.Expr
 
 class AlloyNegationTest : BasePlatformTestCase() {
     private val header = "sig A { r: set A }\none sig x, y extends A {}\npred p { some A }\nfun i: Int { #A }\nfun j: Int { #A.r }\n"
@@ -10,13 +12,17 @@ class AlloyNegationTest : BasePlatformTestCase() {
         myFixture.configureByText("model.als", header + formulas.withIndex().joinToString("") { (i, formula) -> "pred subject$i { $formula }\n" })
     }
 
-    /** Whether [node] is the body of a `subject` predicate. */
-    private fun AlloyRewriteContext.isSubject() = ancestors.isEmpty() && paragraph.text.startsWith("pred subject")
+    /** Whether [node] is the body of a `subject` predicate, `pred subject<i> { body }`. */
+    private fun AlloyRewriteContext.isSubject(node: Expr): Boolean {
+        if (!paragraph.text.startsWith("pred subject")) return false
+        val body = paragraph.textRange.let { TextRange(it.startOffset + paragraph.text.indexOf("{ ") + 2, it.endOffset - 2) }
+        return source(node)?.range == body
+    }
 
     /** Each formula of [formulas] as [negate] writes it. */
     private fun negated(vararg formulas: String): List<String> {
         configure(formulas)
-        val negation = rule { node -> if (isSubject()) replace(node, negate(node)) else null }
+        val negation = rule { node -> if (isSubject(node)) replace(node, negate(node)) else null }
         return myFixture.rewrites(negation).map { it.text }
     }
 
@@ -26,7 +32,7 @@ class AlloyNegationTest : BasePlatformTestCase() {
         return myFixture.onModel { source, model ->
             val found = ArrayList<Boolean>()
             val record = rule { node ->
-                if (isSubject()) found += isNegation(node)
+                if (isSubject(node)) found += isNegation(node)
                 null
             }
             AlloyRewriteWalker(source, listOf(record)).walk(model.module)
@@ -35,7 +41,7 @@ class AlloyNegationTest : BasePlatformTestCase() {
     }
 
     fun testNegationIsTakenOff() {
-        assertEquals(listOf("p", "some A", "(x in y)"), negated("not p", "!some A", "not (x in y)"))
+        assertEquals(listOf("p", "some A", "x in y"), negated("not p", "!some A", "not (x in y)"))
     }
 
     fun testComparisonsAreNegated() {

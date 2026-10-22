@@ -169,6 +169,24 @@ class AlloyNewSolutionTest : BasePlatformTestCase() {
         assertEquals(AlloyInstanceViewer.STOPPED, viewer.status)
     }
 
+    /** The platform skips `run` of a task cancelled before it starts, such as when the project closes, but not `onFinished`. */
+    fun testATaskThatNeverRunsGivesTheAnalysisBack() {
+        open(STATIC)
+        val before = viewer.session
+        viewer.schedule = { it.onFinished() }
+        assertTrue(viewer.requestSolution(SolutionKind.Config))
+        assertFalse(viewer.enumerating)
+        assertSame(before, viewer.session)
+        assertTrue(AlloyRunService.getInstance(project).startRun(newExecution(project, myFixture.file.virtualFile, show)))
+    }
+
+    /** Its first state is prepared with it, in the background task. */
+    fun testANewSolutionComesPrepared() {
+        open(STATIC)
+        val after = request(SolutionKind.Config).model
+        assertTrue(after.isPrepared(0))
+    }
+
     fun testOutdatedResultDisablesEveryKind() {
         open(TRACES)
         myFixture.type("x")

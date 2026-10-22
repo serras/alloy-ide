@@ -26,6 +26,13 @@ class AlloyTestLocatorTest : BasePlatformTestCase() {
         assertEquals("run show for 3", locate(AlloyCommandRef("show", 2))!!.text)
     }
 
+    fun testSharedLabelByOccurrence() {
+        myFixture.configureByText("a.als", "pred show {}\nrun show for 3\nrun show for 5\n")
+        assertEquals("run show for 3", locate(AlloyCommandRef("show", 1))!!.text)
+        assertEquals("run show for 5", locate(AlloyCommandRef("show", 0, occurrence = 1))!!.text)
+        assertNull(locate(AlloyCommandRef("show", 1, occurrence = 2)))
+    }
+
     fun testUnlabelledByIndex() {
         assertEquals("run { some Node } for 2", locate(AlloyCommandRef(null, 2))!!.text)
     }
@@ -39,6 +46,9 @@ class AlloyTestLocatorTest : BasePlatformTestCase() {
         val url = AlloyTestLocator.url(myFixture.file.virtualFile, AlloyCommandRef(null, 2))
         assertEquals("alloy://${myFixture.file.virtualFile.url}#2:", url)
         assertEquals(myFixture.file.virtualFile.url to AlloyCommandRef(null, 2), AlloyTestLocator.parse(url.removePrefix("alloy://")))
+        val shared = AlloyTestLocator.url(myFixture.file.virtualFile, AlloyCommandRef("show", 4, occurrence = 1))
+        assertEquals("alloy://${myFixture.file.virtualFile.url}#4:show:1", shared)
+        assertEquals(1, AlloyTestLocator.parse(shared.removePrefix("alloy://"))!!.second.occurrence)
     }
 
     fun testConsolePropertiesUseTheLocator() {

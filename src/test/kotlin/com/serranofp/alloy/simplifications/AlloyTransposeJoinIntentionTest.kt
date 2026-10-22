@@ -12,6 +12,10 @@ class AlloyTransposeJoinIntentionTest : AlloyIntentionTestCase() {
         assertEquals("some succ.(Node.succ)", invoked("some (Node.succ).~succ", swap, at = ".~"))
     }
 
+    fun testTransposeIsDroppedRatherThanDoubled() {
+        assertEquals("some n.succ", invoked("some (~succ).n", swap, at = ".n", params = "[n: Node]"))
+    }
+
     fun testOtherJoins() {
         // `rel` is ternary
         assertNotOffered("some rel.n", swap, at = ".", params = "[n: Node]")

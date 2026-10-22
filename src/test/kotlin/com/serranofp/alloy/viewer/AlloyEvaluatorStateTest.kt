@@ -1,5 +1,7 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.xmlb.XmlSerializer
 
@@ -28,7 +30,8 @@ class AlloyEvaluatorStateTest : BasePlatformTestCase() {
         assertEmpty(state.watches(ring))
     }
 
-    fun testMissingFilesArePrunedOnLoad() {
+    /** A file may be missing for a while, such as on an unmounted path: its watches stay. */
+    fun testMissingFilesAreKeptOnLoad() {
         val ring = myFixture.addFileToProject("ring.als", "sig Node {}").virtualFile
         val saved = AlloyEvaluatorState()
         saved.setWatches(ring, listOf("Elected"))
@@ -38,7 +41,39 @@ class AlloyEvaluatorStateTest : BasePlatformTestCase() {
         }
         val loaded = AlloyEvaluatorState()
         loaded.loadState(roundTrip(saved.state))
-        assertEquals(listOf(ring.url), loaded.state.files.map { it.url })
+        assertEquals(listOf(ring.url, ring.url.replace("ring.als", "gone.als")), loaded.state.files.map { it.url })
+    }
+
+    private val stored get() = AlloyEvaluatorState.getInstance(project)
+
+    override fun tearDown() {
+        try {
+            stored.loadState(AlloyEvaluatorWatches())
+        } finally {
+            super.tearDown()
+        }
+    }
+
+    fun testWatchesFollowARenameAndAMove() {
+        val ring = myFixture.addFileToProject("models/ring.als", "sig Node {}").virtualFile
+        stored.setWatches(ring, listOf("Elected"))
+        WriteAction.run<Throwable> { ring.rename(this, "election.als") }
+        assertEquals(listOf("Elected"), stored.watches(ring))
+        assertEquals(listOf(ring.url), stored.state.files.map { it.url })
+        val target = WriteAction.compute<VirtualFile, Throwable> { ring.parent.parent.createChildDirectory(this, "moved") }
+        WriteAction.run<Throwable> { ring.move(this, target) }
+        assertEquals(listOf("Elected"), stored.watches(ring))
+        // And with the directory above it
+        WriteAction.run<Throwable> { target.rename(this, "renamed") }
+        assertTrue(ring.url, ring.url.endsWith("/renamed/election.als"))
+        assertEquals(listOf("Elected"), stored.watches(ring))
+    }
+
+    fun testWatchesOfADeletedFileAreForgotten() {
+        val ring = myFixture.addFileToProject("ring.als", "sig Node {}").virtualFile
+        stored.setWatches(ring, listOf("Elected"))
+        WriteAction.run<Throwable> { ring.delete(this) }
+        assertEmpty(stored.state.files)
     }
 
     fun testPanelVisibilityAndProportionAreSaved() {

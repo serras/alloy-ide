@@ -11,25 +11,16 @@ import com.serranofp.alloy.semantics.AlloyModelService
 import edu.mit.csail.sdg.ast.Expr
 import java.util.concurrent.TimeUnit
 
-/** A rule for tests, matching with [match]. */
-internal fun rule(
-    family: AlloyRewriteFamily = AlloyRewriteFamily("TEST"),
-    kind: AlloyRewriteKind = AlloyRewriteKind.SIMPLIFICATION,
-    match: AlloyRewriteContext.(Expr) -> AlloyRewrite?,
-): AlloyRewriteRule = object : AlloyRewriteRule {
-    override val family = family
-    override val kind = kind
-
-    override fun match(node: Expr, context: AlloyRewriteContext): AlloyRewrite? = context.match(node)
-}
-
 /** A rewrite of [node], with its parentheses, by [replacement]. */
 internal fun AlloyRewriteContext.replace(node: Expr, replacement: AlloyPiece?, vararg uses: Expr): AlloyRewrite? {
     val range = source(node)?.range ?: return null
     return AlloyRewrite(range, replacement ?: return null, "Test rewrite", uses.toList()) { "Rewrite to '$it'" }
 }
 
-/** Runs [block] on the type-checked model of the fixture's file, off the EDT and in a read action, as the inspections do. */
+/**
+ * Runs [block] on the type-checked model of the fixture's file, and the source text that the inspections
+ * share for it, off the EDT and in a read action, as the inspections do.
+ */
 internal fun <T : Any> CodeInsightTestFixture.onModel(block: (AlloySourceText, AlloyModelResult.Model) -> T): T =
     onModelIfAny(block) ?: error("The model does not type-check")
 
@@ -40,7 +31,7 @@ internal fun <T : Any> CodeInsightTestFixture.onModelIfAny(block: (AlloySourceTe
         .executeOnPooledThread<T?> {
             ReadAction.computeBlocking<T?, Throwable> {
                 val model = AlloyModelService.getInstance(project).model(file) as? AlloyModelResult.Model
-                model?.let { block(AlloySourceText(file, PsiDocumentManager.getInstance(project).getDocument(file)!!), it) }
+                model?.let { block(AlloySourceText.of(it, file, PsiDocumentManager.getInstance(project).getDocument(file)!!), it) }
             }
         }
         .get(60, TimeUnit.SECONDS)

@@ -1,5 +1,7 @@
 package com.serranofp.alloy.inspections
 
+import com.serranofp.alloy.semantics.AlloyModelResult
+import com.serranofp.alloy.semantics.AlloyModules
 import com.serranofp.alloy.semantics.AlloyPositions
 import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.alloy4.Err
@@ -61,7 +63,7 @@ class AlloyCommandBoundsTest : TestCase() {
             val bound = bounds.bound(sig) ?: return null
             sig.label to (bound.n to bound.exact)
         }
-        return Bounds(user, bounds.seq)
+        return Bounds(user, bounds.seq ?: return null)
     }
 
     /** Top-level signatures declared in the models, not in the library. */
@@ -125,6 +127,38 @@ class AlloyCommandBoundsTest : TestCase() {
         val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, model)
         val seq = module.allCommands.associate { it.label to AlloyCommandBounds(it, module.allReachableSigs.toList()).seq }
         assertEquals(mapOf("written" to 2, "overall" to 5, "default" to 4, "capped" to 7), seq)
+    }
+
+    fun testRaisedScopeIsInherited() {
+        val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, "sig A {}\none sig B, C, D, E extends A {}\nrun r {} for 3")
+        val command = module.allCommands.single()
+        val a = module.allReachableSigs.single { it.label == "this/A" }
+        // `ScopeComputer.computeLowerBound` raises it to its four `one` children
+        assertEquals(4 to false, analyzer(module, command)!!.sigs.getValue("this/A"))
+        assertEquals(AlloyCommandBounds.Bound(4, false, AlloyCommandBounds.Source.Inherited), AlloyCommandBounds(command, module.allReachableSigs.toList()).bound(a))
+    }
+
+    fun testUnknownWhereTheAnalyzerRejectsTheIntegersOrStrings() {
+        val model = "sig A {}\nrun strings {} for 3 but 3 String\nrun bitwidth {} for 3 but 31 int\nrun sequence {} for 3 but 8 seq\n" +
+            "run exactStrings {} for 3 but exactly 3 String\nrun longSequence {} for 3 but 8 seq, 5 int"
+        val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, model)
+        val a = module.allReachableSigs.single { it.label == "this/A" }
+        val known = module.allCommands.associate { command ->
+            val bounds = AlloyCommandBounds(command, module.allReachableSigs.toList())
+            assertEquals(command.label, analyzer(module, command) != null, bounds.bound(a) != null)
+            command.label to (bounds.bound(a) != null && bounds.seq != null)
+        }
+        assertEquals(mapOf("strings" to false, "bitwidth" to false, "sequence" to false, "exactStrings" to true, "longSequence" to true), known)
+    }
+
+    fun testBoundsAreComputedOncePerModel() {
+        val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, "sig A {}\nrun a {} for 2 => run b {} for 3")
+        val model = AlloyModelResult.Model(module, emptyList(), AlloyModules(emptyMap(), emptyMap()))
+        val last = module.allCommands.single()
+        assertSame(AlloyCommandBounds.of(model, last), AlloyCommandBounds.of(model, last))
+        assertSame(AlloyCommandBounds.of(model, last.parent), AlloyCommandBounds.of(model, last.parent))
+        val a = module.allReachableSigs.single { it.label == "this/A" }
+        assertEquals(listOf(3, 2), listOf(last, last.parent).map { AlloyCommandBounds.of(model, it).bound(a)!!.n })
     }
 
     fun testUnknownWhenTheAnalyzerRejectsTheScope() {

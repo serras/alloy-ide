@@ -61,9 +61,42 @@ class AlloyIntLiteralRangeTest : BasePlatformTestCase() {
             nodes + "let many[s] { #s > 10 }\nfact { many[Node] }\npred p { many[Node - Node] }\nrun p for 3\nrun q {} for 3\n",
         )
         assertEquals(
-            listOf("10" to "p uses 4-bit integers (-8..7), so 10 is read as -6; q uses 4-bit integers (-8..7), so 10 is read as -6"),
+            listOf("10" to "p, q use 4-bit integers (-8..7), so 10 is read as -6"),
             problems(),
         )
+    }
+
+    fun testLiteralBelowTheMinimum() {
+        myFixture.configureByText("model.als", nodes + "fact { #Node > -20 }\nrun example {} for 3\n")
+        assertEquals(listOf("-20" to "example uses 4-bit integers (-8..7), so -20 is read as -4"), problems())
+        assertEquals("6", apply("20", "Set the bitwidth of example to 6 int"))
+    }
+
+    /** The analyzer rejects `1_000`, which the plugin's lexer accepts; it allows `_` only in hex and binary literals. */
+    fun testLiteralsInOtherForms() {
+        myFixture.configureByText("model.als", nodes + "fact { #Node < 0x1F and #Node < 0b1010 and #Node < 007 and #Node < 009 }\nrun a {}\n")
+        assertEquals(
+            listOf(
+                "0x1F" to "a uses 4-bit integers (-8..7), so 31 is read as -1",
+                "0b1010" to "a uses 4-bit integers (-8..7), so 10 is read as -6",
+                "009" to "a uses 4-bit integers (-8..7), so 9 is read as -7",
+            ),
+            problems(),
+        )
+    }
+
+    fun testManyCommandsAreSummarized() {
+        val commands = listOf("a", "b", "c", "d", "e").joinToString("") { "run $it {} for 3\n" }
+        myFixture.configureByText("model.als", nodes + "fact { #Node < 12 }\n" + commands + "run f {} for 3 but 3 int\n")
+        assertEquals(
+            listOf("12" to "a, b, c and 2 more commands use 4-bit integers (-8..7), so 12 is read as -4; f uses 3-bit integers (-4..3), so 12 is read as -4"),
+            problems(),
+        )
+        // One fix per bitwidth, for all its commands
+        assertNull(apply("12", "Set the bitwidth of a, b, c and 2 more commands to 5 int"))
+        val raised = listOf("a", "b", "c", "d", "e").joinToString("") { "run $it {} for 3 but 5 int\n" }
+        myFixture.checkResult(nodes + "fact { #Node < 12 }\n" + raised + "run f {} for 3 but 3 int\n")
+        assertEquals(listOf("12" to "f uses 3-bit integers (-4..3), so 12 is read as -4"), problems())
     }
 
     fun testCommandWithoutIntegersIsSkipped() {

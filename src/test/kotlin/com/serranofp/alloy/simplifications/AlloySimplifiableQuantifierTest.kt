@@ -24,6 +24,12 @@ class AlloySimplifiableQuantifierTest : AlloySimplificationTestCase() {
         assertEquals("fact { (no n: Node | p[n]) and some Node }\n", fix("not (some", "Simplify to 'no n: Node | p[n]'"))
     }
 
+    fun testNegatedQuantifierBeforeASequence() {
+        // Without parentheses, the quantifier's body would take in `; some Node`
+        model("pred subject { not (some n: Node | n in n.succ) ; some Node }\n")
+        assertEquals("pred subject { (no n: Node | n in n.succ) ; some Node }\n", fix("not (some", "Simplify to 'no n: Node | n in n.succ'"))
+    }
+
     fun testMembershipQuantifiers() {
         assertEquals(
             listOf("Message in Node.inbox", "some Message & Node.inbox", "no Message & Node.inbox", "Message in Node.inbox"),

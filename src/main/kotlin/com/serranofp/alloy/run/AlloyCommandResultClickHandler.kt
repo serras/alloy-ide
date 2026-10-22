@@ -20,7 +20,7 @@ class AlloyCommandResultClickHandler : InlayActionHandler {
         val ref = (payload as? StringInlayActionPayload)?.text?.let(AlloyCommandResultHintsProvider.Codec::decode) ?: return
         val file = FileDocumentManager.getInstance().getFile(editor.document) ?: return
         val result = AlloyCommandResults.getInstance(project).get(file, ref) ?: return
-        if (result.state == CommandState.Running) {
+        if (result.isRunning) {
             AlloyRunService.getInstance(project).activeExecution
                 ?.takeIf { it.file == file && it.command == ref }
                 ?.stop()

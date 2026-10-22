@@ -9,6 +9,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.settings.AlloySettings
 
 /**
@@ -65,8 +66,14 @@ class AlloyRunService(private val project: Project) : Disposable {
             HintManager.getInstance().showInformationHint(editor, BUSY_MESSAGE)
             return false
         }
-        PsiDocumentManager.getInstance(project).commitAllDocuments()
-        ProgressManager.getInstance().run(AlloyCommandTask(project, execution, launcher, this))
+        try {
+            PsiDocumentManager.getInstance(project).commitAllDocuments()
+            ProgressManager.getInstance().run(AlloyCommandTask(project, execution, launcher, this))
+        } catch (e: Throwable) {
+            // Without its task nothing would end it, and the project's analysis would stay taken
+            execution.terminate()
+            throw e
+        }
         return true
     }
 
@@ -108,7 +115,7 @@ class AlloyRunService(private val project: Project) : Disposable {
     }
 
     companion object {
-        const val BUSY_MESSAGE = "An Alloy analysis is already running"
+        val BUSY_MESSAGE: String get() = AlloyBundle.message("run.busy")
 
         fun getInstance(project: Project): AlloyRunService = project.service()
     }

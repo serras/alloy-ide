@@ -208,7 +208,8 @@ class AlloyCommandResultHintsProviderTest : BasePlatformTestCase() {
             assertTrue("$vacuity: ${hint.text}", hint.text.matches(text))
             assertTrue("$vacuity: ${hint.tooltip}", hint.tooltip!!.contains("<b>Vacuity check</b>"))
             assertTrue(hint.tooltip.contains(AlloyCommandResultTooltip.vacuity(vacuity).first().replace("'", "&#39;")))
-            assertNull(hint.action)
+            // A running vacuity check can be stopped from its hint, as the analysis before it
+            assertEquals("$vacuity", vacuity == Vacuity.Checking, hint.action != null)
         }
     }
 

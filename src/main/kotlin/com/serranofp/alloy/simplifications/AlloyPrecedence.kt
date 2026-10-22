@@ -1,5 +1,6 @@
 package com.serranofp.alloy.simplifications
 
+import com.intellij.psi.util.elementType
 import com.serranofp.alloy.psi.AlloyTypes
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.ExprBinary
@@ -51,7 +52,7 @@ object AlloyPrecedence {
             else -> if (node.op.isArrow) ARROW else COMPARE
         }
         is ExprList -> when (node.op) {
-            ExprList.Op.AND -> if (source.inFile(node.pos) && source.tokenAt(source.range(node.pos).startOffset)?.let { it.node.elementType == AlloyTypes.SEMICOLON } == true) SEQ else AND
+            ExprList.Op.AND -> if (source.inFile(node.pos) && source.tokenAt(source.range(node.pos).startOffset)?.elementType == AlloyTypes.SEMICOLON) SEQ else AND
             ExprList.Op.OR -> OR
             else -> ATOM
         }
@@ -136,6 +137,9 @@ enum class AlloyOperator(val level: Int, val fixity: AlloyFixity, val keyword: S
     NOT_LTE(AlloyPrecedence.COMPARE, AlloyFixity.COMPARISON, "!=<"),
     NOT_GT(AlloyPrecedence.COMPARE, AlloyFixity.COMPARISON, "!>"),
     NOT_GTE(AlloyPrecedence.COMPARE, AlloyFixity.COMPARISON, "!>="),
+    SHL(AlloyPrecedence.SHIFT, AlloyFixity.LEFT, "<<"),
+    SHA(AlloyPrecedence.SHIFT, AlloyFixity.LEFT, ">>"),
+    SHR(AlloyPrecedence.SHIFT, AlloyFixity.LEFT, ">>>"),
     PLUS(AlloyPrecedence.UNION, AlloyFixity.LEFT, "+"),
     MINUS(AlloyPrecedence.UNION, AlloyFixity.LEFT, "-"),
     CARDINALITY(AlloyPrecedence.CARDINALITY, AlloyFixity.PREFIX, "#"),
@@ -192,6 +196,7 @@ enum class AlloyOperator(val level: Int, val fixity: AlloyFixity, val keyword: S
             ExprBinary.Op.LT to LT, ExprBinary.Op.LTE to LTE, ExprBinary.Op.GT to GT, ExprBinary.Op.GTE to GTE,
             ExprBinary.Op.NOT_LT to NOT_LT, ExprBinary.Op.NOT_LTE to NOT_LTE,
             ExprBinary.Op.NOT_GT to NOT_GT, ExprBinary.Op.NOT_GTE to NOT_GTE,
+            ExprBinary.Op.SHL to SHL, ExprBinary.Op.SHA to SHA, ExprBinary.Op.SHR to SHR,
             ExprBinary.Op.PLUS to PLUS, ExprBinary.Op.MINUS to MINUS, ExprBinary.Op.PLUSPLUS to OVERRIDE,
             ExprBinary.Op.INTERSECT to INTERSECT, ExprBinary.Op.ARROW to ARROW,
             ExprBinary.Op.DOMAIN to DOMAIN, ExprBinary.Op.RANGE to RANGE,

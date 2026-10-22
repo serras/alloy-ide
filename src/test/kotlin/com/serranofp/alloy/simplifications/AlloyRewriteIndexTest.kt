@@ -1,7 +1,11 @@
 package com.serranofp.alloy.simplifications
 
 import com.intellij.codeInsight.intention.IntentionActionBean
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.extensions.ExtensionPointName
+import com.serranofp.alloy.psi.AlloyFile
+import java.util.concurrent.TimeUnit
 
 class AlloyRewriteIndexTest : AlloyIntentionTestCase() {
     fun testOfferedAfterHighlighting() {
@@ -13,6 +17,29 @@ class AlloyRewriteIndexTest : AlloyIntentionTestCase() {
         myFixture.configureByText("model.als", header + "pred subject { some Node.inbox <caret>implies p }\nfact { some Bogus }\n")
         myFixture.doHighlighting()
         assertEmpty(offered())
+    }
+
+    fun testNotOfferedBeforeHighlighting() {
+        // Off the EDT, where the platform asks, the intention does not compute the model itself
+        myFixture.configureByText("model.als", header + "pred subject { some Node.inbox <caret>implies p }\n")
+        val intention = AlloyImpliesToOrIntention()
+        fun available() = ApplicationManager.getApplication().executeOnPooledThread<Boolean> {
+            ReadAction.computeBlocking<Boolean, Throwable> { intention.isAvailable(project, myFixture.editor, myFixture.file.findElementAt(myFixture.caretOffset)!!) }
+        }.get(60, TimeUnit.SECONDS)
+        assertFalse(available())
+        myFixture.doHighlighting()
+        assertTrue(available())
+    }
+
+    fun testIndexAndSourceTextAreKeptWithTheModel() {
+        configure("some Node.inbox implies p", at = "implies")
+        val document = myFixture.editor.document
+        val file = myFixture.file as AlloyFile
+        assertTrue(
+            myFixture.onModel { source, model ->
+                source === AlloySourceText.of(model, file, document) && AlloyRewriteIndex.of(model, file, document) === AlloyRewriteIndex.of(model, file, document)
+            },
+        )
     }
 
     fun testInnermostNodeAroundTheCaret() {

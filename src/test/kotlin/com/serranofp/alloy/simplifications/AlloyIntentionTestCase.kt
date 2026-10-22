@@ -40,10 +40,9 @@ abstract class AlloyIntentionTestCase : BasePlatformTestCase() {
     }
 
     private companion object {
-        val FAMILIES = setOf(
-            "Apply De Morgan's law", "Replace 'or' with 'implies'", "Replace 'implies' with 'or'",
-            "Move negation into or out of quantifier", "Move negation into or out of temporal operator",
-            "Distribute or factor out temporal operator", "Swap join with transpose",
-        )
+        val FAMILIES = listOf(
+            AlloyDeMorganIntention(), AlloyOrToImpliesIntention(), AlloyImpliesToOrIntention(), AlloyQuantifierNegationIntention(),
+            AlloyTemporalNegationIntention(), AlloyTemporalDistributionIntention(), AlloyTransposeJoinIntention(),
+        ).map { it.familyName }.toSet()
     }
 }

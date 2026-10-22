@@ -3,10 +3,13 @@ package com.serranofp.alloy.viewer
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.actionSystem.CustomShortcutSet
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import com.serranofp.alloy.AlloyBundle
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Dimension
@@ -14,16 +17,21 @@ import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Rectangle
 import java.awt.RenderingHints
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
+import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.JComponent
 import javax.swing.ScrollPaneConstants
+import javax.swing.SwingUtilities
 import javax.swing.ToolTipManager
 
 /**
  * The trace path strip, as the Alloy visualizer draws it above the graph: a numbered circle per state, arrows
  * between consecutive states and a curve from the last state back to the loop target, with the two shown states
- * highlighted. Clicking a circle calls [onSelect] with its state. It is transparent, over the background around
+ * highlighted. Pressing a circle calls [onSelect] with its state, and focuses the strip, where Right selects the
+ * successor, Left the state before, and Home and End the first and last states. It is transparent, over the background around
  * it. Under a light theme it has Alloy's colors; under a dark one, the roles of a [DarkPalette] of that
  * background, taken again whenever the theme changes, until [parent] is disposed. It is shown in [scrollPane],
  * which scrolls horizontally only.
@@ -48,22 +56,43 @@ class AlloyTraceStrip(
 
     init {
         isOpaque = false
+        isFocusable = true
         font = JBUI.Fonts.label()
         ToolTipManager.sharedInstance().registerComponent(this)
+        // On press, not click: a click is lost when the mouse moves a little before the release
         addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                geometry?.stateAt(e.point)?.let(onSelect)
+            override fun mousePressed(e: MouseEvent) {
+                if (!SwingUtilities.isLeftMouseButton(e)) return
+                val state = geometry?.stateAt(e.point) ?: return
+                requestFocusInWindow()
+                onSelect(state)
             }
         })
+        addFocusListener(object : FocusAdapter() {
+            override fun focusGained(e: FocusEvent) = repaint()
+            override fun focusLost(e: FocusEvent) = repaint()
+        })
+        step(KeyEvent.VK_RIGHT) { it.successor }
+        step(KeyEvent.VK_LEFT) { (it.selected - 1).takeIf { state -> state >= 0 } }
+        step(KeyEvent.VK_HOME) { 0 }
+        step(KeyEvent.VK_END) { it.traceLength - 1 }
         ApplicationManager.getApplication().messageBus.connect(parent).subscribe(LafManagerListener.TOPIC, LafManagerListener {
             palette = null
             repaint()
         })
     }
 
-    /** Shows a trace of [traceLength] states that loops back to [loopState], with [selected] and its successor highlighted. */
-    fun show(traceLength: Int, loopState: Int, selected: Int) {
-        geometry = TraceStripLayout(traceLength, loopState, selected)
+    /** Selects the state that [target] gives for the shown trace, if any, when [key] is pressed in the strip. */
+    private fun step(key: Int, target: (TraceStripLayout) -> Int?) {
+        DumbAwareAction.create {
+            val geometry = geometry ?: return@create
+            target(geometry)?.takeIf { it != geometry.selected }?.let(onSelect)
+        }.registerCustomShortcutSet(CustomShortcutSet(key), this)
+    }
+
+    /** Shows a trace of [traceLength] states that loops back to [loopState], with [selected] and its [successor] highlighted. */
+    fun show(traceLength: Int, loopState: Int, selected: Int, successor: Int) {
+        geometry = TraceStripLayout(traceLength, loopState, selected, successor)
         revalidate()
         repaint()
     }
@@ -90,9 +119,10 @@ class AlloyTraceStrip(
     override fun getToolTipText(event: MouseEvent): String? {
         val geometry = geometry ?: return null
         val state = geometry.stateAt(event.point) ?: return null
-        if (state != geometry.loopState) return "State $state"
+        if (state != geometry.loopState) return AlloyBundle.message("viewer.state", state.toString())
         val last = geometry.traceLength - 1
-        return if (last == state) "State $state (loops back to itself)" else "State $state (state $last loops back to it)"
+        return if (last == state) AlloyBundle.message("viewer.strip.self.loop", state.toString())
+        else AlloyBundle.message("viewer.strip.loop.target", state.toString(), last.toString())
     }
 
     /** The colors of the strip, by role. */
@@ -126,7 +156,8 @@ class AlloyTraceStrip(
                 val highlighted = state in geometry.highlighted
                 g2.color = if (highlighted) colors.highlighted else colors.dimmed
                 g2.fill(circle)
-                g2.color = colors.outline
+                // The focus, on the selected state, as the keys move from it
+                g2.color = if (state == geometry.selected && isFocusOwner) JBUI.CurrentTheme.Focus.focusColor() else colors.outline
                 g2.draw(circle)
                 // Centered on its glyphs; Alloy's half ascent down puts the font's leading above them, so they sit low
                 val number = state.toString()

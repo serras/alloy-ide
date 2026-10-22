@@ -1,14 +1,17 @@
 package com.serranofp.alloy.inspections
 
+import com.intellij.codeInsight.intention.PriorityAction
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement
 import com.intellij.codeInspection.ProblemHighlightType
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.inspections.AlloyTextEdits.balanced
 import com.serranofp.alloy.inspections.AlloyTextEdits.bodyIndent
 import com.serranofp.alloy.inspections.AlloyTextEdits.indentOf
@@ -23,25 +26,32 @@ import edu.mit.csail.sdg.ast.VisitQuery
  * A fact over mutable state that, without `always`, constrains only the start of the trace: the transition out
  * of the first state, or only the first state when it uses no temporal operator at all. Signature facts are
  * left out, since the analyzer puts those over mutable state under `always`.
+ *
+ * Wrapping in `always` would also turn a conjunct about the first state only, such as `no inbox`, into an
+ * invariant, so it is not offered for a fact with such a conjunct. A fact without temporal operators may well
+ * be about the initial state, as `fact init { no inbox }`, so there the fix has a low priority.
  */
 class AlloyFactOnlyAtStartInspection : AlloyModelInspection() {
     override fun check(context: AlloyInspectionContext, holder: ProblemsHolder) {
         val analysis = AlloyFrameAnalysis()
         for (fact in context.model.module.allFacts) {
+            ProgressManager.checkCanceled()
             val body = fact.b
             val span = body.span()
             if (!context.inFile(span)) continue
             val decl = factDecl(context, context.range(span).startOffset) ?: continue
-            val fix = AlloyWrapInAlwaysFix(decl)
             val occurrence = firstOccurrence(context, decl, analysis, body)
             if (occurrence != null) {
                 val (range, message) = occurrence
-                context.register(holder, decl, range, message, fix)
+                val initial = AlloyFrameAnalysis.conjuncts(body).any { analysis.summary(it).let { c -> c.mentions.isNotEmpty() && !c.temporal } }
+                val fixes = if (initial) emptyArray() else arrayOf(AlloyWrapInAlwaysFix(decl, PriorityAction.Priority.NORMAL))
+                context.register(holder, decl, range, message, *fixes)
                 continue
             }
             val summary = analysis.summary(body)
             if (summary.temporal || summary.mentions.isEmpty()) continue
-            val message = "This fact constrains only the first state, because it uses no temporal operator"
+            val message = AlloyBundle.message("inspection.fact.no.temporal")
+            val fix = AlloyWrapInAlwaysFix(decl, PriorityAction.Priority.LOW)
             context.register(holder, decl, header(decl), message, fix, type = ProblemHighlightType.INFORMATION)
         }
     }
@@ -74,12 +84,18 @@ class AlloyFactOnlyAtStartInspection : AlloyModelInspection() {
         // How many `always`, `eventually`, `until`, `releases` or `;` the current expression is under
         var depth = 0
         val afters = ArrayList<Expr>()
+        // Written `after`s with an `always`, `eventually`, `until`, `releases` or `;` inside, as in `after always P`:
+        // they constrain the rest of the trace, not only one state
+        val future = HashSet<Expr>()
         // Primes reported as the join they end, since `n.inbox'` is `n.(inbox')`
         val joined = HashSet<Expr>()
+        // A prime on a static expression is the static-prime inspection's
+        fun mutable(prime: ExprUnary): Boolean = analysis.summary(prime.sub).mentions.isNotEmpty()
         fun record(expr: Expr, kind: Kind) {
             if (depth == 0) occurrences += Occurrence(expr, kind, afters.size, afters.firstOrNull())
         }
         fun <T> nested(body: () -> T): T {
+            future += afters
             depth++
             try {
                 return body()
@@ -98,10 +114,11 @@ class AlloyFactOnlyAtStartInspection : AlloyModelInspection() {
                         super.visit(x)
                     } finally {
                         afters.removeLast()
+                        if (x in future) occurrences.removeIf { it.expr === x }
                     }
                 }
                 ExprUnary.Op.PRIME -> {
-                    if (x !in joined) record(x, Kind.PRIME)
+                    if (x !in joined && mutable(x)) record(x, Kind.PRIME)
                     super.visit(x)
                 }
                 else -> super.visit(x)
@@ -113,7 +130,7 @@ class AlloyFactOnlyAtStartInspection : AlloyModelInspection() {
                     val right = x.right.deNOP()
                     if (right is ExprUnary && right.op == ExprUnary.Op.PRIME) {
                         joined += right
-                        record(x, Kind.PRIME)
+                        if (mutable(right)) record(x, Kind.PRIME)
                     }
                     super.visit(x)
                 }
@@ -130,7 +147,7 @@ class AlloyFactOnlyAtStartInspection : AlloyModelInspection() {
         // A written `after` is reported on its keyword
         fun range(expr: Expr): TextRange? =
             (if (expr is ExprUnary && expr.op == ExprUnary.Op.AFTER) expr.pos else expr.span()).takeIf(context::inFile)
-                ?.let { balanced(context.document, context.range(it), fact) }?.takeIf { fact.contains(it) && !it.isEmpty }
+                ?.let { balanced(context.file, context.range(it), fact) }?.takeIf { fact.contains(it) && !it.isEmpty }
         // Occurrences from an expanded macro have no place in the fact, and come last
         val first = occurrences.minBy { range(it.expr)?.startOffset ?: Int.MAX_VALUE }
         val reported = first.outermost ?: first.expr
@@ -142,27 +159,27 @@ class AlloyFactOnlyAtStartInspection : AlloyModelInspection() {
                 val inner = occurrences.filter { it.outermost === reported }
                 val transitions = inner.filter { it.kind != Kind.AFTER }
                 val what = if (transitions.isNotEmpty()) {
-                    "the ${ordinal(transitions.minOf { it.nesting } + 1)} transition"
+                    AlloyBundle.message("inspection.fact.transition", ordinal(transitions.minOf { it.nesting } + 1))
                 } else {
-                    "the ${ordinal((inner.filter { it.kind == Kind.AFTER }.maxOfOrNull { it.nesting } ?: 0) + 2)} state"
+                    AlloyBundle.message("inspection.fact.state", ordinal((inner.filter { it.kind == Kind.AFTER }.maxOfOrNull { it.nesting } ?: 0) + 2))
                 }
-                "${if (range != null) "This after" else "This fact"} constrains only $what, because the fact is not under always"
+                AlloyBundle.message(if (range != null) "inspection.fact.after" else "inspection.fact.after.fact", what)
             }
             first.kind == Kind.EVENT -> {
                 val event = (first.expr as ExprCall).`fun`.label.removePrefix("this/")
-                "The event $event is constrained to happen only in the first transition, because the fact is not under always"
+                AlloyBundle.message("inspection.fact.event", event)
             }
-            shown != null -> "$shown constrains only the transition out of the first state, because the fact is not under always"
-            else -> "This fact constrains only the transition out of the first state, because it is not under always"
+            shown != null -> AlloyBundle.message("inspection.fact.prime", shown)
+            else -> AlloyBundle.message("inspection.fact.prime.fact")
         }
         return (range ?: header(decl)) to message
     }
 
     private fun ordinal(n: Int): String = when (n) {
-        1 -> "first"
-        2 -> "second"
-        3 -> "third"
-        else -> "${n}th"
+        1 -> AlloyBundle.message("inspection.fact.ordinal.1")
+        2 -> AlloyBundle.message("inspection.fact.ordinal.2")
+        3 -> AlloyBundle.message("inspection.fact.ordinal.3")
+        else -> AlloyBundle.message("inspection.fact.ordinal.n", n)
     }
 }
 
@@ -170,10 +187,13 @@ class AlloyFactOnlyAtStartInspection : AlloyModelInspection() {
  * Wraps the body of a fact in `always { … }`: on the same line for a one-line body, and otherwise on lines of
  * its own, with the body's lines indented one more level.
  */
-class AlloyWrapInAlwaysFix(decl: AlloyFactDecl) : LocalQuickFixAndIntentionActionOnPsiElement(decl) {
-    override fun getText(): String = "Wrap in always"
+class AlloyWrapInAlwaysFix(decl: AlloyFactDecl, private val priority: PriorityAction.Priority) :
+    LocalQuickFixAndIntentionActionOnPsiElement(decl), PriorityAction {
+    override fun getText(): String = AlloyBundle.message("inspection.fact.fix")
 
     override fun getFamilyName(): String = text
+
+    override fun getPriority(): PriorityAction.Priority = priority
 
     override fun invoke(project: Project, file: PsiFile, editor: Editor?, startElement: PsiElement, endElement: PsiElement) {
         val decl = startElement as? AlloyFactDecl ?: return

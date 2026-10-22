@@ -5,6 +5,9 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.wm.ToolWindowEP
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.psi.PsiDocumentManager
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.run.AlloyCommandRef
 import com.serranofp.alloy.run.AlloyCommandResultClickHandler
 import com.serranofp.alloy.run.AlloyCommandResultHintsProvider
@@ -66,6 +69,30 @@ class AlloyInstanceViewerTest : BasePlatformTestCase() {
         assertEquals("graph.als: run show for 3 (line 11) · Instance", viewer.header())
     }
 
+    fun testHeaderLineFollowsEdits() {
+        viewer.open(file, noCycles, found(noCycles, counterexample = true))
+        myFixture.editor.caretModel.moveToOffset(0)
+        myFixture.type("// a comment\n")
+        assertTrue(viewer.header(), viewer.header().startsWith("graph.als: check noCycles {...} for 3 (line 13) · Counterexample"))
+    }
+
+    fun testHeaderWithoutTheCommandHasNoLine() {
+        val gone = AlloyCommandRef("gone", 5)
+        viewer.open(file, gone, found(gone, counterexample = false))
+        assertEquals("graph.als: ${gone.displayName} · Instance", viewer.header())
+    }
+
+    /** The command is found in the PSI, whose offsets are the document's only once it is committed. */
+    fun testOpeningSeesUncommittedEdits() {
+        val document = myFixture.editor.document
+        val result = found(noCycles, counterexample = true)
+        WriteCommandAction.runWriteCommandAction(project) { document.deleteString(0, document.getLineEndOffset(0) + 1) }
+        assertFalse(PsiDocumentManager.getInstance(project).isCommitted(document))
+        viewer.open(file, noCycles, result)
+        assertTrue(viewer.header(), viewer.header().startsWith("graph.als: check noCycles {...} for 3 (line 11) · Counterexample"))
+        assertEquals(document.text.indexOf("check noCycles"), viewer.session!!.commandOffset)
+    }
+
     fun testNavigatingToTheCommand() {
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
         myFixture.editor.caretModel.moveToOffset(0)
@@ -87,7 +114,7 @@ class AlloyInstanceViewerTest : BasePlatformTestCase() {
         assertNull(viewer.outdated())
         myFixture.type("x")
         assertNotNull(viewer.outdated())
-        assertTrue(viewer.header(), viewer.header().endsWith(AlloyInstanceViewer.OUTDATED_SUFFIX))
+        assertTrue(viewer.header(), viewer.header().endsWith(AlloyBundle.message("result.outdated.suffix")))
         // The solution stays visible
         assertNotNull(viewer.session)
     }

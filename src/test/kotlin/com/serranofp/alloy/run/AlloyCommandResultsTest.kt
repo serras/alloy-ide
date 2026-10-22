@@ -1,9 +1,12 @@
 package com.serranofp.alloy.run
 
+import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.command.undo.UndoManager
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.settings.AlloySettings
 
@@ -80,5 +83,61 @@ class AlloyCommandResultsTest : BasePlatformTestCase() {
     fun testOtherCommandsAreUnaffected() {
         recordShow()
         assertNull(results.get(file, AlloyCommandRef("noCycles", 1)))
+    }
+
+    private fun refs(): List<AlloyCommandRef> = AlloyCommands.commands(myFixture.file).map(AlloyCommands::ref)
+
+    fun testResultFollowsItsLabelWhenCommandsAreInsertedAbove() {
+        recordShow()
+        WriteCommandAction.runWriteCommandAction(project) { document.insertString(document.text.indexOf("run show"), "run other for 2\n") }
+        PsiDocumentManager.getInstance(project).commitDocument(document)
+        val moved = refs()[1]
+        assertEquals(1, moved.index)
+        assertSame(showResult, results.get(file, moved))
+        assertNull(results.get(file, refs()[0]))
+    }
+
+    fun testCommandsSharingALabelHaveTheirOwnResults() {
+        myFixture.configureByText("model.als", "sig A {}\ncheck a for 3\ncheck a for 6\nrun {} for 2\n")
+        val (first, second, unlabelled) = refs()
+        assertEquals(listOf(0, 1, 0), listOf(first.occurrence, second.occurrence, unlabelled.occurrence))
+        assertFalse(first == second)
+        assertEquals("check a for 6", AlloyCommands.find(myFixture.file, second)!!.text)
+        assertEquals(second, AlloyCommandResultHintsProvider.Codec.decode(AlloyCommandResultHintsProvider.Codec.encode(second)))
+        // A label is the same with or without `this/`
+        assertEquals(second, AlloyCommandRef("this/a", 7, 1))
+    }
+
+    fun testOnlyTheLatestSolutionsAreKept() {
+        val refs = (0..AlloyCommandResults.MAX_SOLUTIONS).map { AlloyCommandRef("c$it", it) }
+        for (ref in refs) {
+            results.record(file, ref, CommandResult(CommandState.InstanceFound, "Instance found · 1 ms", link = instance, documentStamp = 0, settingsGeneration = 0))
+        }
+        assertNull(results.get(file, refs.first())!!.link)
+        assertEquals("Instance found · 1 ms", results.get(file, refs.first())!!.summary)
+        assertTrue(refs.drop(1).all { results.get(file, it)!!.link != null })
+    }
+
+    fun testResultsOfADeletedFileAreDropped() {
+        val other = myFixture.addFileToProject("other.als", "run show for 3\n").virtualFile
+        results.record(other, show, CommandResult(CommandState.InstanceFound, "Instance found · 1 ms", link = instance, documentStamp = 0, settingsGeneration = 0))
+        WriteAction.run<Exception> { other.delete(this) }
+        assertEmpty(results.results(other).entries)
+        // Nor does a late event of its execution bring them back
+        results.record(other, show, CommandResult(CommandState.Stopped, AlloyRunLog.STOPPED, documentStamp = 0, settingsGeneration = 0))
+        assertEmpty(results.results(other).entries)
+    }
+
+    fun testOutdatedAfterAnEditOfAnOpenedModule() {
+        val library = myFixture.addFileToProject("lib.als", "module lib\nsig Item {}\n").virtualFile
+        val generation = AlloySettings.getInstance().generation
+        results.record(file, show, CommandResult(CommandState.InstanceFound, "", documentStamp = results.stamp(document), settingsGeneration = generation, modules = setOf(library)))
+        val unrelated = myFixture.addFileToProject("unrelated.als", "sig B {}\n").virtualFile
+        val documents = FileDocumentManager.getInstance()
+        WriteCommandAction.runWriteCommandAction(project) { documents.getDocument(unrelated)!!.insertString(0, "// edit\n") }
+        assertNull(results.outdated(showResult, document))
+
+        WriteCommandAction.runWriteCommandAction(project) { documents.getDocument(library)!!.insertString(0, "// edit\n") }
+        assertEquals(Outdated.FileChanged, results.outdated(showResult, document))
     }
 }

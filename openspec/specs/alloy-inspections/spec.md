@@ -29,7 +29,7 @@ The Alloy inspections SHALL report problems only while the file's model parses a
 - **THEN** the problem is reported in `a.als` and not in `b.als`
 
 ### Requirement: Mutable-state signature left at the default scope
-A command SHALL get a weak warning when it sets the scope of at least one signature and leaves a top-level signature `S` at the overall or default scope. This applies when `S` occurs in the type of a `var` field, other than as the field's owner, or `S` or one of its descendants is a `var sig`. Signatures that have a scope through an ancestor or descendant, `one`, `lone` and enum signatures, and library signatures are not reported.
+A command SHALL get a weak warning when it sets the scope of at least one signature and leaves a top-level signature `S` at the overall or default scope. This applies when `S` occurs in the type of a `var` field, other than as the field's owner, or `S` or one of its descendants is a `var sig`. Signatures that have a scope through an ancestor or descendant, signatures whose scope is raised to the atoms their subsignatures must have, `one`, `lone` and enum signatures, and library signatures are not reported.
 
 #### Scenario: The book's bad_all_initiate
 - **WHEN** a model declares `var inbox : set Message` in `Node`, and has `run bad_all_initiate {...} for 3 but exactly 3 Node`
@@ -38,6 +38,10 @@ A command SHALL get a weak warning when it sets the scope of at least one signat
 #### Scenario: Scope given to a subsignature
 - **WHEN** the same model has `run all_initiate {...} for exactly 3 Node, exactly 6 Message`, or the scope is given to `CandidateMsg` instead
 - **THEN** no problem is reported for `Message`
+
+#### Scenario: Scope raised by subsignatures
+- **WHEN** a model has `sig A {}`, `one sig B, C, D, E extends A {}` and `var m: set A` in `N`, and `run {} for 3 but 2 Other`
+- **THEN** no problem is reported for `A`, whose scope is 4, not the overall 3
 
 #### Scenario: No per-signature scope
 - **WHEN** a command is `run example {}`, `check p for 4` or `check p for 4 but 20 steps`
@@ -48,7 +52,7 @@ A command SHALL get a weak warning when it sets the scope of at least one signat
 - **THEN** the command reads `for 3 but exactly 3 Node, 3 Message`, the inserted number is selected for editing, and the warning is gone
 
 ### Requirement: Exact scope forced by a module parameter
-When a module parameter declared `exactly` (such as `util/ordering[X]`) makes the scope of `X` exact, a command scope for `X` written without `exactly` SHALL get a weak warning. When `X` takes the command's written overall `for N` instead, the command SHALL get an information-level problem. Commands without a written scope are not reported.
+When a module parameter declared `exactly` (such as `util/ordering[X]`) makes the scope of `X` exact, a command scope for `X` written without `exactly` SHALL get a weak warning. The message SHALL name the module whose parameter is declared `exactly`, even when other modules are also opened with `X`. When `X` takes the command's written overall `for N` instead, the command SHALL get an information-level problem. Commands without a written scope are not reported.
 
 #### Scenario: Explicit upper bound on an ordered signature
 - **WHEN** a model opens `util/ordering[Id]` and has `check safe for 3 but 2 Id`
@@ -57,6 +61,10 @@ When a module parameter declared `exactly` (such as `util/ordering[X]`) makes th
 #### Scenario: Overall scope applied to an ordered signature
 - **WHEN** the same model has `check at_most_one_leader for 4 but 20 steps`
 - **THEN** the command has an information-level problem, without highlighting, saying that `Id` gets exactly 4; Alt+Enter offers the quick-fix
+
+#### Scenario: Several modules opened with the signature
+- **WHEN** a model opens `util/graph[State]` and then `util/ordering[State]`, and has `run {} for 3 but 2 State`
+- **THEN** the warning says that `util/ordering`, not `util/graph`, makes the scope of `State` exactly 2
 
 #### Scenario: Exactness already written
 - **WHEN** the command is `run example3 {} for exactly 3 Node, exactly 3 Id`, or it has no `for` at all
@@ -82,14 +90,18 @@ A command SHALL get a weak warning when the sequence bound it gives a `var` fiel
 - **THEN** the command reads `for 3 but 3 seq`, and the warning is gone
 
 ### Requirement: Event predicates are recognized
-A predicate SHALL be an event predicate when its body constrains the next state, directly or through the predicates and macros it calls. Constraining the next state means using `'` on an expression that mentions a mutable relation, or `after`. A predicate that also uses `always`, `eventually`, `until`, `releases` or `;`, directly or through its calls, is not an event predicate.
+A predicate SHALL be an event predicate when its body constrains the next state, directly or through the predicates and macros it calls. Constraining the next state means using `'` on an expression that mentions a mutable relation, or `after`. The meta model (such as `var$` and the `value` of `File$shared`) counts as mutable, since it stands for every relation, even in a model without `var sig`, where the analyzer does not declare its `value` fields `var`. A predicate that also uses `always`, `eventually`, `until`, `releases` or `;`, directly or through its calls, is not an event predicate.
 
 #### Scenario: Events, guards and properties
 - **WHEN** a model has `pred initiate[n: Node] { ... inbox' = inbox + ... }`, `pred initiate_enabled[n: Node] { historically ... }` and `pred fairness { all n: Node | eventually always ... implies always eventually node_acts[n] }`
 - **THEN** `initiate` is an event predicate, while `initiate_enabled` and `fairness` are not
 
+#### Scenario: Frame over the meta model
+- **WHEN** a model has only `var` fields, no `var sig`, and `pred stutter { all v: var$ | v.value = v.value' }`
+- **THEN** `stutter` is an event predicate
+
 ### Requirement: Missing frame condition
-An event predicate SHALL get a weak warning, on its name, listing every mutable relation (a `var` field or `var sig` of the model) that its body leaves unconstrained in the next state. A relation is constrained if it is mentioned under `'` or `after` anywhere in the body, in any branch, or in the bodies of the predicates and macros it calls.
+An event predicate SHALL get a weak warning, on its name, listing every mutable relation (a `var` field or `var sig` of the model) that its body leaves unconstrained in the next state. A relation is constrained if it is mentioned under `'` or `after` anywhere in the body, in any branch, or in the bodies of the predicates and macros it calls. An event predicate that is only called from other event predicates is part of their effects, and SHALL NOT be reported on its own. A body with a frame condition over the meta model may be about any relation, so it SHALL NOT be reported. A field is named as `S <: f` in messages and fixes when another field or a signature, mutable or not, has its name.
 
 #### Scenario: Missing frame condition reported
 - **WHEN** a model has `var inbox` and `var outbox` fields, and `pred send[n: Node] { some i: n.outbox | inbox' = inbox + n.succ->i }`
@@ -98,6 +110,18 @@ An event predicate SHALL get a weak warning, on its name, listing every mutable 
 #### Scenario: Conditional effects and helpers
 - **WHEN** every branch of an `implies … else` constrains `inbox'`, or the predicate calls `unchanged[outbox]` with `let unchanged[x] { x = (x)' }`, or it calls a predicate that does
 - **THEN** neither `inbox` nor `outbox` is reported
+
+#### Scenario: Helper events
+- **WHEN** a model has `pred moveMsg[n: Node] { inbox' = inbox - n->n }` and `pred send[n: Node] { moveMsg[n] outbox' = outbox }`, and no other call to `moveMsg`
+- **THEN** neither predicate is reported; if a fact also calls `moveMsg`, then `moveMsg` is reported for `outbox`
+
+#### Scenario: Frame condition over the meta model
+- **WHEN** a model with `var shared` and `var owner` fields, and no `var sig`, has `pred share[t: Token] { shared' = shared + File->t  all v: var$ - File$shared | v.value = v.value' }`
+- **THEN** `share` is not reported
+
+#### Scenario: Name shared with a static field
+- **WHEN** `sig A` has `var f` and `sig B` has a static `f`, and an event predicate does not constrain `A`'s `f`
+- **THEN** the warning names it `A <: f`
 
 #### Scenario: The book's models
 - **WHEN** the final models of the *Behavioral modeling* and *Protocol design* chapters are inspected
@@ -108,7 +132,7 @@ An event predicate SHALL get a weak warning, on its name, listing every mutable 
 - **THEN** each missing condition is added on its own line at the end of the body with the body's indentation, and the warning is gone
 
 ### Requirement: Fact that constrains the next state only at the start
-A fact SHALL get a weak warning when it constrains the next state outside every `always`, `eventually`, `until` and `releases`. Constraining the next state means using a `'` or a written `after`, or calling an event predicate (see "Event predicates are recognized"). The warning SHALL be placed on the first such occurrence, and one SHALL be reported per fact. Signature facts SHALL NOT be checked, since the analyzer applies those over mutable state in every state.
+A fact SHALL get a weak warning when it constrains the next state outside every `always`, `eventually`, `until` and `releases`. Constraining the next state means using a `'` on an expression that mentions a mutable relation, a written `after`, or calling an event predicate (see "Event predicates are recognized"). An `after` with `always`, `eventually`, `until`, `releases` or `;` inside, as in `after always P`, constrains the rest of the trace, and is not such an occurrence itself. The warning SHALL be placed on the first such occurrence, and one SHALL be reported per fact. Signature facts SHALL NOT be checked, since the analyzer applies those over mutable state in every state.
 
 #### Scenario: Frame without always
 - **WHEN** a model with `var inbox` has `fact { all n: Node | n.inbox' = n.inbox }`
@@ -125,6 +149,14 @@ A fact SHALL get a weak warning when it constrains the next state outside every 
 #### Scenario: Under after only
 - **WHEN** a fact reads `after (inbox' = inbox)`
 - **THEN** the `after` gets the weak warning, since the fact constrains only the second transition
+
+#### Scenario: After with a future operator
+- **WHEN** a fact reads `after always (inbox' = inbox)`, `after eventually some inbox` or `after (some inbox until no inbox)`
+- **THEN** nothing is reported for it
+
+#### Scenario: Prime on a static expression
+- **WHEN** a fact reads `succ' = succ`, with `succ` a static field
+- **THEN** this requirement reports nothing for it; the prime is reported as one on an expression that never changes
 
 #### Scenario: Sequence operator
 - **WHEN** a fact reads `no inbox ; some inbox`
@@ -154,7 +186,7 @@ A fact that mentions a `var` field or `var sig`, but uses no temporal operator a
 - **THEN** the first has the information-level problem, and the second has nothing
 
 ### Requirement: Wrap a fact in always
-Both fact problems SHALL offer "Wrap in always". It SHALL wrap the whole body of the fact in `always { … }`, indent the body's lines one more level, and keep one-line bodies on one line.
+Both fact problems SHALL offer "Wrap in always". It SHALL wrap the whole body of the fact in `always { … }`, indent the body's lines one more level, and keep one-line bodies on one line. Since a fact without temporal operators may be about the initial state, such as `fact init { no inbox }`, the fix SHALL have a low priority on the information-level problem. It SHALL NOT be offered on the weak warning of a fact with a conjunct that mentions mutable state without temporal operators, such as `no inbox`, which wrapping would turn into an invariant.
 
 #### Scenario: Multi-line body
 - **WHEN** the user applies "Wrap in always" to `fact inbox_bound {` / `  all n: Node | lone n.inbox` / `}`
@@ -163,6 +195,10 @@ Both fact problems SHALL offer "Wrap in always". It SHALL wrap the whole body of
 #### Scenario: One-line body
 - **WHEN** the user applies it to `fact { all n: Node | n.inbox' = n.inbox }`
 - **THEN** the fact reads `fact { always { all n: Node | n.inbox' = n.inbox } }`
+
+#### Scenario: Fact with an initial condition
+- **WHEN** a fact reads `no inbox` followed by `all n: Node | n.inbox' = n.inbox`
+- **THEN** `n.inbox'` gets the weak warning, and "Wrap in always" is not offered
 
 ### Requirement: Prime on an expression that never changes
 An expression `e'` SHALL get a weak warning when `e` mentions no `var` field or `var sig`, directly or through the functions it calls. Quantified variables and predicate or function parameters do not change between states. A `let` variable counts as its definition. Primes in macro declarations, and primes of an argument a macro substitutes, SHALL NOT be reported.
@@ -184,7 +220,7 @@ An expression `e'` SHALL get a weak warning when `e` mentions no `var` field or 
 - **THEN** the text reads `succ`, and the warning is gone
 
 ### Requirement: Integer literal outside the command's bitwidth
-An integer literal SHALL get a weak warning when, for some command of the file, it is larger than the largest integer of that command's bitwidth. The bitwidth is the written `int` scope, or the analyzer's default of 4. A command depends on a literal in its own body, in any fact of the model, or in the predicates and functions they call. The message SHALL name the commands and the value the literal wraps to.
+An integer literal SHALL get a weak warning when, for some command of the file, it is outside the integers of that command's bitwidth: larger than the largest, or, as `-20`, smaller than the smallest. Literals in every form the analyzer reads count, such as `0x1F`, `0b1010` and `009`. The bitwidth is the written `int` scope, or the analyzer's default of 4. A command depends on a literal in its own body, in any fact of the model, or in the predicates and functions they call. The message SHALL name the commands, grouped by bitwidth and at most three per bitwidth before it counts the rest, and the value the literal wraps to. One fix per bitwidth SHALL set the bitwidth of all its commands.
 
 #### Scenario: Default bitwidth
 - **WHEN** a model has `fact { #Node =< 8 }` and `run example {} for 3`
@@ -198,6 +234,14 @@ An integer literal SHALL get a weak warning when, for some command of the file, 
 - **WHEN** a model has `fact { #Node < 12 }`, `run a {} for 4`, `run b {} for 4 but 5 int` and `run c {} for 4 but 3 int`
 - **THEN** `12` gets one weak warning naming `a` (wraps to -4) and `c` (wraps to -4), and not `b`
 
+#### Scenario: Negative literal
+- **WHEN** a model has `fact { #Node > -20 }` and `run example {} for 3`
+- **THEN** `-20` gets a weak warning saying that it is read as `-4`
+
+#### Scenario: Many commands
+- **WHEN** a model has `fact { #Node < 12 }`, five commands `run a {} for 3` to `run e {} for 3`, and `run f {} for 3 but 3 int`
+- **THEN** the message reads `a, b, c and 2 more commands use 4-bit integers (-8..7), so 12 is read as -4; f uses 3-bit integers (-4..3), so 12 is read as -4`, and "Set the bitwidth of a, b, c and 2 more commands to 5 int" adds `but 5 int` to all five
+
 #### Scenario: Raise the bitwidth
 - **WHEN** the user applies "Set the bitwidth of a to 5 int" to the literal `12`, with `run a {} for 4`
 - **THEN** the command reads `run a {} for 4 but 5 int`, the inserted number is selected for editing, and `a` is no longer named in the warning
@@ -207,8 +251,12 @@ An integer literal SHALL get a weak warning when, for some command of the file, 
 - **THEN** the command reads `run c {} for 4 but 5 int`
 
 ### Requirement: Suppression by comment
-Each Alloy inspection SHALL offer the IDE's "Suppress" actions. Suppressing writes a `// noinspection <id>` line before the paragraph or command, which turns that inspection off for it.
+Each Alloy inspection SHALL offer the IDE's "Suppress" actions. Suppressing writes a `// noinspection <id>` line before the paragraph or command, which turns that inspection off for it. A `-- noinspection <id>` line works too. The comment SHALL be on a line of its own: one at the end of the previous paragraph's line is about that paragraph, and suppresses nothing.
 
 #### Scenario: Suppress for a predicate
 - **WHEN** the user picks "Suppress for predicate" on a missing frame condition of `send`
 - **THEN** the line before `pred send` reads `// noinspection AlloyMissingFrameCondition`, and `send` is no longer reported, while other predicates still are
+
+#### Scenario: Comment at the end of the previous paragraph
+- **WHEN** a file reads `pred a {} // noinspection AlloyMissingFrameCondition` followed by `pred b {…}` on the next line
+- **THEN** neither `a` nor `b` is suppressed

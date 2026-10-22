@@ -1,6 +1,7 @@
 package com.serranofp.alloy.simplifications
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.serranofp.alloy.AlloyBundle
 
 /** Tests of a simplification [inspection], over models that start with [header]. */
 abstract class AlloySimplificationTestCase : BasePlatformTestCase() {
@@ -62,7 +63,7 @@ abstract class AlloySimplificationTestCase : BasePlatformTestCase() {
         val problems = problems()
         assertEquals("$formula: $problems", listOf(formula), problems.map { it.first })
         myFixture.editor.caretModel.moveToOffset(header.length + prefix.length)
-        val fixes = myFixture.availableIntentions.filter { it.familyName == "Simplify" }
+        val fixes = myFixture.availableIntentions.filter { it.familyName == AlloyBundle.message("simplification.fix.family") }
         assertEquals("$formula: ${fixes.map { it.text }}", 1, fixes.size)
         myFixture.launchAction(fixes.single())
         myFixture.file.text.removePrefix(header).removePrefix(prefix).removeSuffix("$after }\n")

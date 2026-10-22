@@ -12,6 +12,7 @@ import com.intellij.execution.testframework.sm.runner.SMTRunnerConsoleProperties
 import com.intellij.execution.testframework.sm.runner.SMTestLocator
 import com.intellij.execution.testframework.sm.runner.ui.SMTRunnerConsoleView
 import com.intellij.execution.ui.ConsoleView
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.run.AlloyCommandRef
 
 /** The console of a suite: the SM test runner's tree, fed by [AlloyCommandsProcessHandler]. */
@@ -20,7 +21,7 @@ class AlloyCommandsRunState(
     private val commands: List<AlloyCommandRef>,
 ) : RunProfileState {
     override fun execute(executor: Executor, runner: ProgramRunner<*>): ExecutionResult {
-        val file = configuration.file() ?: throw ExecutionException("The Alloy file is not found")
+        val file = configuration.file() ?: throw ExecutionException(AlloyBundle.message("run.tests.file.not.found"))
         val handler = AlloyCommandsProcessHandler(configuration.project, file, commands)
         val properties = AlloyCommandsConsoleProperties(configuration, executor)
         val console = SMTestRunnerConnectionUtil.createAndAttachConsole(FRAMEWORK, handler, properties)

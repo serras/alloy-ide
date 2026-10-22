@@ -68,6 +68,14 @@ class AlloyExternalAnnotatorTest : BasePlatformTestCase() {
         assertEquals("middle", highlights(HighlightSeverity.ERROR).single().text())
     }
 
+    fun testErrorInALibraryModuleIsAtItsOpen() {
+        // The analyzer reports this one inside util/ordering
+        myFixture.configureByText("main.als", "open util/ordering[Int]\nsig A {}")
+        val atOpen = highlights(HighlightSeverity.ERROR).single()
+        assertEquals("util/ordering", atOpen.text())
+        assertTrue(atOpen.description, atOpen.description.startsWith("The opened module util/ordering has errors (ordering.als:"))
+    }
+
     fun testValidModel() {
         myFixture.configureByText("model.als", "open util/ordering[S]\nsig S {}\nfact { some first }\nrun {} for 3")
         assertEmpty(myFixture.doHighlighting(HighlightSeverity.WARNING))

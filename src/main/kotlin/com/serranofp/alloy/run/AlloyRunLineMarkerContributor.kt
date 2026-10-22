@@ -5,6 +5,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.ui.AnimatedIcon
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloyTypes
@@ -24,8 +25,10 @@ class AlloyRunLineMarkerContributor : RunLineMarkerContributor() {
         val ref = AlloyCommands.ref(command)
         val results = AlloyCommandResults.getInstance(command.project)
         val result = command.containingFile.virtualFile?.let { results.get(it, ref) }
-        if (result != null && (result.state == CommandState.Running || result.vacuity == Vacuity.Checking)) {
-            return Info(AnimatedIcon.Default.INSTANCE, arrayOf(AlloyRunningCommandMenuAction(command))) { "Running ${ref.displayName}…" }
+        if (result != null && result.isRunning) {
+            return Info(AnimatedIcon.Default.INSTANCE, arrayOf(AlloyRunningCommandMenuAction(command))) {
+                AlloyBundle.message("run.action.running", ref.displayName)
+            }
         }
         val verdict = result?.let(::verdict) ?: Verdict.Run
         val icon = when (verdict) {
@@ -40,13 +43,13 @@ class AlloyRunLineMarkerContributor : RunLineMarkerContributor() {
     /** "Run noCycles — passed last time (outdated)"; read when hovered, so that it follows the edits. */
     private fun tooltip(element: PsiElement, ref: AlloyCommandRef, result: CommandResult?, verdict: Verdict): String {
         val last = when (verdict) {
-            Verdict.Run -> return "Run ${ref.displayName}"
-            Verdict.Passed -> "passed"
-            Verdict.Failed -> "failed"
-            Verdict.Vacuous -> "passed vacuously"
+            Verdict.Run -> return AlloyBundle.message("run.action.run", ref.displayName)
+            Verdict.Passed -> AlloyBundle.message("run.marker.passed")
+            Verdict.Failed -> AlloyBundle.message("run.marker.failed")
+            Verdict.Vacuous -> AlloyBundle.message("run.marker.vacuous")
         }
         val document = PsiDocumentManager.getInstance(element.project).getDocument(element.containingFile)
         val outdated = result != null && document != null && AlloyCommandResults.getInstance(element.project).isOutdated(result, document)
-        return "Run ${ref.displayName} — $last last time" + if (outdated) " (outdated)" else ""
+        return AlloyBundle.message("run.marker.verdict", ref.displayName, last) + if (outdated) AlloyBundle.message("result.outdated.suffix") else ""
     }
 }

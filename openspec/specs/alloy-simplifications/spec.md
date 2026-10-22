@@ -18,7 +18,7 @@ The plugin SHALL register five inspections in an "Alloy | Simplifications" group
 - **THEN** only `not not q` is reported
 
 ### Requirement: Simplifications need a type-checked model
-The simplification inspections and intentions SHALL be available only while the file's model parses and type-checks. They SHALL work on the current text of the file, saved or not, and only on formulas and expressions of the file's facts, assertions, predicates, functions, signature facts and command bodies.
+The simplification inspections and intentions SHALL be available only while the file's model parses and type-checks. They SHALL work on the current text of the file, saved or not, and only on formulas and expressions of the file's facts, assertions, predicates, functions, signature facts and command bodies. The intentions SHALL only use the model that highlighting has already computed for the current text, so that showing them never runs an analysis.
 
 #### Scenario: Model with a type error
 - **WHEN** a file with `fact { not not some A }` also has a type error
@@ -44,7 +44,25 @@ A simplification SHALL be offered only when the formula, and every part of it th
 - **THEN** nothing is reported in the macro
 
 ### Requirement: Rewrites keep the meaning and the user's text
-Applying a quick-fix or intention SHALL replace exactly the rewritten formula, together with any parentheses written around it, by an equivalent formula. The replacement SHALL reuse the source text of the operands it keeps, comments and line breaks included. It SHALL add parentheses only where an operand or the result would otherwise be read differently, and it SHALL type-check.
+Applying a quick-fix or intention SHALL replace exactly the rewritten formula, together with any parentheses written around it, by an equivalent formula. The replacement SHALL reuse the source text of the operands it keeps, comments and line breaks included, and their parentheses. It SHALL add parentheses only where an operand or the result would otherwise be read differently, and it SHALL type-check. A replacement that is a single operand, written in parentheses that its place does not need, SHALL drop them, unless a comment is written inside them.
+
+The places where a quantifier or `let` would extend further than its operand SHALL get it in parentheses, including before a `;`, whose left side a quantifier's body takes in. The receiver `e` of a method-style call `e.f` SHALL be treated as the left side of a `.`, not as an argument in brackets.
+
+#### Scenario: Parentheses no longer needed
+- **WHEN** the user applies the quick-fix to `always (always p)`, or to `not (not (a or b))` on a line of its own
+- **THEN** the text reads `always p`, or `a or b`
+
+#### Scenario: Quantifier before a sequence
+- **WHEN** the user applies the quick-fix to `not (some n: Node | n in n.succ) ; p`
+- **THEN** the text reads `(no n: Node | n in n.succ) ; p`, and not `no n: Node | n in n.succ ; p`, which means `no n: Node | (n in n.succ ; p)`
+
+#### Scenario: Receiver of a call
+- **WHEN** a model has `fun g[s: Node -> Node]: set Node`, and the user applies the quick-fix to `Node->Node + Node->Node` in `some (Node->Node + Node->Node).g`
+- **THEN** the text reads `some (Node->Node).g`, and not `some Node->Node.g`, which reads as `Node -> (Node.g)`
+
+#### Scenario: Fixes in one paragraph
+- **WHEN** a fact reads `not not p and not not q`, and the quick-fixes of both problems are applied one after the other, as "Fix all" does
+- **THEN** the text reads `p and q`
 
 #### Scenario: Operands kept as written
 - **WHEN** the user applies the quick-fix to `not ((not this/A.f in B) or (not some g))`
@@ -261,11 +279,15 @@ The plugin SHALL offer "Distribute temporal operator" on `always (p and q …)` 
 - **THEN** "Distribute temporal operator" is not offered
 
 ### Requirement: Transpose join intention
-The plugin SHALL offer "Swap join with transpose" on `e.~r` → `r.e` and on `r.e` → `e.~r`, when `e` is a set and `r` a binary relation.
+The plugin SHALL offer "Swap join with transpose" on `e.~r` → `r.e` and on `r.e` → `e.~r`, when `e` is a set and `r` a binary relation. When `r` is itself a transpose `~s`, the result SHALL be `e.s`, rather than `e.~~s`.
 
 #### Scenario: Join swapped
 - **WHEN** the user invokes "Swap join with transpose" on `n.~succ`, and then on the result
 - **THEN** the text reads `succ.n`, and then `n.~succ`
+
+#### Scenario: Join with a transpose on the left
+- **WHEN** the user invokes "Swap join with transpose" on `(~succ).n`
+- **THEN** the text reads `n.succ`
 
 #### Scenario: Other joins
 - **WHEN** the caret is on the `.` of `r.n` where `r` is a ternary relation, or of `succ.succ` where both operands are binary

@@ -4,6 +4,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.serranofp.alloy.AlloyBundle
 
 /**
  * The status-bar progress of [execution]: launches the command, and follows the analyzer's progress until
@@ -15,21 +16,10 @@ class AlloyCommandTask(
     private val launcher: AlloyCommandLauncher,
     /** Stops the analysis when disposed. */
     private val parent: Disposable,
-) : Task.Backgroundable(project, "Alloy: Run ${execution.command.displayName}", true) {
+) : Task.Backgroundable(project, AlloyBundle.message("run.task.title", execution.command.displayName), true) {
     override fun run(indicator: ProgressIndicator) {
         indicator.isIndeterminate = true
         if (!indicator.isCanceled) launcher.launch(execution, parent)
-        var stopRequested = false
-        while (!execution.waitFor(POLL_MILLIS)) {
-            execution.progress?.let { indicator.text2 = it }
-            if (indicator.isCanceled && !stopRequested) {
-                stopRequested = true
-                execution.stop()
-            }
-        }
-    }
-
-    private companion object {
-        const val POLL_MILLIS = 100L
+        execution.awaitOrStop(indicator::isCanceled) { execution.progress?.let { indicator.text2 = it } }
     }
 }

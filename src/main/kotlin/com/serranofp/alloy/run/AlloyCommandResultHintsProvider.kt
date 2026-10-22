@@ -13,6 +13,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyFile
 
@@ -41,8 +42,8 @@ class AlloyCommandResultHintsProvider : InlayHintsProvider {
             val outdated = results.outdated(result, document)
             val line = document.getLineNumber(element.firstChild.textRange.startOffset)
             val format = if (outdated != null) HintFormat.default.withColorKind(HintColorKind.TextWithoutBackground) else HintFormat.default
-            val text = if (outdated != null) "${result.summary}$OUTDATED_SUFFIX" else result.summary
-            val action = if (result.link != null || result.state == CommandState.Running) {
+            val text = if (outdated != null) result.summary + AlloyBundle.message("result.outdated.suffix") else result.summary
+            val action = if (result.link != null || result.isRunning) {
                 InlayActionData(StringInlayActionPayload(Codec.encode(ref)), AlloyCommandResultClickHandler.HANDLER_ID)
             } else {
                 null
@@ -55,16 +56,21 @@ class AlloyCommandResultHintsProvider : InlayHintsProvider {
 
     companion object {
         const val PROVIDER_ID = "alloy.command.results"
-        const val OUTDATED_SUFFIX = " (outdated)"
     }
 
     object Codec {
-        /** The click payload: `<index>:<label>`, with an empty label for unlabelled commands. */
-        fun encode(ref: AlloyCommandRef): String = "${ref.index}:${ref.label.orEmpty()}"
+        /**
+         * The click payload: `<index>:<label>`, with an empty label for unlabelled commands, and `:<occurrence>`
+         * after the label when it repeats. Alloy names have no `:`.
+         */
+        fun encode(ref: AlloyCommandRef): String =
+            "${ref.index}:${ref.label.orEmpty()}" + if (ref.occurrence > 0) ":${ref.occurrence}" else ""
 
         fun decode(payload: String): AlloyCommandRef? {
             val index = payload.substringBefore(':', "").toIntOrNull() ?: return null
-            return AlloyCommandRef(payload.substringAfter(':').ifEmpty { null }, index)
+            val label = payload.substringAfter(':')
+            val occurrence = label.substringAfter(':', "0").toIntOrNull() ?: return null
+            return AlloyCommandRef(label.substringBefore(':').ifEmpty { null }, index, occurrence)
         }
     }
 }

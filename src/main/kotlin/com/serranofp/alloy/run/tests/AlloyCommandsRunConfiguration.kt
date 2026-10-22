@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.JDOMExternalizerUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyFileType
 import com.serranofp.alloy.run.AlloyCommandRef
 import org.jdom.Element
@@ -31,8 +32,8 @@ class AlloyCommandsRunConfiguration(project: Project, factory: ConfigurationFact
     override fun getConfigurationEditor(): SettingsEditor<out RunConfiguration> = AlloyCommandsSettingsEditor(project)
 
     override fun checkConfiguration() {
-        val file = file() ?: throw RuntimeConfigurationError("The Alloy file is not found")
-        if (file.fileType != AlloyFileType) throw RuntimeConfigurationError("${file.name} is not an Alloy file")
+        val file = file() ?: throw RuntimeConfigurationError(AlloyBundle.message("run.tests.file.not.found"))
+        if (file.fileType != AlloyFileType) throw RuntimeConfigurationError(AlloyBundle.message("run.failure.not.alloy", file.name))
     }
 
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState =
@@ -46,6 +47,7 @@ class AlloyCommandsRunConfiguration(project: Project, factory: ConfigurationFact
         for (command in commands) {
             element.addContent(Element(COMMAND).setAttribute(INDEX, command.index.toString()).also { child ->
                 command.label?.let { child.setAttribute(LABEL, it) }
+                if (command.occurrence > 0) child.setAttribute(OCCURRENCE, command.occurrence.toString())
             })
         }
     }
@@ -54,7 +56,9 @@ class AlloyCommandsRunConfiguration(project: Project, factory: ConfigurationFact
         super.readExternal(element)
         fileUrl = JDOMExternalizerUtil.readField(element, FILE).orEmpty()
         commands = element.getChildren(COMMAND).mapNotNull { child ->
-            child.getAttributeValue(INDEX)?.toIntOrNull()?.let { AlloyCommandRef(child.getAttributeValue(LABEL), it) }
+            child.getAttributeValue(INDEX)?.toIntOrNull()?.let {
+                AlloyCommandRef(child.getAttributeValue(LABEL), it, child.getAttributeValue(OCCURRENCE)?.toIntOrNull() ?: 0)
+            }
         }
     }
 
@@ -68,7 +72,8 @@ class AlloyCommandsRunConfiguration(project: Project, factory: ConfigurationFact
         private const val COMMAND = "command"
         private const val INDEX = "index"
         private const val LABEL = "label"
+        private const val OCCURRENCE = "occurrence"
 
-        fun suggestedName(file: VirtualFile): String = "All commands in ${file.name}"
+        fun suggestedName(file: VirtualFile): String = AlloyBundle.message("run.tests.suggested.name", file.name)
     }
 }

@@ -2,8 +2,10 @@ package com.serranofp.alloy.inspections
 
 import edu.mit.csail.sdg.alloy4.A4Reporter
 import edu.mit.csail.sdg.ast.Expr
+import edu.mit.csail.sdg.ast.ExprUnary
 import edu.mit.csail.sdg.ast.Func
 import edu.mit.csail.sdg.ast.Sig
+import edu.mit.csail.sdg.ast.VisitQuery
 import edu.mit.csail.sdg.parser.CompModule
 import edu.mit.csail.sdg.parser.CompUtil
 import junit.framework.TestCase
@@ -80,6 +82,50 @@ class AlloyFrameAnalysisTest : TestCase() {
         assertEquals("AND[this/e, after AND[this/e, after some (this/N <: f)]]", module.pred("scenario").body.toString())
         assertFalse(analysis.isEvent(module.pred("scenario")))
         assertTrue(analysis.isEvent(module.pred("next")))
+    }
+
+    /** The analyzer's convention that [AlloyFrameAnalysis.isSequence] relies on: the `after` of `;` is at its one column. */
+    fun testSequenceAfterIsAtTheColumnOfTheSemicolon() {
+        val text = "sig N { var f: set N }\npred e { f' = f }\npred scenario { e ; e }\npred next { after e }"
+        val module = model(text)
+        fun after(pred: String): ExprUnary {
+            val afters = mutableListOf<ExprUnary>()
+            module.pred(pred).body.accept(object : VisitQuery<Unit>() {
+                override fun visit(x: ExprUnary): Unit? {
+                    if (x.op == ExprUnary.Op.AFTER) afters += x
+                    return super.visit(x)
+                }
+            })
+            return afters.single()
+        }
+        val sequence = after("scenario").pos
+        val line = text.lines()[2]
+        assertEquals(listOf(3, line.indexOf(';') + 1, 3, line.indexOf(';') + 1), listOf(sequence.y, sequence.x, sequence.y2, sequence.x2))
+        assertTrue(AlloyFrameAnalysis.isSequence(after("scenario")))
+        assertFalse(AlloyFrameAnalysis.isSequence(after("next")))
+    }
+
+    /**
+     * The meta model stands for every relation, even where its `value` fields are not `var`: they are only as
+     * mutable as their owner signature, and no signature here is `var`.
+     */
+    fun testFrameOverTheMetaModelWithOnlyVarFields() {
+        val module = model(
+            """
+            sig Token {}
+            sig File { var shared: set Token, var owner: lone Token }
+            pred share[t: Token] {
+              shared' = shared + File->t
+              all v: var$ - File${'$'}shared | v.value = v.value'
+            }
+            pred stutter { all v: var$ | v.value = v.value' }
+            """.trimIndent(),
+        )
+        assertTrue(analysis.isEvent(module.pred("stutter")))
+        assertTrue(analysis.isEvent(module.pred("share")))
+        val constrained = analysis.summary(module.pred("share")).constrains
+        assertTrue(constrained.any { it is Sig.Field && it.sig.isMeta != null })
+        assertTrue(constrained.none { it is Sig.Field && it.sig.isMeta != null && it.isVariable != null })
     }
 
     fun testFunctionsAreNotEvents() {

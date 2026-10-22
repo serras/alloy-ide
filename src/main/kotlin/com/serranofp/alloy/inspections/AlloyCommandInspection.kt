@@ -1,14 +1,18 @@
 package com.serranofp.alloy.inspections
 
 import com.intellij.codeInspection.ProblemsHolder
+import com.intellij.openapi.progress.ProgressManager
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.semantics.AlloyPositions
 import edu.mit.csail.sdg.ast.Command
 import edu.mit.csail.sdg.ast.Sig
 import edu.mit.csail.sdg.ast.Sig.PrimSig
 
-/** An inspection of each command of the file, including every command of a `=>` chain, with its bounds. */
-abstract class AlloyCommandInspection : AlloyModelInspection() {
+/**
+ * An inspection of each command of the file, including every command of a `=>` chain, with its bounds. What it
+ * needs about the model as a whole, [T], is computed once per pass by [prepare], not once per command.
+ */
+abstract class AlloyCommandInspection<T> : AlloyModelInspection() {
     /** One command: the [part]th of the chain [decl]. */
     class CommandCheck(
         val context: AlloyInspectionContext,
@@ -23,24 +27,27 @@ abstract class AlloyCommandInspection : AlloyModelInspection() {
     }
 
     override fun check(context: AlloyInspectionContext, holder: ProblemsHolder) {
-        commands(context, holder).forEach(::check)
+        val data = prepare(context)
+        for (command in commands(context, holder)) check(command, data)
     }
 
-    protected abstract fun check(command: CommandCheck)
+    protected abstract fun prepare(context: AlloyInspectionContext): T
+
+    protected abstract fun check(command: CommandCheck, data: T)
 
     companion object {
         /** Every command of the file, including every command of a `=>` chain. */
         fun commands(context: AlloyInspectionContext, holder: ProblemsHolder): Sequence<CommandCheck> = sequence {
-            val sigs = context.model.module.allReachableSigs.toList()
             for (command in context.model.module.allCommands) {
                 if (!context.inFile(command.pos)) continue
                 val decl = context.commandDecl(command.pos) ?: continue
                 val parts = mutableSetOf<Int>()
                 // The analyzer lists the last command of a chain, which leads to the others through its parents
                 for (each in generateSequence(command) { it.parent }) {
+                    ProgressManager.checkCanceled()
                     if (!context.inFile(each.pos)) continue
                     val part = context.part(decl, each.pos)
-                    if (parts.add(part)) yield(CommandCheck(context, holder, decl, part, each, AlloyCommandBounds(each, sigs)))
+                    if (parts.add(part)) yield(CommandCheck(context, holder, decl, part, each, AlloyCommandBounds.of(context.model, each)))
                 }
             }
         }

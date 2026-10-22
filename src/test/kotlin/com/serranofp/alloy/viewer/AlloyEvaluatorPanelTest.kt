@@ -167,6 +167,16 @@ class AlloyEvaluatorPanelTest : BasePlatformTestCase() {
         assertEquals(listOf("succ", "#Node"), evaluator.history())
     }
 
+    fun testHistoryKeepsWhatWasBeingTyped() {
+        val evaluator = panel().also { open(RING) }.evaluator()
+        evaluator.evaluate("succ")
+        evaluator.field.text = "#No"
+        evaluator.historyUp()
+        assertEquals("succ", evaluator.field.text)
+        evaluator.historyDown()
+        assertEquals("#No", evaluator.field.text)
+    }
+
     fun testHistoryKeepsFiftyEntries() {
         val evaluator = panel().also { open(RING) }.evaluator()
         for (i in 1..60) evaluator.evaluate("#Node + $i")

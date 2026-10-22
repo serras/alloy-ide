@@ -4,33 +4,18 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import edu.mit.csail.sdg.ast.Expr
 
-/** The inspection or intention that a rule belongs to. */
-data class AlloyRewriteFamily(val name: String) {
-    companion object {
-        val BOOLEAN = AlloyRewriteFamily("BOOLEAN")
-        val CARDINALITY = AlloyRewriteFamily("CARDINALITY")
-        val TEMPORAL = AlloyRewriteFamily("TEMPORAL")
-        val QUANTIFIER = AlloyRewriteFamily("QUANTIFIER")
-        val RELATIONAL = AlloyRewriteFamily("RELATIONAL")
-    }
-}
-
-enum class AlloyRewriteKind {
-    /** The result is simpler: an inspection reports it. */
-    SIMPLIFICATION,
-
-    /** The result is as simple: an intention offers it. */
-    EQUIVALENCE,
-}
-
-/** A rewrite of the analyzer's nodes, found on a type-checked model. */
-interface AlloyRewriteRule {
-    val family: AlloyRewriteFamily
-    val kind: AlloyRewriteKind
-
+/**
+ * A rewrite of the analyzer's nodes, found on a type-checked model. Which inspection reports it, or which
+ * intention offers it, is the list of rules it is in.
+ */
+fun interface AlloyRewriteRule {
     /** The rewrite of [node], which is [AlloySourceText.strip]ped, or null if this rule does not apply to it. */
     fun match(node: Expr, context: AlloyRewriteContext): AlloyRewrite?
 }
+
+/** A rule that matches with [match], which has the context as receiver. */
+internal fun rule(match: AlloyRewriteContext.(Expr) -> AlloyRewrite?): AlloyRewriteRule =
+    AlloyRewriteRule { node, context -> context.match(node) }
 
 /**
  * A rewrite that replaces [range] by [replacement]. The operator tokens of [uses] and of the pieces'
@@ -49,10 +34,8 @@ class AlloyRewrite(
     val fixName: (String) -> String,
 )
 
-/** A rewrite of [node] that can be applied: [range] of the file is to be replaced by [text]. */
+/** A rewrite that can be applied: [range] of the file, in [paragraph], is to be replaced by [text]. */
 class AlloyRewriteResult(
-    val rule: AlloyRewriteRule,
-    val node: Expr,
     val paragraph: PsiElement,
     val range: TextRange,
     val text: String,
@@ -66,11 +49,20 @@ sealed interface AlloyPiece {
     val uses: List<Expr>
 
     /**
-     * The text of a node, kept as written, comments and line breaks included. Written in parentheses, it
-     * keeps them and is an atom; otherwise it has the [level] of its top node, which may be a quantifier or
-     * `let` ([isBind]) or end in one ([endsOpen]).
+     * The [text] of a node, kept as written, comments and line breaks included, from its [source]. Written
+     * in parentheses, it keeps them and is an atom, and [bare] is the slice without them, if no comment lies
+     * inside them; otherwise it has the [level] of its top node, which may be a quantifier or `let`
+     * ([isBind]) or end in one ([endsOpen]).
      */
-    class Slice(val source: AlloySourceExpr, val level: Int, val isBind: Boolean, val endsOpen: Boolean, override val uses: List<Expr> = emptyList()) : AlloyPiece
+    class Slice(
+        val source: AlloySourceExpr,
+        val level: Int,
+        val isBind: Boolean,
+        val endsOpen: Boolean,
+        override val uses: List<Expr> = emptyList(),
+        val text: String = source.text,
+        val bare: Slice? = null,
+    ) : AlloyPiece
 
     /** [operator] applied to [operands]. */
     class Op(val operator: AlloyOperator, val operands: List<AlloyPiece>, override val uses: List<Expr> = emptyList()) : AlloyPiece {
@@ -88,14 +80,6 @@ sealed interface AlloyPiece {
      * as `not (all x: A | p)`, where the parentheses are not needed.
      */
     class Group(val piece: AlloyPiece, override val uses: List<Expr> = emptyList()) : AlloyPiece
-}
-
-/** The slices of [this] and of its operands. */
-internal fun AlloyPiece.slices(): List<AlloyPiece.Slice> = when (this) {
-    is AlloyPiece.Slice -> listOf(this)
-    is AlloyPiece.Op -> operands.flatMap { it.slices() }
-    is AlloyPiece.Bind -> body.slices()
-    is AlloyPiece.Group -> piece.slices()
 }
 
 /** The ranges of the source text that [this] keeps. */
@@ -120,6 +104,16 @@ internal fun AlloyPiece.allUses(): List<Expr> = uses + when (this) {
  * to the right than it should.
  */
 class AlloyRewriteRenderer(private val symbolic: Boolean) {
+    /**
+     * [replacement] rendered at [position]. A replacement that is a node in parentheses drops them where
+     * its place does not need them, as `(a or b)` of `not not (a or b)` does at the top of a block; the
+     * operands of a replacement keep theirs, which the user may have written for clarity.
+     */
+    fun renderReplacement(replacement: AlloyPiece, position: AlloyPosition): String {
+        val bare = (replacement as? AlloyPiece.Slice)?.bare
+        return if (bare != null && !position.needsParentheses(bare.level, bare.isBind, bare.endsOpen)) bare.text else render(replacement, position)
+    }
+
     fun render(piece: AlloyPiece, position: AlloyPosition): String {
         if (piece is AlloyPiece.Group) return "(${render(piece.piece, AlloyPosition.TOP)})"
         val parenthesized = when (piece) {
@@ -130,7 +124,7 @@ class AlloyRewriteRenderer(private val symbolic: Boolean) {
         }
         val rightOpen = parenthesized || position.rightOpen
         val text = when (piece) {
-            is AlloyPiece.Slice -> piece.source.text
+            is AlloyPiece.Slice -> piece.text
             is AlloyPiece.Op -> renderOp(piece, rightOpen)
             is AlloyPiece.Bind -> "${piece.quantifier} ${piece.decls} | ${render(piece.body, AlloyPosition(AlloyPrecedence.SEQ, true, rightOpen))}"
         }

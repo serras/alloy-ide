@@ -3,10 +3,13 @@ package com.serranofp.alloy.settings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.util.CheckedDisposable
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
+import com.serranofp.alloy.AlloyBundle
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JComponent
 
@@ -20,31 +23,40 @@ class AlloySettingsConfigurable(
     internal val solver = ComboBox<String>()
     private var available: List<AlloySolver>? = null
 
+    /** Disposed with the page's UI, which a late end of solver discovery must not fill then. */
+    private var ui: CheckedDisposable? = null
+
     internal val skolemDepth = ComboBox(AlloySettingsState.SKOLEM_DEPTHS.toList().toTypedArray())
-    internal val preventOverflows = JBCheckBox("Prevent overflows")
+    internal val preventOverflows = JBCheckBox(AlloyBundle.message("settings.prevent.overflows"))
     internal val coreMinimization = ComboBox(AlloySettingsState.CORE_MINIMIZATION_LABELS.toTypedArray())
     internal val coreGranularity = ComboBox(AlloySettingsState.CORE_GRANULARITY_LABELS.toTypedArray())
-    internal val nonFatalWarnings = JBCheckBox("Allow warnings (non-fatal)")
-    internal val recordKodkod = JBCheckBox("Record the Kodkod input/output")
-    internal val inferPartialInstance = JBCheckBox("Infer partial instance")
-    internal val checkVacuity = JBCheckBox("Check vacuity of passing checks")
+    internal val nonFatalWarnings = JBCheckBox(AlloyBundle.message("settings.non.fatal.warnings"))
+    internal val recordKodkod = JBCheckBox(AlloyBundle.message("settings.record.kodkod"))
+    internal val inferPartialInstance = JBCheckBox(AlloyBundle.message("settings.infer.partial.instance"))
+    internal val checkVacuity = JBCheckBox(AlloyBundle.message("settings.check.vacuity"))
 
     override fun getDisplayName(): String = "Alloy"
 
     override fun createComponent(): JComponent {
         solver.renderer = textListCellRenderer { id: String? -> solverLabel(id) }
         val discovery = solvers.load()
-        discovery.thenAccept { list ->
-            ApplicationManager.getApplication().invokeLater({ solversLoaded(list) }, ModalityState.any())
+        val loaded = discovery.getNow(null)
+        if (loaded != null) {
+            solversLoaded(loaded)
+        } else {
+            // The page can be closed before discovery ends
+            val page = Disposer.newCheckedDisposable().also { ui = it }
+            discovery.thenAccept { list ->
+                ApplicationManager.getApplication().invokeLater({ solversLoaded(list) }, ModalityState.any()) { page.isDisposed }
+            }
         }
-        discovery.getNow(null)?.let(::solversLoaded)
 
         return panel {
-            row("Solver:") { cell(solver) }
-            row("Skolem depth:") { cell(skolemDepth) }
+            row(AlloyBundle.message("settings.solver")) { cell(solver) }
+            row(AlloyBundle.message("settings.skolem.depth")) { cell(skolemDepth) }
             row { cell(preventOverflows) }
-            row("Unsat core minimization:") { cell(coreMinimization) }
-            row("Unsat core granularity:") { cell(coreGranularity) }
+            row(AlloyBundle.message("settings.core.minimization")) { cell(coreMinimization) }
+            row(AlloyBundle.message("settings.core.granularity")) { cell(coreGranularity) }
             row { cell(nonFatalWarnings) }
             row { cell(recordKodkod) }
             row { cell(inferPartialInstance) }
@@ -65,8 +77,13 @@ class AlloySettingsConfigurable(
 
     internal fun solverLabel(id: String?): String {
         if (id == null) return ""
-        val known = available ?: return "$id (loading solvers...)"
-        return known.firstOrNull { it.id == id }?.name ?: "$id (unavailable)"
+        val known = available ?: return AlloyBundle.message("settings.solver.loading", id)
+        return known.firstOrNull { it.id == id }?.name ?: AlloyBundle.message("settings.solver.unavailable", id)
+    }
+
+    override fun disposeUIResources() {
+        ui?.let(Disposer::dispose)
+        ui = null
     }
 
     override fun isModified(): Boolean = formState() != settings.state
@@ -79,12 +96,14 @@ class AlloySettingsConfigurable(
 
     override fun reset() {
         val state = settings.state
-        if ((solver.model as DefaultComboBoxModel<String>).getIndexOf(state.solver) < 0) solver.addItem(state.solver)
-        solver.selectedItem = state.solver
+        val saved = state.solver
+        if (saved != null && (solver.model as DefaultComboBoxModel<String>).getIndexOf(saved) < 0) solver.addItem(saved)
+        solver.selectedItem = saved
         skolemDepth.selectedItem = state.skolemDepth
         preventOverflows.isSelected = state.preventOverflows
-        coreMinimization.selectedIndex = state.coreMinimization
-        coreGranularity.selectedIndex = state.coreGranularity
+        // A hand-edited or older alloy.xml can hold any number; the analyzer gets them clamped too
+        coreMinimization.selectedIndex = state.coreMinimization.coerceIn(0, coreMinimization.itemCount - 1)
+        coreGranularity.selectedIndex = state.coreGranularity.coerceIn(0, coreGranularity.itemCount - 1)
         nonFatalWarnings.isSelected = state.nonFatalWarnings
         recordKodkod.isSelected = state.recordKodkod
         inferPartialInstance.isSelected = state.inferPartialInstance

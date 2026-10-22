@@ -11,6 +11,7 @@ import com.serranofp.alloy.run.AlloyCommandResults
 import com.serranofp.alloy.run.CommandLink
 import com.serranofp.alloy.run.CommandResult
 import com.serranofp.alloy.run.CommandState
+import com.serranofp.alloy.run.waitUntil
 import com.serranofp.alloy.settings.AlloySettings
 import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import edu.mit.csail.sdg.alloy4viz.AlloyProjection
@@ -165,11 +166,17 @@ class AlloyProjectionTest : BasePlatformTestCase() {
 
         val strip = UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!
         val circle = strip.geometry!!.circles[1]
-        strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_CLICKED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
-        assertEquals(1, model.state)
+        strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_PRESSED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
+        waitUntil("state 1 was not shown") { model.state == 1 }
         for (viz in listOf(model.vizState, model.nextVizState!!)) assertEquals(listOf(node), viz.projectedTypes.toList())
         assertEquals(atoms[1], panel.atomSelectors().single().selectedItem)
         val choice = AlloyProjection(mapOf(node to atoms[1]))
         assertEquals(listOf(model.vizState.getGraph(null, choice), model.nextVizState!!.getGraph(null, choice)), panel.graphs())
+    }
+
+    /** So the atom chosen in one state of a trace is in the other too: the two graphs can share the choice. */
+    fun testMutableSignaturesCannotBeProjected() {
+        val model = AlloySolutionModel(solve("var sig P {}\nsig Q {}\nfact { one P and always P' != P }\nrun { some Q } for 2 but 2 steps"))
+        assertEquals(listOf("Q"), model.projectableTypes.map { it.name }.filter { it == "P" || it == "Q" })
     }
 }

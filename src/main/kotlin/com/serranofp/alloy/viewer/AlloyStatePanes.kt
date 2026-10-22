@@ -6,6 +6,7 @@ import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
+import org.jetbrains.annotations.TestOnly
 
 /**
  * One pane per shown state, each under its caption: a single state, or a trace state and its successor. Two
@@ -17,6 +18,8 @@ class AlloyStatePanes : JPanel(null) {
     var panes: List<JComponent> = emptyList()
         private set
 
+    /** The captions of the panes, as [show] got them. */
+    @get:TestOnly
     var captions: List<String?> = emptyList()
         private set
 

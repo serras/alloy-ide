@@ -4,10 +4,13 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.vfs.JarFileSystem
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiPolyVariantReference
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyBinderDecl
 import com.serranofp.alloy.psi.AlloyFieldDecl
 import com.serranofp.alloy.psi.AlloyFile
@@ -17,6 +20,7 @@ import com.serranofp.alloy.psi.AlloyParamDecl
 import com.serranofp.alloy.psi.AlloyPredDecl
 import com.serranofp.alloy.psi.AlloySigDecl
 import com.serranofp.alloy.psi.AlloySigName
+import com.serranofp.alloy.viewer.alloyEvaluatorDocument
 import java.util.concurrent.TimeUnit
 
 class AlloyReferenceTest : BasePlatformTestCase() {
@@ -182,6 +186,36 @@ class AlloyReferenceTest : BasePlatformTestCase() {
         assertFalse(exact("f }"))
         analyze()
         assertEquals(1, targets("f }").size)
+    }
+
+    /** Resolves the reference at [offset] of [file] off the EDT, as background highlighting does. */
+    private fun resolveInBackground(file: PsiFile, offset: Int): List<PsiElement> =
+        ApplicationManager.getApplication().executeOnPooledThread<List<PsiElement>> {
+            ReadAction.computeBlocking<List<PsiElement>, Throwable> {
+                (file.findReferenceAt(offset) as PsiPolyVariantReference).multiResolve(false).mapNotNull { it.element }
+            }
+        }.get(30, TimeUnit.SECONDS)
+
+    fun testEvaluatorFragmentResolvesByNameWithoutAModel() {
+        var parses = 0
+        val service = AlloyModelService.getInstance(project)
+        service.parse = { _, _, _ -> parses++; error("not a module") }
+        try {
+            val document = alloyEvaluatorDocument(project) { null }
+            WriteCommandAction.runWriteCommandAction(project) { document.setText("sig A {}\nfact { some A }") }
+            val fragment = PsiDocumentManager.getInstance(project).getPsiFile(document)!!.also { PsiDocumentManager.getInstance(project).commitDocument(document) }
+            val targets = resolveInBackground(fragment, fragment.text.lastIndexOf('A'))
+            assertInstanceOf(targets.single(), AlloySigName::class.java)
+            assertEquals(0, parses)
+        } finally {
+            service.parse = edu.mit.csail.sdg.parser.CompUtil::parseEverything_fromFile
+        }
+    }
+
+    fun testCopyWithoutAFileResolvesByName() {
+        val copy = PsiFileFactory.getInstance(project).createFileFromText("copy.als", AlloyLanguage, "sig A {}\nfact { some A }", false, false)
+        assertNull(copy.virtualFile)
+        assertInstanceOf(resolveInBackground(copy, copy.text.lastIndexOf('A')).single(), AlloySigName::class.java)
     }
 
     fun testSigDeclarationsAreTheirNames() {

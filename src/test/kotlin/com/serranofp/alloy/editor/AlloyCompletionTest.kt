@@ -101,6 +101,13 @@ class AlloyCompletionTest : BasePlatformTestCase() {
         assertEmpty(names("open util/ordering[S]\nsig S {}\nfact { some nope/<caret> }"))
     }
 
+    /** A `/` that is not inside a name, here among a module's parameters, qualifies nothing. */
+    fun testSlashOutsideANameIsNoQualifier() {
+        myFixture.configureByText("m.als", "module m[x / y]")
+        val position = myFixture.file.findElementAt(myFixture.file.text.indexOf('y'))!!
+        assertFalse(AlloyCompletionContext.of(position) is AlloyCompletionContext.Qualified)
+    }
+
     // Completion filtered by context
 
     fun testRunTarget() {

@@ -15,6 +15,7 @@ import com.intellij.openapi.editor.colors.EditorColorsListener
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
@@ -23,6 +24,7 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Splitter
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.ui.OnePixelSplitter
+import com.intellij.ui.PopupHandler
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
@@ -32,6 +34,7 @@ import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import edu.mit.csail.sdg.alloy4viz.AlloyAtom
 import edu.mit.csail.sdg.alloy4viz.AlloyProjection
@@ -44,14 +47,10 @@ import java.awt.Component
 import java.awt.Container
 import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.Font
 import java.awt.LayoutManager
 import java.awt.Rectangle
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
 import javax.swing.BoxLayout
 import javax.swing.JComponent
-import javax.swing.JLayer
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JViewport
@@ -72,8 +71,9 @@ class AlloyInstanceToolWindowFactory : ToolWindowFactory, DumbAware {
  * status line, over the Visualization, Text and Table tabs. Rebuilt when the session changes; stepping
  * through a trace and projecting update it in place. A trace shows the selected state and its successor, side by
  * side or stacked, and the trace path strip, after the toolbar, which highlights both and selects the state
- * clicked; under a projection, one atom selector per projected signature applies to both graphs. The Evaluator
+ * clicked, or stepped to with its keys; under a projection, one atom selector per projected signature applies to both graphs. The Evaluator
  * panel, which a toolbar toggle shows, sits under the tabs and follows the session and its selected state.
+ * Selecting a state does the analyzer's work for it off the EDT, the first time; only the graphs are made on it.
  */
 class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPanel(CardLayout()) {
     private val viewer = AlloyInstanceViewer.getInstance(project)
@@ -84,7 +84,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
     private val tabs = JBTabbedPane()
     private val graphs = AlloyStatePanes()
     private val selectors = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)))
-    private val darkGraphs = DarkGraphLayerUI()
+    private val darkGraphs = DarkGraphTheme()
     private val text = AlloyTextPane()
     private val tables = AlloyStatePanes()
     private val strip = AlloyTraceStrip(parent, onSelect = ::goTo)
@@ -94,6 +94,9 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
 
     /** The atom shown for each projected signature, kept while that atom exists. */
     private val chosenAtoms = mutableMapOf<AlloyType, AlloyAtom>()
+
+    /** How many states were selected, so that only the latest one is shown when their work ends out of order. */
+    private var selections = 0L
 
     init {
         add(JBLabel(AlloyInstanceViewer.EMPTY_TEXT, SwingConstants.CENTER).apply { foreground = UIUtil.getContextHelpForeground() }, EMPTY)
@@ -108,7 +111,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
 
         val controls = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
             add(toolbar.component)
-            add(JBLabel("Projection:"))
+            add(JBLabel(AlloyBundle.message("viewer.projection")))
             add(projection.link)
         }
         val toolbarLine = JPanel().apply {
@@ -129,10 +132,10 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
             add(selectors, BorderLayout.SOUTH)
         }
         darkGraphs.followTheme(parent, visualization::repaint)
-        tabs.addTab(AlloyInstanceViewer.VISUALIZATION, visualization)
-        tabs.addTab(AlloyInstanceViewer.TEXT, JBScrollPane(text))
-        tabs.addTab(AlloyInstanceViewer.TABLE, tables)
-        tabs.addChangeListener { tabs.selectedIndex.takeIf { it >= 0 }?.let { viewer.selectedTab = tabs.getTitleAt(it) } }
+        tabs.addTab(AlloyBundle.message("viewer.tab.visualization"), visualization)
+        tabs.addTab(AlloyBundle.message("viewer.tab.text"), JBScrollPane(text))
+        tabs.addTab(AlloyBundle.message("viewer.tab.table"), tables)
+        tabs.addChangeListener { TAB_IDS.getOrNull(tabs.selectedIndex)?.let { viewer.selectedTab = it } }
         splitter.firstComponent = tabs
         splitter.secondComponent = evaluator
         evaluator.isVisible = viewer.evaluatorVisible
@@ -140,17 +143,24 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         add(JPanel(BorderLayout()).apply { add(north, BorderLayout.NORTH); add(splitter, BorderLayout.CENTER) }, SESSION)
 
         viewer.addListener(parent, ::rebuild)
+        // Only an edit of the session's file outdates it, or moves its command
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
-            override fun documentChanged(event: DocumentEvent) = updateHeader()
+            override fun documentChanged(event: DocumentEvent) {
+                val file = viewer.session?.origin?.file ?: return
+                if (FileDocumentManager.getInstance().getFile(event.document) == file) updateHeader()
+            }
         }, parent)
-        // The diff's colors are the editor color scheme's
-        ApplicationManager.getApplication().messageBus.connect(parent).subscribe(EditorColorsManager.TOPIC, EditorColorsListener { showText() })
+        // The diff's colors and the fonts are the editor color scheme's
+        ApplicationManager.getApplication().messageBus.connect(parent).subscribe(EditorColorsManager.TOPIC, EditorColorsListener {
+            showText()
+            showTables()
+        })
         rebuild()
     }
 
     private fun textArea() = JBTextArea().apply {
         isEditable = false
-        font = Font(Font.MONOSPACED, Font.PLAIN, UIUtil.getLabelFont().size)
+        font = AlloyTextPane.editorFont()
     }
 
     /** The analyzer's text of a single state, or the difference from a trace state to its successor. */
@@ -175,8 +185,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         val model = session.model
         chosenAtoms.clear()
         projection.show(model)
-        val tab = (0 until tabs.tabCount).firstOrNull { tabs.getTitleAt(it) == viewer.selectedTab } ?: 0
-        tabs.selectedIndex = tab
+        tabs.selectedIndex = TAB_IDS.indexOf(viewer.selectedTab).coerceAtLeast(0)
         stateChanged()
         updateHeader()
     }
@@ -184,7 +193,6 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
     private fun updateHeader() {
         val session = viewer.session ?: return
         header.text = viewer.header(session)
-        header.isEnabled = true
         header.foreground = if (viewer.outdated(session) != null) UIUtil.getInactiveTextColor() else null
         evaluator.updateCaption()
     }
@@ -202,23 +210,42 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         val model = viewer.session?.model ?: return
         strip.scrollPane.isVisible = model.hasStates
         if (model.hasStates) {
-            strip.show(model.traceLength, model.loopState, model.state)
+            strip.show(model.traceLength, model.loopState, model.state, model.successor())
             strip.reveal()
         }
         showText()
+        showTables()
+        redrawGraph()
+        evaluator.refresh(viewer.session)
+    }
+
+    private fun showTables() {
+        val model = viewer.session?.model ?: return
         val next = model.nextTable
         tables.show(
             if (next == null) listOf(null to tablePane(model.table))
             else listOf(model.caption to tablePane(model.table), model.nextCaption to tablePane(next)),
         )
-        redrawGraph()
-        evaluator.refresh(viewer.session)
     }
 
-    /** Selects [state], clicked in the trace path strip. */
+    /**
+     * Selects [state], chosen in the trace path strip. Its instances, text and tables are prepared off the EDT the
+     * first time; if another state is selected meanwhile, or another session shown, this one is not shown.
+     */
     private fun goTo(state: Int) {
-        val model = viewer.session?.model ?: return
-        model.goTo(state)
+        val session = viewer.session ?: return
+        val selection = ++selections
+        if (session.model.isPrepared(state)) return select(session, state)
+        ApplicationManager.getApplication().executeOnPooledThread {
+            // A failure is the EDT's to report, as it does the work again
+            runCatching { session.model.prepare(state) }
+            ApplicationManager.getApplication().invokeLater({ if (selection == selections) select(session, state) }, project.disposed)
+        }
+    }
+
+    private fun select(session: ViewerSession, state: Int) {
+        if (viewer.session !== session) return
+        session.model.goTo(state)
         stateChanged()
     }
 
@@ -238,6 +265,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
             selectors.add(atomSelector(theme, type, atoms, atom))
         }
         selectors.isVisible = selectors.componentCount > 0
+        // Only static top-level signatures can be projected (`VizState.canProject`), so both states have the atoms
         val choice = AlloyProjection(shown)
         val next = model.nextVizState
         graphs.show(
@@ -263,17 +291,15 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
 
     /**
      * The graph of [theme] under [choice], on a white canvas that the dark mapping recolors, scrolled. As in the
-     * visualizer, right-clicking the canvas around the graph shows the graph's zoom popup too.
+     * visualizer, the popup gesture on the canvas around the graph shows the graph's zoom popup too.
      */
     private fun graphPane(theme: VizState, choice: AlloyProjection): JComponent {
         val graph = theme.getGraph(WindowManager.getInstance().getFrame(project), choice)
         val canvas = GraphCanvas().apply { add(graph) }
-        if (graph is GraphViewer) canvas.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent) {
-                if (e.button == MouseEvent.BUTTON3 || (e.button == MouseEvent.BUTTON1 && e.isControlDown)) graph.alloyPopup(canvas, e.x, e.y)
-            }
+        if (graph is GraphViewer) canvas.addMouseListener(object : PopupHandler() {
+            override fun invokePopup(comp: Component, x: Int, y: Int) = graph.alloyPopup(canvas, x, y)
         })
-        return JBScrollPane(JLayer(canvas, darkGraphs))
+        return JBScrollPane(darkGraphs.layer(canvas))
     }
 
     /** The white canvas around a graph, which fills the visible area when the graph is smaller. */
@@ -305,7 +331,8 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         }
     }
 
-    private inner class EvaluatorToggle : ToggleAction(EVALUATOR, "Show or hide the evaluator", AllIcons.Debugger.EvaluateExpression), DumbAware {
+    private inner class EvaluatorToggle :
+        ToggleAction(EVALUATOR, AlloyBundle.message("viewer.evaluator.toggle.description"), AllIcons.Debugger.EvaluateExpression), DumbAware {
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
         override fun isSelected(e: AnActionEvent) = viewer.evaluatorVisible
@@ -314,10 +341,13 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
     }
 
     companion object {
-        const val EVALUATOR = "Evaluator"
+        val EVALUATOR: String get() = AlloyBundle.message("viewer.evaluator")
 
         private const val EMPTY = "empty"
         private const val SESSION = "session"
+
+        /** The ids of the tabs, in order, as [AlloyInstanceViewer.selectedTab] keeps them. */
+        private val TAB_IDS = listOf(AlloyInstanceViewer.VISUALIZATION, AlloyInstanceViewer.TEXT, AlloyInstanceViewer.TABLE)
     }
 }
 

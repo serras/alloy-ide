@@ -67,7 +67,7 @@ class AlloyRewriteEquivalenceTest : BasePlatformTestCase() {
     }
 
     fun testCorrectRewriteIsEquivalent() {
-        assertEquivalentRewrite("not not (p and after q)", "(p and after q)", doubleNegation)
+        assertEquivalentRewrite("not not (p and after q)", "p and after q", doubleNegation)
     }
 
     fun testCorrectExpressionRewriteIsEquivalent() {
@@ -83,7 +83,7 @@ class AlloyRewriteEquivalenceTest : BasePlatformTestCase() {
     fun testBooleanSimplifications() {
         assertEquivalentRewrites(
             AlloyBooleanRules.ALL,
-            "not not (p and q)" to "(p and q)",
+            "not not (p and q)" to "p and q",
             "not (not p or not after q)" to "p and after q",
             "not (not p and not q and not r)" to "p or q or r",
             "not (p implies after q)" to "p and not after q",

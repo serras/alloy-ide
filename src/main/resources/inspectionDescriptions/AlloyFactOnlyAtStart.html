@@ -9,6 +9,6 @@ only the transition out of the first state. In this example, <code>inbox</code> 
 constrains only the first state. This is often deliberate, as in <code>fact init { no inbox }</code>, so it is
 reported only as information, without highlighting.</p>
 <p>Signature facts are not reported, since the analyzer applies them in every state.</p>
-<p>The quick-fix wraps the body of the fact in <code>always { … }</code>.</p>
+<p>The quick-fix wraps the body of the fact in <code>always { … }</code>. It is not offered when a part of the body, such as <code>no inbox</code>, is only about the first state, since wrapping would make it an invariant.</p>
 </body>
 </html>

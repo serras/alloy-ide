@@ -4,13 +4,16 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.EmptyProgressIndicator
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.util.ProgressIndicatorBase
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
 import com.serranofp.alloy.analysis.AlloyAnalysisEngine
+import com.serranofp.alloy.analysis.AlloyAnalysisEvent
 import edu.mit.csail.sdg.translator.A4Options
 import edu.mit.csail.sdg.translator.TranslateAlloyToKodkod
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -77,6 +80,33 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
         assertTrue(service.launch(main, show, myFixture.editor))
         waitUntilIdle(project)
         assertEquals(CommandState.NoInstance, results.get(main, show)!!.state)
+    }
+
+    fun testEditOfAnOpenedModuleOutdatesTheResult() {
+        val library = myFixture.addFileToProject("lib.als", "module lib\nsig Item {}")
+        myFixture.configureByText("main.als", "open lib\npred show { some Item }\nrun show for 3\n")
+        val main = myFixture.file.virtualFile
+        assertTrue(service.launch(main, show, myFixture.editor))
+        waitUntilIdle(project)
+        val result = results.get(main, show)!!
+        assertEquals(setOf(library.virtualFile), result.modules)
+        assertNull(results.outdated(result, myFixture.editor.document))
+
+        val document = FileDocumentManager.getInstance().getDocument(library.virtualFile)!!
+        WriteCommandAction.runWriteCommandAction(project) { document.insertString(0, "// edit\n") }
+        assertEquals(Outdated.FileChanged, results.outdated(result, myFixture.editor.document))
+    }
+
+    fun testCancellationDuringTheLaunchFreesTheProject() {
+        val execution = newExecution(project, file, show)
+        service.startRun(execution)
+        val launcher = AlloyCommandLauncher(project, options = { throw ProcessCanceledException() })
+        val running = ApplicationManager.getApplication().executeOnPooledThread<Throwable?> {
+            runCatching { AlloyCommandTask(project, execution, launcher, testRootDisposable).run(EmptyProgressIndicator()) }.exceptionOrNull()
+        }
+        assertInstanceOf(running.get(10, TimeUnit.SECONDS), ProcessCanceledException::class.java)
+        assertNull(service.activeExecution)
+        assertEquals(CommandState.Stopped, results.get(file, show)!!.state)
     }
 
     fun testSecondLaunchWhileBusyLeavesTheStoreUnchanged() {
@@ -298,6 +328,38 @@ class AlloyRunLaunchTest : BasePlatformTestCase() {
         assertEquals(Vacuity.Unknown(AlloyCommandExecution.VACUITY_STOPPED), result.vacuity)
         assertEquals(Verdict.Run, verdict(result))
         assertNull(service.activeExecution)
+    }
+
+    /**
+     * The check ends without counterexample between the stop reading its analysis and stopping it, so that
+     * stopping that analysis does nothing: the vacuity check must not start in its place.
+     */
+    fun testStopRacingTheEndOfTheCheckStartsNoVacuityCheck() {
+        myFixture.configureByText("model.als", holding)
+        val execution = newExecution(project, file, check)
+        assertTrue(service.startRun(execution))
+        val engine = AlloyAnalysisEngine.getInstance()
+        val events = CopyOnWriteArrayList<AlloyAnalysisEvent>()
+        val ended = engine.execute("a", testRootDisposable, mapOf("/model.als" to holding), "/model.als", 0, A4Options()) { events += it }
+        assertTrue(ended.await(30, TimeUnit.SECONDS))
+        val gate = CountDownLatch(1)
+        try {
+            execution.begin({ ended }) { sigs, query, listener ->
+                engine.start("a (vacuity)", testRootDisposable, A4Options(), listener) { reporter, options ->
+                    gate.await()
+                    TranslateAlloyToKodkod.execute_command(reporter, sigs, query, options)
+                }
+            }
+            execution.stop()
+            events.forEach(execution::accept)
+            assertTrue(execution.isFinished())
+            val result = results.get(file, check)!!
+            assertEquals(CommandState.NoCounterexample, result.state)
+            assertNull(result.vacuity)
+            assertNull(service.activeExecution)
+        } finally {
+            gate.countDown()
+        }
     }
 
     fun testTerminatingTheVacuityCheckKeepsTheCheckResult() {

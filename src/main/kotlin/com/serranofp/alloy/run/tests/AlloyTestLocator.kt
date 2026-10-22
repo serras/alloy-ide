@@ -14,8 +14,8 @@ import com.serranofp.alloy.run.AlloyCommandResultHintsProvider
 import com.serranofp.alloy.run.AlloyCommands
 
 /**
- * The location of a test node, `alloy://<file URL>#<index>:<label>`: the command is found by its label, or by its
- * position among the commands when it has none, as the gutter does.
+ * The location of a test node, `alloy://<file URL>#<payload>` with the payload of the hints (see
+ * [AlloyCommandResultHintsProvider.Codec]): the command is found as the gutter finds it (see [AlloyCommandRef]).
  */
 object AlloyTestLocator : SMTestLocator {
     const val PROTOCOL = "alloy"

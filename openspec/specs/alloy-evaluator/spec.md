@@ -89,7 +89,7 @@ Expressions SHALL be able to use every name of the model as it was analyzed for 
 - **THEN** the panel shows the successors of that atom
 
 ### Requirement: Evaluator field editing
-The evaluator field SHALL highlight Alloy syntax. Completion SHALL offer the names available to expressions, and nothing else, without reporting the model's diagnostics in the field. Pressing Enter evaluates, and the field keeps a history of evaluated expressions that the user can go back through.
+The evaluator field SHALL highlight Alloy syntax. Completion SHALL offer the names available to expressions, and nothing else, without reporting the model's diagnostics in the field. Pressing Enter evaluates, and the field keeps a history of evaluated expressions that the user can go back through; coming back from the history shows again what was being typed. Adding or editing a watch SHALL offer the same completion.
 
 #### Scenario: Completing a field name
 - **WHEN** the shown model has a field `succ` and the user types `su` in the evaluator field and invokes completion
@@ -102,6 +102,10 @@ The evaluator field SHALL highlight Alloy syntax. Completion SHALL offer the nam
 #### Scenario: History
 - **WHEN** the user evaluated `succ` and then `#Node`, and opens the field's history
 - **THEN** both expressions are offered, the latest first
+
+#### Scenario: Leaving the history
+- **WHEN** the user has typed `#No`, goes up to `succ` in the history and then down again
+- **THEN** the field shows `#No`
 
 ### Requirement: Watches list
 The user SHALL be able to add the current expression of the field to a list of watches. Watches can also be added from the list itself, and each can be edited, removed and moved up or down. Each watch shows its expression and its value, or its error, as a single evaluation does.
@@ -134,7 +138,11 @@ All watches SHALL be evaluated again whenever the selected state changes, by cli
 - **THEN** it is not highlighted as changed
 
 ### Requirement: Watches kept per model file
-Watches SHALL be kept per model file, in the project's workspace, across results and IDE sessions. Showing a result of a file SHALL show that file's watches. A watch that cannot be evaluated in a result, for example because it names something that no longer exists, SHALL stay in the list and show its error.
+Watches SHALL be kept per model file, in the project's workspace, across results and IDE sessions. Showing a result of a file SHALL show that file's watches. A watch that cannot be evaluated in a result, for example because it names something that no longer exists, SHALL stay in the list and show its error. The watches SHALL follow their file when it, or a directory above it, is renamed or moved, and SHALL be forgotten when it is deleted; a file that is missing when the IDE starts keeps its watches.
+
+#### Scenario: Renaming the model file
+- **WHEN** `ring.als` has watches and the user renames it to `election.als`
+- **THEN** opening a result of `election.als` shows those watches
 
 #### Scenario: Results of two files
 - **WHEN** the user added watches while a result of `ring.als` was shown, and then opens a result of `graph.als`
@@ -156,7 +164,7 @@ An outdated result SHALL still be evaluated against the model as it was analyzed
 - **THEN** the panel shows the value of `succ` in the shown instance, and says that the result is outdated
 
 ### Requirement: Evaluation keeps the IDE responsive
-Evaluating SHALL not block the IDE's user interface. While an evaluation runs, the panel SHALL show that it is evaluating. A newer state, solution or evaluation SHALL supersede the results of evaluations still running, so that the panel only shows values of the current state.
+Evaluating SHALL not block the IDE's user interface. While an evaluation runs, the panel SHALL show that it is evaluating. A newer state, solution or evaluation SHALL supersede the results of evaluations still running, so that the panel only shows values of the current state, and the evaluations still waiting SHALL not run. An evaluation that fails unexpectedly, for example by running out of stack on a huge expression, SHALL show an error instead of a value.
 
 #### Scenario: Selecting during an evaluation
 - **WHEN** watches are being evaluated at state 0 and the user clicks the circle of state 1 in the trace path strip

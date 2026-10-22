@@ -33,4 +33,14 @@ class AlloyKeywordCompletionTest : BasePlatformTestCase() {
         assertEmpty(items.filter { it in KEYWORDS })
         assertEquals("nothing was inserted", before, myFixture.editor.document.text)
     }
+
+    fun testNoKeywordsForANewName() = assertNoKeywords("pred al<caret> {}")
+
+    fun testNoKeywordsForASignatureParent() = assertNoKeywords("sig A {}\nsig B extends a<caret> {}")
+
+    fun testKeywordsAfterASignatureName() {
+        myFixture.configureByText("model.als", "sig A ext<caret> {}")
+        myFixture.completeBasic()
+        myFixture.checkResult("sig A extends<caret> {}")
+    }
 }

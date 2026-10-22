@@ -50,10 +50,7 @@ class AlloyRunLogTest : TestCase() {
     fun testInstanceFound() {
         val log = log(showRun)
         assertEquals(Outcome.InstanceFound, log.outcome)
-        assertFalse(log.unexpected)
         assertEquals(4L, log.timeMillis)
-        assertTrue(log.completed)
-        assertEquals("", log.completionText)
         assertEquals("Instance found · 4 ms", log.summary)
     }
 
@@ -108,7 +105,6 @@ class AlloyRunLogTest : TestCase() {
         assertEquals("Generating CNF...", log.progress)
         log.accept(showRun[2])
         assertEquals("Solving...", log.progress)
-        assertFalse(log.completed)
         assertEquals(AlloyRunLog.RUNNING, log.summary)
     }
 
@@ -124,8 +120,6 @@ class AlloyRunLogTest : TestCase() {
         val log = log(bigRun)
         assertEquals(Outcome.None, log.outcome)
         assertNull(log.timeMillis)
-        assertTrue(log.completed)
-        assertEquals(AlloyRunLog.STOPPED, log.completionText)
         assertEquals("Stopped before completion", log.summary)
         assertEquals("Solving...", log.progress)
         assertEquals("Executing \"Run big for 30 but 7 int\"", log.lines[2].text)
@@ -174,7 +168,7 @@ class AlloyRunLogTest : TestCase() {
             listOf("   No counterexample found. Assertion may be valid. 3ms.", "   Minimizing the unsat core of 5 entries..."),
             log.lines.takeLast(2).map { it.text },
         )
-        assertFalse(log.completed)
+        assertEquals(AlloyRunLog.RUNNING, log.summary)
     }
 
     fun testNoUnsatCoreAvailable() {
@@ -190,27 +184,23 @@ class AlloyRunLogTest : TestCase() {
     fun testInstanceContraryToExpectation() {
         val log = log(start("p", run = true, expects = 0) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 9)))
         assertEquals(Outcome.InstanceFound, log.outcome)
-        assertTrue(log.unexpected)
         assertEquals("Instance found, contrary to expectation · 4 ms", log.summary)
         assertEquals("   Instance found. Predicate is consistent, contrary to expectation. 4ms.", log.lines.last().text)
     }
 
     fun testAsExpectedIsNotUnexpected() {
         val log = log(start("p", run = true, expects = 0) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7)))
-        assertFalse(log.unexpected)
         assertEquals("No instance found, as expected · 2 ms", log.summary)
         assertEquals("   No instance found. Predicate may be inconsistent, as expected. 2ms.", log.lines.last().text)
     }
 
     fun testInstanceAsExpected() {
         val log = log(start("p", run = true, expects = 1) + listOf(Solving(0, 15, 212, 322, 5), Sat(SAT, null, 9)))
-        assertFalse(log.unexpected)
         assertEquals("Instance found, as expected · 4 ms", log.summary)
     }
 
     fun testNoInstanceContraryToExpectation() {
         val log = log(start("p", run = true, expects = 1) + listOf(Solving(0, 15, 212, 322, 5), Unsat(UNSAT, NO_CORE, 7)))
-        assertTrue(log.unexpected)
         assertEquals("No instance found, contrary to expectation · 2 ms", log.summary)
     }
 
@@ -267,7 +257,6 @@ class AlloyRunLogTest : TestCase() {
 
     fun testFailure() {
         val log = log(start("show") + Failed(AlloyFailure.StackExhausted, 10))
-        assertEquals("failure", log.completionText)
         assertEquals(AlloyRunLog.FAILED, log.summary)
     }
 
@@ -315,6 +304,21 @@ class AlloyRunLogTest : TestCase() {
         assertEquals("No counterexample found · 2 ms", holding().summary(Vacuity.Unknown(AlloyCommandExecution.VACUITY_STOPPED)))
         assertEquals("No counterexample found · 2 ms", holding().summary(null))
         assertEquals(holding().summary, holding().summary(null))
+    }
+
+    /** Should the analyzer translate again, the first counts afterwards replace no line of the earlier block. */
+    fun testASecondTranslationStartsANewBlock() {
+        val log = log(start("show") + listOf(Solving(0, 12, 103, 149, 29), translating(30), Solving(0, 12, 103, 149, 40)))
+        assertEquals(2, log.lines.count { it.text.startsWith("   Solver=") })
+        assertEquals(2, log.lines.count { it.text == "   Solving..." })
+    }
+
+    fun testExpectReadBeforeTheAnalysis() {
+        val log = AlloyRunLog()
+        log.expect(1)
+        assertEquals(1, log.expects)
+        log.accept(executing("show", 0, run = true))
+        assertEquals(-1, log.expects)
     }
 
     fun testCoreSizeOfAResultWithoutInstance() {

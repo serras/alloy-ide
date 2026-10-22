@@ -3,12 +3,14 @@ package com.serranofp.alloy.inspections
 import com.intellij.codeInspection.LocalQuickFixAndIntentionActionOnPsiElement
 import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiTreeUtil
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.inspections.AlloyCommandInspection.Companion.isUser
 import com.serranofp.alloy.inspections.AlloyTextEdits.balanced
 import com.serranofp.alloy.psi.AlloyMacroDecl
@@ -40,6 +42,7 @@ class AlloyStaticPrimeInspection : AlloyModelInspection() {
             module.allSigs.filter(::isUser).flatMapTo(this) { sig -> sig.facts.map { it to null } }
         }
         for ((body, func) in roots) {
+            ProgressManager.checkCanceled()
             if (!context.inFile(body.span())) continue
             val lets = HashMap<ExprVar, Expr>()
             body.accept(object : VisitQuery<Unit>() {
@@ -81,21 +84,20 @@ class AlloyStaticPrimeInspection : AlloyModelInspection() {
         // The operand of a prime in the paragraph comes from elsewhere when it is a macro's argument
         val operand = x.sub.span()
         if (!context.inFile(operand) || !paragraph.textRange.contains(context.range(operand))) return null
-        val range = balanced(context.document, written, paragraph.textRange)
+        val range = balanced(context.file, written, paragraph.textRange)
         val text = context.document.getText(range)
         val unprimed = text.removeSuffix("'")
         val message = when (val sub = x.sub.deNOP()) {
             is ExprVar if func != null && func.params().any { it === sub } ->
-                "${sub.label} is a parameter, and parameters keep their value across states, so $text is the same as $unprimed. " +
-                        "A macro, such as ${macro(context, func)}, primes its argument instead"
+                AlloyBundle.message("inspection.static.prime.parameter", sub.label, text, unprimed, macro(context, func))
 
-            is ExprVar -> "${sub.label} is a quantified variable, which keeps its value across states, so $text is the same as $unprimed"
+            is ExprVar -> AlloyBundle.message("inspection.static.prime.variable", sub.label, text, unprimed)
             else -> {
                 val statics = relations(x.sub)
                 when (statics.size) {
-                    0 -> "$unprimed never changes, so $text is the same as $unprimed"
-                    1 -> "${statics.single()} is static, so $text is the same as $unprimed"
-                    else -> "${statics.joinToString()} are static, so $text is the same as $unprimed"
+                    0 -> AlloyBundle.message("inspection.static.prime.constant", text, unprimed)
+                    1 -> AlloyBundle.message("inspection.static.prime.static", statics.single(), text, unprimed)
+                    else -> AlloyBundle.message("inspection.static.prime.statics", statics.joinToString(), text, unprimed)
                 }
             }
         }
@@ -118,10 +120,10 @@ class AlloyStaticPrimeInspection : AlloyModelInspection() {
     private fun isMutable(analysis: AlloyFrameAnalysis, lets: Map<ExprVar, Expr>, expr: Expr): Boolean {
         val bound = HashMap(lets)
         return expr.accept(object : VisitQuery<Boolean>() {
-            override fun visit(x: Sig): Boolean? = if (x.isVariable != null || x.isMeta != null) true else super.visit(x)
+            override fun visit(x: Sig): Boolean? = if (AlloyFrameAnalysis.isMutable(x)) true else super.visit(x)
 
             // A field of the meta model, as `value`, stands for any relation
-            override fun visit(x: Field): Boolean? = if (x.isVariable != null || x.sig.isMeta != null) true else super.visit(x)
+            override fun visit(x: Field): Boolean? = if (AlloyFrameAnalysis.isMutable(x)) true else super.visit(x)
 
             override fun visit(x: ExprCall): Boolean? = if (analysis.summary(x.`fun`).mentions.isNotEmpty()) true else super.visit(x)
 
@@ -155,7 +157,7 @@ class AlloyStaticPrimeInspection : AlloyModelInspection() {
 
 /** Deletes a `'`. */
 class AlloyRemovePrimeFix(prime: PsiElement) : LocalQuickFixAndIntentionActionOnPsiElement(prime) {
-    override fun getText(): String = "Remove the prime"
+    override fun getText(): String = AlloyBundle.message("inspection.static.prime.fix")
 
     override fun getFamilyName(): String = text
 

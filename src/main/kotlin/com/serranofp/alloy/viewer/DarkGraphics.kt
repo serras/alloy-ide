@@ -64,13 +64,16 @@ class DarkPalette(val canvas: Color, val foreground: Color, val label: Color, va
  * when something is drawn, not when it is set, because the same color is a fill for `fill*`, a line for `draw*`
  * and text for `drawString`. [getColor] and [getBackground] still answer the colors that were set.
  */
-class DarkGraphics(graphics: Graphics2D, private val palette: DarkPalette) : Graphics2DDelegate(graphics) {
+class DarkGraphics private constructor(
+    graphics: Graphics2D,
+    private val palette: DarkPalette,
     /** The color that was set, or null when the paint is not a color, which is drawn as it is. */
-    private var current: Color? = graphics.color
-    private var background: Color? = graphics.background
-
-    init {
-        background?.let { super.setBackground(palette.fill(it)) }
+    private var current: Color?,
+    private var background: Color?,
+) : Graphics2DDelegate(graphics) {
+    /** Maps the background of [graphics]; a copy made by [create] has its original's mapped background already. */
+    constructor(graphics: Graphics2D, palette: DarkPalette) : this(graphics, palette, graphics.color, graphics.background) {
+        graphics.background?.let { graphics.background = palette.fill(it) }
     }
 
     private inline fun with(map: (Color) -> Color, draw: () -> Unit) {
@@ -84,10 +87,7 @@ class DarkGraphics(graphics: Graphics2D, private val palette: DarkPalette) : Gra
 
     private inline fun text(draw: () -> Unit) = with(palette::text, draw)
 
-    override fun create(): Graphics = DarkGraphics(myDelegate.create() as Graphics2D, palette).also {
-        it.current = current
-        it.background = background
-    }
+    override fun create(): Graphics = DarkGraphics(myDelegate.create() as Graphics2D, palette, current, background)
 
     override fun getColor(): Color? = current ?: super.getColor()
 

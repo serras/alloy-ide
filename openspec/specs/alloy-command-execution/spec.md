@@ -29,6 +29,10 @@ The editor SHALL show a run gutter icon next to every top-level `run` and `check
 - **WHEN** `check noCycles expect 0` shows the passed icon and the user clicks it
 - **THEN** `check noCycles` is executed again, exactly as from the run icon
 
+#### Scenario: Commands sharing a label
+- **WHEN** a file contains `check noCycles for 3` and `check noCycles for 6`, and the user clicks the gutter icon of the second one
+- **THEN** `check noCycles for 6` is executed, and its result is shown on its own line, not on the line of `check noCycles for 3`
+
 ### Requirement: Execution uses current editor contents
 Executing a command SHALL analyze the model as it currently appears in the editor, including unsaved changes.
 
@@ -53,6 +57,10 @@ When an analysis produces an instance or counterexample, its result hint SHALL b
 #### Scenario: Opening a counterexample
 - **WHEN** `check noCycles` found a counterexample and the user clicks its hint
 - **THEN** the Alloy Instance tool window shows that counterexample, and its header names `check noCycles`
+
+#### Scenario: Only recent instances are kept
+- **WHEN** more than ten commands of the project found an instance or counterexample in this session
+- **THEN** only the ten most recent ones can still be opened from their hints; the older hints keep their outcome and tooltip, and their command can be executed again to open its instance
 
 ### Requirement: Inline command result
 After a command is started, the editor SHALL show its state as an inlay hint at the end of the line where the command starts. The hint SHALL name the outcome: running, instance found, no instance found, counterexample found, no counterexample found, stopped before completion, or a failure. Only the most recent result of each command is shown. Commands that were never executed have no hint. A command declaring `expect` SHALL also say whether its outcome is as expected, and a vacuous pass SHALL be marked "(vacuous)".
@@ -105,6 +113,14 @@ After a command is started, the editor SHALL show its state as an inlay hint at 
 - **WHEN** the user closes the file and opens it again in the same session
 - **THEN** the hints of its executed commands are shown again
 
+#### Scenario: Commands inserted above
+- **WHEN** `run show` has a result and the user inserts another command above it
+- **THEN** the hint of `run show` stays on the line of `run show`, shown as outdated
+
+#### Scenario: Deleted file
+- **WHEN** a file whose commands have results is deleted
+- **THEN** its results are dropped
+
 ### Requirement: Result details tooltip
 Hovering a result hint SHALL show a tooltip with everything the analyzer reported for that execution: the executed command, solver and scope settings, translation statistics, timings, expectation, unsat core size, warnings and failure details. Messages that the analyzer later replaced, such as progress lines, are not repeated. After a vacuity check, the tooltip SHALL also show its conclusion, what was solved (the facts, or the facts and the premise), its time and, for a vacuous pass, its unsat core size.
 
@@ -129,7 +145,7 @@ Hovering a result hint SHALL show a tooltip with everything the analyzer reporte
 - **THEN** the tooltip says that the facts and the premise have an instance, and shows that check's time
 
 ### Requirement: Outdated results
-When an Alloy file is edited after one of its commands was executed, every result hint in that file SHALL be marked as outdated: it is shown dimmed, it is labelled as outdated, and its tooltip says that the file changed after the analysis. A result becomes current again only when its command is executed again.
+When an Alloy file, or a project module that the analysis of one of its commands read, is edited after that command was executed, its result hint SHALL be marked as outdated: it is shown dimmed, it is labelled as outdated, and its tooltip says that the file or a module it opens changed after the analysis. A result becomes current again only when its command is executed again.
 
 #### Scenario: Edit after a run
 - **WHEN** `run show` has a result and the user types anywhere in the file
@@ -146,6 +162,10 @@ When an Alloy file is edited after one of its commands was executed, every resul
 #### Scenario: Undoing the edit
 - **WHEN** the user edits the file and then undoes the edit
 - **THEN** the results stay outdated
+
+#### Scenario: Edit of an opened module
+- **WHEN** `run show` in `main.als`, which opens the project module `util/graph.als`, has a result and the user edits `util/graph.als`
+- **THEN** the hint of `run show` is shown as outdated, while editing a module that `main.als` does not open leaves it current
 
 #### Scenario: Outdated instance can still be opened
 - **WHEN** the user clicks the outdated hint of a command that found an instance
@@ -199,6 +219,10 @@ The user SHALL be able to stop a running analysis from the Stop item of its spin
 #### Scenario: Stopping from the hint
 - **WHEN** the user clicks the running hint of a command that is being solved
 - **THEN** the analysis is aborted and the hint says "Stopped before completion"
+
+#### Scenario: Stopping the vacuity check from the hint
+- **WHEN** the user clicks the hint of a check whose vacuity check is running
+- **THEN** the vacuity check is stopped, as in "Stopping the vacuity check"
 
 #### Scenario: Cancelling the progress indicator
 - **WHEN** the user cancels the background progress indicator of a running command
@@ -303,6 +327,10 @@ The vacuity check SHALL belong to its check's execution. The check's result is s
 #### Scenario: Stopping the vacuity check
 - **WHEN** the user stops the execution while its vacuity check is running
 - **THEN** the vacuity check is aborted, the hint keeps "No counterexample found" with its time, and the tooltip says that vacuity was not determined because the check was stopped
+
+#### Scenario: Stopping as the check ends
+- **WHEN** the user stops the execution just as the check finds no counterexample
+- **THEN** no vacuity check is started, and the hint keeps "No counterexample found" with its time
 
 #### Scenario: Vacuity check fails
 - **WHEN** the vacuity check runs out of memory

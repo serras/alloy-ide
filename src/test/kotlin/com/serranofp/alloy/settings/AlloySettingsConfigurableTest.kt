@@ -117,6 +117,36 @@ class AlloySettingsConfigurableTest : BasePlatformTestCase() {
         assertFalse(page.isModified)
     }
 
+    fun testOutOfRangeSavedValuesAreClamped() {
+        settings.state.coreMinimization = 7
+        settings.state.coreGranularity = -1
+        val page = configurable(present)
+        assertEquals("Fast", page.coreMinimization.selectedItem)
+        assertEquals("Top-level", page.coreGranularity.selectedItem)
+    }
+
+    fun testNoSavedSolver() {
+        settings.state.solver = null
+        val page = configurable(present)
+        assertEquals(present.size, page.solver.itemCount)
+        assertFalse((0 until page.solver.itemCount).any { page.solver.getItemAt(it) == null })
+    }
+
+    fun testDiscoveryEndingAfterThePageClosed() {
+        val release = CountDownLatch(1)
+        val discovery = AlloySolvers().apply { discover = { release.await(); present } }
+        val page = AlloySettingsConfigurable(settings, discovery) { changes++ }
+        try {
+            page.createComponent()
+            page.disposeUIResources()
+        } finally {
+            release.countDown()
+        }
+        discovery.load().get(10, TimeUnit.SECONDS)
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        assertEquals("sat4j (loading solvers...)", page.solverLabel("sat4j"))
+    }
+
     fun testLoadingState() {
         val release = CountDownLatch(1)
         val discovery = AlloySolvers().apply { discover = { release.await(); present } }

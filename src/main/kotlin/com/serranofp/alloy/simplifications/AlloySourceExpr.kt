@@ -1,6 +1,8 @@
 package com.serranofp.alloy.simplifications
 
 import com.intellij.openapi.editor.Document
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
@@ -13,6 +15,7 @@ import com.intellij.psi.util.elementType
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloyMacroDecl
 import com.serranofp.alloy.psi.AlloyTypes
+import com.serranofp.alloy.semantics.AlloyModelResult
 import com.serranofp.alloy.semantics.AlloyPositions
 import edu.mit.csail.sdg.alloy4.Pos
 import edu.mit.csail.sdg.ast.Expr
@@ -29,19 +32,22 @@ import edu.mit.csail.sdg.ast.Sig
 import java.util.IdentityHashMap
 
 /**
- * The text of the analyzer's [node] in the editor: its [range], widened over the parentheses written around
- * it, which makes it [parenthesized].
+ * The [text] of one of the analyzer's nodes in the editor: its [range], widened over the parentheses written
+ * around it, which makes it [parenthesized]. [bare] is the text without those parentheses, or null if a
+ * comment is written inside them, which dropping them would lose.
  */
-class AlloySourceExpr(val node: Expr, val range: TextRange, val parenthesized: Boolean, val text: String)
+class AlloySourceExpr(val range: TextRange, val parenthesized: Boolean, val text: String, val bare: String?)
 
 /**
  * How the analyzer's nodes of [file] map to its text. Parentheses leave no trace in the analyzer's AST, and a
  * node's `span()` may stop short of a closing bracket, so ranges are balanced and widened over the PSI tokens.
+ * One is shared by every inspection and intention that uses a model (see [of]), so it is thread-safe.
  */
 class AlloySourceText(val file: AlloyFile, val document: Document) {
     /** The analyzer's name for [file]. */
     val filename: String = AlloyPositions.filename(file.virtualFile)
 
+    /** Filled as nodes are asked for, from any thread: rules ask for nodes that the walk did not, such as declared variables. */
     private val sources = IdentityHashMap<Expr, AlloySourceExpr?>()
 
     /** Whether [pos] is a known position in [file], and not in a module it opens. */
@@ -86,13 +92,18 @@ class AlloySourceText(val file: AlloyFile, val document: Document) {
 
     /** The text of [node], widened over parentheses; null if it cannot be mapped to [file]. */
     fun source(node: Expr): AlloySourceExpr? {
-        if (sources.containsKey(node)) return sources[node]
+        // Computed outside the lock: two threads may both compute a node, with the same result
+        synchronized(sources) { if (sources.containsKey(node)) return sources[node] }
         val own = ownRange(node)
         val source = own?.let {
             val widened = widen(it)
-            AlloySourceExpr(node, widened, widened != it, document.getText(widened))
+            val text = document.getText(widened)
+            // Between the two ranges lie parentheses, whitespace and comments
+            val around = tokens(TextRange(widened.startOffset, it.startOffset)) + tokens(TextRange(it.endOffset, widened.endOffset))
+            val bare = if (widened == it) text else document.getText(it).takeIf { _ -> around.none { token -> token is PsiComment } }
+            AlloySourceExpr(widened, widened != it, text, bare)
         }
-        sources[node] = source
+        synchronized(sources) { sources[node] = source }
         return source
     }
 
@@ -232,6 +243,8 @@ class AlloySourceText(val file: AlloyFile, val document: Document) {
         val tokens = ArrayList<PsiElement>()
         var leaf = tokenAt(range.startOffset)
         while (leaf != null && leaf.textRange.startOffset < range.endOffset) {
+            // Ranges of whole paragraphs are scanned for every node, and PSI navigation does not check for cancellation
+            ProgressManager.checkCanceled()
             if (leaf !is PsiWhiteSpace && leaf.textRange.startOffset >= range.startOffset) tokens += leaf
             leaf = PsiTreeUtil.nextLeaf(leaf)
         }
@@ -258,6 +271,15 @@ class AlloySourceText(val file: AlloyFile, val document: Document) {
     }
 
     companion object {
+        private val KEY = Key.create<AlloySourceText>("alloy.simplifications.source")
+
+        /**
+         * The source text of [model], the model of [file], shared by the five inspections and the intentions
+         * for as long as the model is cached, so that each node's range is balanced and widened only once.
+         */
+        fun of(model: AlloyModelResult.Model, file: AlloyFile, document: Document): AlloySourceText =
+            model.derived(KEY) { AlloySourceText(file, document) }
+
         val OPENERS: TokenSet = TokenSet.create(AlloyTypes.LPAREN, AlloyTypes.LBRACKET, AlloyTypes.LBRACE)
         val CLOSERS: TokenSet = TokenSet.create(AlloyTypes.RPAREN, AlloyTypes.RBRACKET, AlloyTypes.RBRACE)
 

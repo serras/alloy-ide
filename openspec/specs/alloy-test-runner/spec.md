@@ -44,7 +44,7 @@ The test tree SHALL have one node per command, named like the command (such as `
 - **THEN** every command's node failed with the message that the model has errors
 
 ### Requirement: Navigation from the test tree
-Every node SHALL navigate to its command in the file, located by the command's label, or by its position among the commands when it has none.
+Every node SHALL navigate to its command in the file, located by the command's label (and, when several commands share it, by its position among them), or by its position among the commands when it has none.
 
 #### Scenario: Jump to source
 - **WHEN** the user double-clicks the node `check noCycles`

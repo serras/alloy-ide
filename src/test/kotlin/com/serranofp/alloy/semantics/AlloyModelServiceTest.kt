@@ -4,13 +4,26 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiFileFactory
+import com.intellij.psi.PsiManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.psi.AlloyFile
+import com.serranofp.alloy.viewer.alloyEvaluatorDocument
 import edu.mit.csail.sdg.alloy4.ErrorFatal
+import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 class AlloyModelServiceTest : BasePlatformTestCase() {
     private val service get() = AlloyModelService.getInstance(project)
@@ -129,6 +142,107 @@ class AlloyModelServiceTest : BasePlatformTestCase() {
         service.parse = { _, _, _ -> throw ProcessCanceledException() }
         val file = myFixture.configureByText("model.als", "sig A {}")
         assertThrows(ProcessCanceledException::class.java) { model(file) }
+    }
+
+    /** [model] under a progress indicator, as highlighting runs it. */
+    private fun modelWithProgress(file: PsiFile): AlloyModelResult =
+        ApplicationManager.getApplication()
+            .executeOnPooledThread<Result<AlloyModelResult>> {
+                runCatching {
+                    ProgressManager.getInstance().runProcess<AlloyModelResult>(
+                        { ReadAction.computeBlocking<AlloyModelResult, Throwable> { service.model(file as AlloyFile) } },
+                        EmptyProgressIndicator(),
+                    )
+                }
+            }
+            .get(30, TimeUnit.SECONDS)
+            .getOrThrow()
+
+    fun testTheParseCanBeCancelledAndIsNotCached() {
+        val real = service.parse
+        var cancel = true
+        service.parse = { reporter, contents, filename ->
+            // As a write action that arrives during the parse
+            if (cancel) ProgressManager.getInstance().progressIndicator.cancel()
+            cancel = false
+            // As CompModule reports each paragraph it type-checks, and CompUtil wraps what it does not expect
+            try {
+                reporter.typecheck("Sig this/A\n")
+            } catch (e: Throwable) {
+                throw ErrorFatal("Unknown exception occurred: $e", e)
+            }
+            real(reporter, contents, filename)
+        }
+        val file = myFixture.configureByText("model.als", "sig A {}")
+        assertThrows(ProcessCanceledException::class.java) { modelWithProgress(file) }
+        assertInstanceOf(modelWithProgress(file), AlloyModelResult.Model::class.java)
+    }
+
+    fun testWrappedCancellationIsNotCached() {
+        service.parse = { _, _, _ -> throw ErrorFatal("Unknown exception occurred", RuntimeException(ProcessCanceledException())) }
+        val file = myFixture.configureByText("model.als", "sig A {}")
+        assertThrows(ProcessCanceledException::class.java) { model(file) }
+        service.parse = edu.mit.csail.sdg.parser.CompUtil::parseEverything_fromFile
+        assertInstanceOf(model(file), AlloyModelResult.Model::class.java)
+    }
+
+    fun testOneParseAtATime() {
+        val real = service.parse
+        val parses = AtomicInteger()
+        val parsing = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        service.parse = { reporter, contents, filename ->
+            parses.incrementAndGet()
+            parsing.countDown()
+            release.await(30, TimeUnit.SECONDS)
+            real(reporter, contents, filename)
+        }
+        val file = myFixture.configureByText("model.als", "sig A {}")
+        val pool = ApplicationManager.getApplication()
+        val first = pool.executeOnPooledThread<AlloyModelResult> { ReadAction.computeBlocking<AlloyModelResult, Throwable> { service.model(file as AlloyFile) } }
+        assertTrue(parsing.await(30, TimeUnit.SECONDS))
+        val second = pool.executeOnPooledThread<AlloyModelResult> { ReadAction.computeBlocking<AlloyModelResult, Throwable> { service.model(file as AlloyFile) } }
+        // Time for the second thread to reach the parse, if nothing stops it
+        Thread.sleep(300)
+        release.countDown()
+        assertSame(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS))
+        assertEquals(1, parses.get())
+    }
+
+    fun testFilesThatAreNotModulesHaveNoModel() {
+        var parses = 0
+        service.parse = { _, _, _ -> parses++; error("not parsed") }
+        val copy = PsiFileFactory.getInstance(project).createFileFromText("copy.als", AlloyLanguage, "sig A {}", false, false)
+        assertNull(copy.virtualFile)
+        assertInstanceOf(model(copy), AlloyModelResult.Unavailable::class.java)
+        val fragment = PsiDocumentManager.getInstance(project).getPsiFile(alloyEvaluatorDocument(project) { null })!!
+        assertInstanceOf(model(fragment), AlloyModelResult.Unavailable::class.java)
+        assertEquals(0, parses)
+    }
+
+    fun testOpenedLibraryModulesAreAmongTheOpens() {
+        val file = myFixture.configureByText("main.als", "open util/ordering[State]\nsig State {}")
+        val modules = model(file).modules
+        val main = AlloyPositions.filename(file.virtualFile)
+        assertEquals(setOf(main), modules.files.keys)
+        val library = modules.opens[main]!!.single()
+        assertTrue(library, AlloyPositions.isLibrary(library) && library.endsWith("ordering.als"))
+    }
+
+    /** A module the analyzer reads from disk, such as a Markdown one, has no PSI; its file is tracked instead. */
+    fun testModuleReadFromDiskInvalidatesItsDependents() {
+        val dir = FileUtil.createTempDirectory("alloy-disk", null).canonicalFile
+        VfsRootAccess.allowRootAccess(testRootDisposable, dir.path)
+        File(dir, "main.als").writeText("open lib\nsig Box { items: set Item }")
+        val markdown = File(dir, "lib.md").apply { writeText("---\n---\n```alloy\nmodule lib\nsig Item {}\n```\n") }
+        val main = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(dir, "main.als"))!!
+        val library = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(markdown)!!
+        val file = PsiManager.getInstance(project).findFile(main)!!
+        assertInstanceOf(model(file), AlloyModelResult.Model::class.java)
+
+        markdown.writeText("---\n---\n```alloy\nmodule lib\nsig Thing {}\n```\n")
+        VfsUtil.markDirtyAndRefresh(false, false, false, library)
+        assertEquals("Item", errorText(model(file), file))
     }
 
     fun testNotOnTheEdt() {

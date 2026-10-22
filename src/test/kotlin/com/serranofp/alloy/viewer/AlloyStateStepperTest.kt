@@ -1,8 +1,11 @@
 package com.serranofp.alloy.viewer
 
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
+import com.intellij.testFramework.TestActionEvent
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.components.DropDownLink
 import com.intellij.ui.components.JBLabel
@@ -12,9 +15,12 @@ import com.serranofp.alloy.run.AlloyCommandResults
 import com.serranofp.alloy.run.CommandLink
 import com.serranofp.alloy.run.CommandResult
 import com.serranofp.alloy.run.CommandState
+import com.serranofp.alloy.run.waitUntil
 import com.serranofp.alloy.settings.AlloySettings
+import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
 import javax.swing.JComponent
+import javax.swing.KeyStroke
 
 class AlloyStateStepperTest : BasePlatformTestCase() {
     fun testThreeStatesLoopingBackToStateOne() {
@@ -182,10 +188,48 @@ class AlloyStateStepperTest : BasePlatformTestCase() {
         val panel = panelFor(LASSO)
         val strip = panel.strip()
         val circle = strip.geometry!!.circles[2]
-        strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_CLICKED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
-        assertEquals(2, AlloyInstanceViewer.getInstance(project).session!!.model.state)
+        strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_PRESSED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
+        // The state is prepared off the EDT, then shown
+        waitUntil("state 2 was not shown") { AlloyInstanceViewer.getInstance(project).session!!.model.state == 2 }
         for (panes in UIUtil.findComponentsOfType(panel, AlloyStatePanes::class.java)) assertEquals(listOf("State 2", "State 1 (loop)"), panes.captions)
         assertEquals(setOf(2, 1), strip.geometry!!.highlighted)
+    }
+
+    /** Runs the strip's action for [key], as pressing it in the focused strip does. */
+    private fun AlloyTraceStrip.press(key: Int) {
+        val stroke = KeyStroke.getKeyStroke(key, 0)
+        val action = ActionUtil.getActions(this).single { action -> action.shortcutSet.shortcuts.any { (it as? KeyboardShortcut)?.firstKeyStroke == stroke } }
+        action.actionPerformed(TestActionEvent.createTestEvent(action))
+    }
+
+    fun testTheKeysStepThroughTheTrace() {
+        val panel = panelFor(LASSO)
+        val strip = panel.strip()
+        val model = AlloyInstanceViewer.getInstance(project).session!!.model
+        // Right goes to the successor, which after the last state is the loop target
+        for (state in listOf(1, 2, 1)) {
+            strip.press(KeyEvent.VK_RIGHT)
+            waitUntil("state $state was not shown") { model.state == state && strip.geometry!!.selected == state }
+        }
+        strip.press(KeyEvent.VK_LEFT)
+        waitUntil("state 0 was not shown") { model.state == 0 }
+        strip.press(KeyEvent.VK_END)
+        waitUntil("state 2 was not shown") { model.state == 2 }
+        for (panes in UIUtil.findComponentsOfType(panel, AlloyStatePanes::class.java)) assertEquals(listOf("State 2", "State 1 (loop)"), panes.captions)
+    }
+
+    /** Each state is prepared off the EDT: the latest one selected is shown, whichever is prepared last. */
+    fun testTheLatestSelectionWins() {
+        val panel = panelFor(LASSO)
+        val strip = panel.strip()
+        val model = AlloyInstanceViewer.getInstance(project).session!!.model
+        strip.press(KeyEvent.VK_END)
+        strip.press(KeyEvent.VK_RIGHT)
+        waitUntil("the states were not prepared") { model.isPrepared(2) && model.isPrepared(1) }
+        Thread.sleep(50)
+        UIUtil.dispatchAllInvocationEvents()
+        // The strip still showed state 0 when Right was pressed
+        assertEquals(1, model.state)
     }
 
     fun testClickingAgainMovesTheHighlighting() {
@@ -193,7 +237,8 @@ class AlloyStateStepperTest : BasePlatformTestCase() {
         val strip = panel.strip()
         for ((state, pair) in listOf(1 to setOf(1, 2), 0 to setOf(0, 1))) {
             val circle = strip.geometry!!.circles[state]
-            strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_CLICKED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
+            strip.dispatchEvent(MouseEvent(strip, MouseEvent.MOUSE_PRESSED, 0, 0, circle.centerX.toInt(), circle.centerY.toInt(), 1, false, MouseEvent.BUTTON1))
+            waitUntil("state $state was not shown") { strip.geometry!!.selected == state }
             assertEquals(pair, strip.geometry!!.highlighted)
             for (panes in UIUtil.findComponentsOfType(panel, AlloyStatePanes::class.java)) assertEquals(listOf("State $state", "State ${state + 1}"), panes.captions)
         }

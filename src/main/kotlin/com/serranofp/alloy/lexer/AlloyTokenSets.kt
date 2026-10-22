@@ -39,4 +39,8 @@ object AlloyTokenSets {
 
     @JvmField
     val STRINGS: TokenSet = TokenSet.create(STRING_LITERAL)
+
+    /** What can come between the fields of one group, `private var disj a, b: A`, besides the fields themselves. */
+    @JvmField
+    val FIELD_GROUP: TokenSet = TokenSet.create(PRIVATE, VAR, DISJ, COMMA)
 }

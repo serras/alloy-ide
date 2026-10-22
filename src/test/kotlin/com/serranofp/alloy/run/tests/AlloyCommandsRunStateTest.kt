@@ -7,6 +7,8 @@ import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.execution.runners.ProgramRunner
 import com.intellij.execution.testframework.sm.runner.ui.SMTRunnerConsoleView
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -21,6 +23,7 @@ import com.serranofp.alloy.run.newExecution
 import com.serranofp.alloy.run.slowOptions
 import com.serranofp.alloy.run.verdict
 import com.serranofp.alloy.run.waitUntil
+import edu.mit.csail.sdg.translator.A4Options
 import jetbrains.buildServer.messages.serviceMessages.ServiceMessage
 
 class AlloyCommandsRunStateTest : BasePlatformTestCase() {
@@ -191,6 +194,63 @@ class AlloyCommandsRunStateTest : BasePlatformTestCase() {
         // As after an edit: a stale position, but the same label
         val suite = run(mixed, only = listOf(AlloyCommandRef("noLoops", 0)))
         assertEquals(listOf("check noLoops"), suite.started())
+    }
+
+    private val sharedLabel = "sig A {}\npred show { some A }\nrun show for 3 expect 1\nrun show for 3 but 0 A expect 1\n"
+
+    fun testCommandsSharingALabelAreTestsOfTheirOwn() {
+        val suite = run(sharedLabel)
+        assertEquals(listOf("run show", "run show"), suite.started())
+        val file = myFixture.file.virtualFile
+        val second = AlloyCommandRef("show", 1, occurrence = 1)
+        assertEquals(AlloyTestLocator.url(file, second), suite.named("testStarted")[1].attributes["locationHint"])
+        assertEquals(listOf("No instance found, contrary to expectation"), suite.named("testFailed").map { it.attributes["message"] })
+        assertEquals(CommandState.InstanceFound, results.get(file, AlloyCommandRef("show", 0))!!.state)
+        assertEquals(CommandState.NoInstance, results.get(file, second)!!.state)
+    }
+
+    fun testRerunOfOneOfTheCommandsSharingALabel() {
+        val suite = run(sharedLabel, only = listOf(AlloyCommandRef("show", 1, occurrence = 1)))
+        assertEquals(1, suite.started().size)
+        assertEquals(mapOf("run show" to "No instance found, contrary to expectation"), suite.failed())
+    }
+
+    fun testVacuityOutputHasOneSolverStart() {
+        val suite = run(mixed)
+        val output = suite.named("testStdOut").single { it.attributes["name"] == "check noLoops" }.attributes["out"]!!
+        assertEquals(output, 1, output.lines().count { it == "Starting the solver..." })
+    }
+
+    fun testExceptionDuringALaunchEndsTheTestAndTheSuiteGoesOn() {
+        val suite = start("pred show {}\nrun show for 2\nrun other {} for 2\n", launcher = {
+            AlloyCommandLauncher(project, options = { throw IllegalStateException("no options") })
+        }).await()
+        assertEquals(listOf("run show", "run other"), suite.finished())
+        assertEquals(mapOf("run show" to "Analysis failed", "run other" to "Analysis failed"), suite.failed())
+        assertNull(service.activeExecution)
+    }
+
+    fun testDeletedFileFinishesTheStartedTest() {
+        val suite = start("pred show {}\nrun show for 2\nrun other {} for 2\n", launcher = {
+            AlloyCommandLauncher(project, options = {
+                val file = service.activeExecution!!.file
+                ApplicationManager.getApplication().invokeAndWait { WriteAction.run<Exception> { file.delete(this) } }
+                A4Options()
+            })
+        }).await()
+        assertEquals(listOf("run show"), suite.started())
+        assertEquals(listOf("run show"), suite.finished())
+        assertEquals(setOf("run show"), suite.failed().keys)
+        assertNull(service.activeExecution)
+    }
+
+    fun testDetachingStopsTheSuite() {
+        val model = "sig H {}\nsig P { h: one H }\nfact { all disj a, b: P | a.h != b.h }\npred show { #P = 11 and #H = 10 }\nrun show for 11"
+        val suite = start(model, launcher = { AlloyCommandLauncher(project, options = ::slowOptions) })
+        waitUntil("the command did not start solving") { service.activeExecution?.log?.progress == "Solving..." }
+        suite.handler.detachProcess()
+        waitUntil("the suite did not end") { suite.handler.isProcessTerminated && service.activeExecution == null }
+        assertEquals("Stopped before completion", results.get(myFixture.file.virtualFile, AlloyCommandRef("show", 0))!!.summary)
     }
 
     /** The Run executor runs the configuration, with the SM test console and *Rerun Failed Tests*. */

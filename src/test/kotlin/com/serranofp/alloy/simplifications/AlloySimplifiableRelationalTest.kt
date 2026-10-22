@@ -14,6 +14,21 @@ class AlloySimplifiableRelationalTest : AlloySimplificationTestCase() {
         assertEquals("fact {\n  Node.inbox = Message\n}\n", fix("Node.inbox in", "Simplify to 'Node.inbox = Message'"))
     }
 
+    fun testMutualInclusionAfterAPairThatCannotBeRewritten() {
+        // The first pair would drop the `}` of the inner block, which the analyzer flattens into the outer one
+        model("fact {\n  { some Node\n    Node.inbox in Message }\n  Message in Node.inbox\n  Node.inbox in Message\n}\n")
+        assertEquals(listOf("Message in Node.inbox\n  Node.inbox in Message" to "Mutual inclusion"), problems())
+    }
+
+    fun testReceiverOfACall() {
+        // `e.g` is `g[e]` to the analyzer, but its receiver is written left of a `.`, not in brackets
+        model("fun g[s: Node -> Node]: set Node { s.Node }\npred subject { some (Node->Node + Node->Node).g }\n")
+        assertEquals(
+            "fun g[s: Node -> Node]: set Node { s.Node }\npred subject { some (Node->Node).g }\n",
+            fix("(Node->Node +", "Simplify to 'Node->Node'"),
+        )
+    }
+
     fun testDifferentOperands() {
         assertNotReported("n.inbox + n.outbox", "^succ + ^(~succ)", params = "[n: Node]", wrap = "some %s")
     }

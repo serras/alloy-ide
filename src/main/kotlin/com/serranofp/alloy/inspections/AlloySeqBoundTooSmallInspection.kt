@@ -1,6 +1,6 @@
 package com.serranofp.alloy.inspections
 
-import edu.mit.csail.sdg.alloy4.Util
+import com.serranofp.alloy.AlloyBundle
 import edu.mit.csail.sdg.ast.Expr
 import edu.mit.csail.sdg.ast.ExprBinary
 import edu.mit.csail.sdg.ast.Sig.Field
@@ -12,24 +12,26 @@ import edu.mit.csail.sdg.ast.VisitQuery
  * `seq T`, which then cannot hold one of each. Static `seq` fields are left out: their contents do not grow
  * along a trace, as a queue's do.
  */
-class AlloySeqBoundTooSmallInspection : AlloyCommandInspection() {
-    override fun check(command: CommandCheck) {
+class AlloySeqBoundTooSmallInspection : AlloyCommandInspection<List<Pair<Field, PrimSig>>>() {
+    override fun prepare(context: AlloyInspectionContext): List<Pair<Field, PrimSig>> = sequenceFields(context)
+
+    override fun check(command: CommandCheck, data: List<Pair<Field, PrimSig>>) {
         val scope = command.scope ?: return
-        val seq = command.bounds.seq
-        val short = sequenceFields(command.context).mapNotNull { (field, element) ->
+        val seq = command.bounds.seq ?: return
+        val short = data.mapNotNull { (field, element) ->
             val bound = command.bounds.bound(element) ?: return@mapNotNull null
             if (seq < bound.n) Triple(field, element, bound.n) else null
         }
         if (short.isEmpty()) return
         val message = short.joinToString("; ") { (field, element, n) ->
-            "Sequences in ${field.label} hold at most $seq elements, fewer than the $n ${name(element)} atoms"
+            AlloyBundle.message("inspection.seq.message", field.label, seq, n, name(element))
         }
         val range = scope.seqItem?.let(scope::itemRange) ?: scope.range
         val needed = short.maxOf { it.third }
         // Sequence indices are integers, so a longer bound needs a larger bitwidth
-        val bitwidth = if (command.command.bitwidth < 0) 4 else command.command.bitwidth
-        val fixes = if (needed <= Util.max(bitwidth)) {
-            arrayOf(AlloyScopeFix(command.decl, command.part, AlloyScopeEdit.SetSeq(needed), "Raise the seq bound to $needed"))
+        val fixes = if (needed <= command.bounds.maxInt) {
+            val text = AlloyBundle.message("inspection.seq.fix", needed)
+            arrayOf(AlloyScopeFix(command.decl, command.part, AlloyScopeEdit.SetSeq(needed), text, AlloyBundle.message("inspection.seq.fix.family")))
         } else {
             emptyArray()
         }

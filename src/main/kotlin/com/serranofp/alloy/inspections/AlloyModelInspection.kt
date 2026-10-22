@@ -63,15 +63,6 @@ class AlloyInspectionContext(val file: AlloyFile, val model: AlloyModelResult.Mo
         return PsiTreeUtil.getParentOfType(file.findElementAt(range(pos).startOffset), type, false)
     }
 
-    /**
-     * The scope of the command of the `=>` chain [decl] that starts at [commandPos]: from its `for` to its
-     * last scope item, before any `expect`. Null if that command has no `for`.
-     */
-    fun scopeRange(decl: AlloyCommandDecl, commandPos: Pos): TextRange? = scope(decl, commandPos)?.range
-
-    /** The scope of the command of the `=>` chain [decl] that starts at [commandPos], as in [scopeRange]. */
-    fun scope(decl: AlloyCommandDecl, commandPos: Pos): AlloyScopeText? = AlloyScopeText.of(decl, part(decl, commandPos))
-
     /** Which command of the `=>` chain [decl] starts at [commandPos], counting from 0. */
     fun part(decl: AlloyCommandDecl, commandPos: Pos): Int = AlloyScopeText.partAt(decl, range(commandPos).startOffset)
 

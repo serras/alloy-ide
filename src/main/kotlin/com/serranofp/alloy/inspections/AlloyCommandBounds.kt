@@ -1,17 +1,22 @@
 package com.serranofp.alloy.inspections
 
+import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.util.Key
+import com.serranofp.alloy.semantics.AlloyModelResult
+import edu.mit.csail.sdg.alloy4.Err
 import edu.mit.csail.sdg.alloy4.Util
 import edu.mit.csail.sdg.ast.Command
 import edu.mit.csail.sdg.ast.CommandScope
 import edu.mit.csail.sdg.ast.Sig
 import edu.mit.csail.sdg.ast.Sig.PrimSig
+import java.util.Collections
 import java.util.IdentityHashMap
 
 /**
  * The bounds that the analyzer's `ScopeComputer` gives to the signatures of a [command] over [sigs] (the
  * module's `getAllReachableSigs()`) and to sequences, without building a solution. Only the bounds of
- * top-level signatures are offered: [bound] is null for others, and for every signature if the analyzer
- * would reject the command's scope.
+ * top-level signatures are offered: [bound] is null for others, and [bound] and [seq] are null for every
+ * signature if the analyzer would reject the command's scope.
  */
 class AlloyCommandBounds(private val command: Command, private val sigs: List<Sig>) {
     /** Where a bound comes from. */
@@ -19,7 +24,10 @@ class AlloyCommandBounds(private val command: Command, private val sigs: List<Si
         /** Written in the command for this signature. */
         data class Explicit(val scope: CommandScope) : Source
 
-        /** Derived from the scopes of its descendants, as for an abstract signature. */
+        /**
+         * Derived from the scopes of its descendants, as for an abstract signature, or raised to the atoms its
+         * descendants must have, such as its `one` subsignatures.
+         */
         data object Inherited : Source
 
         /** The overall scope, `for N`. */
@@ -34,11 +42,26 @@ class AlloyCommandBounds(private val command: Command, private val sigs: List<Si
 
     data class Bound(val n: Int, val exact: Boolean, val source: Source)
 
+    /** The integer bitwidth: the written `int` scope, or the analyzer's default. */
+    val bitwidth: Int = if (command.bitwidth < 0) DEFAULT_BITWIDTH else command.bitwidth
+
+    /** The largest integer of the [bitwidth]. */
+    val maxInt: Int get() = Util.max(bitwidth)
+
+    /** The smallest integer of the [bitwidth]. */
+    val minInt: Int get() = Util.min(bitwidth)
+
     private val primSigs: List<PrimSig> = sigs.filterIsInstance<PrimSig>().filter { !it.builtin }
     private val scopes = IdentityHashMap<PrimSig, Int>()
     private val sources = IdentityHashMap<PrimSig, Source>()
-    private val exact = IdentityHashMap<PrimSig, Unit>()
-    private val valid: Boolean = runCatching { compute() }.getOrDefault(false)
+    private val exact: MutableSet<PrimSig> = Collections.newSetFromMap(IdentityHashMap())
+
+    // The analyzer reports a rejected scope as an `Err`; anything else, such as a cancellation, goes on
+    private val valid: Boolean = try {
+        compute()
+    } catch (_: Err) {
+        false
+    }
 
     /** The bound of a top-level, non-builtin [sig]. */
     fun bound(sig: Sig): Bound? {
@@ -51,28 +74,33 @@ class AlloyCommandBounds(private val command: Command, private val sigs: List<Si
      * The maximum length of sequences: the written `seq` bound, or else the overall scope or 4, at most the
      * largest integer of the bitwidth.
      */
-    val seq: Int
+    val seq: Int?
         get() {
+            if (!valid) return null
             if (command.maxseq >= 0) return command.maxseq
-            val bitwidth = if (command.bitwidth < 0) 4 else command.bitwidth
-            return minOf(if (command.overall >= 0) command.overall else 4, Util.max(bitwidth))
+            return minOf(if (command.overall >= 0) command.overall else 4, maxInt).coerceAtLeast(0)
         }
 
-    /** `ScopeComputer`'s rules for user signatures; false where it reports an error. */
+    /** `ScopeComputer`'s rules for user signatures, the bitwidth and the sequence bound; false where it reports an error. */
     private fun compute(): Boolean {
+        var string = false
         for (entry in command.scope) {
             val sig = entry.sig
-            if (sig == Sig.STRING) continue
+            if (sig == Sig.STRING) {
+                if (string || !entry.isExact) return false
+                string = true
+                continue
+            }
             if (sig !is PrimSig || sig.builtin || sig.isEnum != null) return false
             if (sig.isSome != null && entry.startingScope < 1) return false
             if (sig.isOne != null && sig.isVariable != null && entry.startingScope < 1) return false
             if (!set(sig, entry.startingScope, Source.Explicit(entry))) return false
-            if (entry.isExact) exact[sig] = Unit
+            if (entry.isExact) exact += sig
         }
         // Mutable `one` and `lone` sigs may change their atom along a trace, so they are not fixed
         for (sig in primSigs) {
             if (sig.isOne != null && sig.isVariable == null) {
-                exact[sig] = Unit
+                exact += sig
                 if (!set(sig, 1, Source.Fixed)) return false
             } else if (sig.isLone != null && sig.isVariable == null && scopes[sig] != 0) {
                 if (!set(sig, 1, Source.Fixed)) return false
@@ -95,6 +123,8 @@ class AlloyCommandBounds(private val command: Command, private val sigs: List<Si
             }
             break
         }
+        // `setBitwidth` and `setMaxSeq`
+        if (bitwidth > MAX_BITWIDTH || command.maxseq > maxInt) return false
         for (sig in primSigs) if (sig.isTopLevel) lowerBound(sig)
         return true
     }
@@ -169,7 +199,8 @@ class AlloyCommandBounds(private val command: Command, private val sigs: List<Si
 
     /**
      * The atoms that [sig] must have, raising its scope to the sum of its children's; a signature made exact
-     * by a module parameter, such as `util/ordering`'s, becomes exact here.
+     * by a module parameter, such as `util/ordering`'s, becomes exact here. A raised scope no longer comes
+     * from the overall or default scope, but a written one is still where the user can change it.
      */
     private fun lowerBound(sig: PrimSig): Int {
         var lower = sig.children().toList().sumOf { lowerBound(it) }
@@ -177,9 +208,36 @@ class AlloyCommandBounds(private val command: Command, private val sigs: List<Si
         if (n < lower) {
             n = lower
             scopes[sig] = n
+            if (sources[sig] !is Source.Explicit) sources[sig] = Source.Inherited
         }
-        if (sig in command.additionalExactScopes) exact[sig] = Unit
+        if (sig in command.additionalExactScopes) exact += sig
         if (n > lower && (sig in exact || sig.isTopLevel)) lower = n
         return lower
+    }
+
+    companion object {
+        /** The bitwidth of a command without `int` scope. */
+        const val DEFAULT_BITWIDTH = 4
+
+        /** The largest bitwidth the analyzer accepts. */
+        const val MAX_BITWIDTH = 30
+
+        private val KEY = Key.create<Map<Command, AlloyCommandBounds>>("alloy.commandBounds")
+
+        /**
+         * The bounds of [command], a command of [model] or of one of its `=>` chains. They are computed once per
+         * model for every command, and shared by the inspections of each highlighting pass.
+         */
+        fun of(model: AlloyModelResult.Model, command: Command): AlloyCommandBounds {
+            val all = model.derived(KEY) {
+                val sigs = it.module.allReachableSigs.toList()
+                it.module.allCommands.flatMap { last -> generateSequence(last) { each -> each.parent } }
+                    .associateWithTo(IdentityHashMap()) { each ->
+                        ProgressManager.checkCanceled()
+                        AlloyCommandBounds(each, sigs)
+                    }
+            }
+            return all[command] ?: AlloyCommandBounds(command, model.module.allReachableSigs.toList())
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.serranofp.alloy.run
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.serranofp.alloy.semantics.AlloyModelService
 import edu.mit.csail.sdg.parser.CompUtil
@@ -141,6 +142,44 @@ class AlloyCommandLauncherTest : BasePlatformTestCase() {
         assertEquals(CommandState.NoInstance, result.state)
         assertEquals(1, result.details.log.count { it.text.startsWith("Warning") })
         assertEquals("Starting the solver...", result.details.log.first().text)
+    }
+
+    fun testCommandsSharingALabelRunTheirOwnScope() {
+        myFixture.configureByText("model.als", "sig A {}\npred show { some A }\nrun show for 3\nrun show for 5 expect 1\n")
+        val second = AlloyCommands.ref(AlloyCommands.commands(myFixture.file)[1])
+        val result = launch(second)
+        assertEquals("Executing \"Run show for 5 expect 1\"", result.executed())
+        assertEquals(Expectation.Passed, result.expectation)
+        assertNull(results.get(file, AlloyCommands.ref(AlloyCommands.commands(myFixture.file)[0])))
+    }
+
+    /** Launches `run show` with [launcher] off the EDT, and returns what the launch threw. */
+    private fun launchThrowing(launcher: AlloyCommandLauncher): Throwable? {
+        execution = newExecution(project, file, show)
+        service.startRun(execution)
+        val thrown = ApplicationManager.getApplication().executeOnPooledThread<Throwable?> {
+            try {
+                launcher.launch(execution, testRootDisposable)
+                null
+            } catch (e: Throwable) {
+                e
+            }
+        }.get(30, TimeUnit.SECONDS)
+        assertTrue(execution.isFinished())
+        assertNull(service.activeExecution)
+        return thrown
+    }
+
+    fun testExceptionDuringTheLaunchFailsTheExecution() {
+        assertNull(launchThrowing(AlloyCommandLauncher(project, options = { throw IllegalStateException("no options") })))
+        val result = results.get(file, show)!!
+        assertEquals(CommandState.Failed, result.state)
+        assertEquals("The Alloy analyzer failed: no options", result.details.failure)
+    }
+
+    fun testCancellationDuringTheLaunchStopsTheExecution() {
+        assertInstanceOf(launchThrowing(AlloyCommandLauncher(project, options = { throw ProcessCanceledException() })), ProcessCanceledException::class.java)
+        assertEquals(CommandState.Stopped, results.get(file, show)!!.state)
     }
 
     fun testStoppedBeforeTheAnalysisDoesNotStartIt() {

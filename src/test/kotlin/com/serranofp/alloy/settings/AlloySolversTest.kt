@@ -69,6 +69,18 @@ class AlloySolversTest : BasePlatformTestCase() {
         assertEquals(setOf("sat4j"), solvers.ids())
     }
 
+    fun testInterruptedWaitKeepsTheInterrupt() {
+        val release = java.util.concurrent.CountDownLatch(1)
+        val solvers = AlloySolvers().apply { discover = { release.await(); emptyList() } }
+        try {
+            Thread.currentThread().interrupt()
+            assertEquals(setOf("sat4j"), solvers.ids())
+            assertTrue("the interrupt was swallowed", Thread.interrupted())
+        } finally {
+            release.countDown()
+        }
+    }
+
     fun testNoSolversFallsBackToSat4j() {
         val solvers = AlloySolvers().apply { discover = { emptyList() } }
         assertEquals(AlloySolvers.FALLBACK, solvers.load().get(10, TimeUnit.SECONDS))

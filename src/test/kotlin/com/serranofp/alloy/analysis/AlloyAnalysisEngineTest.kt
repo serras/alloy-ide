@@ -136,6 +136,26 @@ class AlloyAnalysisEngineTest : BasePlatformTestCase() {
         assertNoneSolved()
     }
 
+    fun testStopJustAfterTheResultKeepsIt() {
+        val module = CompUtil.parseEverything_fromString(A4Reporter.NOP, "sig Node {}\nrun { some Node } for 3")
+        val solved = java.util.concurrent.CountDownLatch(1)
+        val stopped = java.util.concurrent.atomic.AtomicBoolean()
+        val analysis = engine.start("test", testRootDisposable, options(), { events += it }) { reporter, options ->
+            val solution = TranslateAlloyToKodkod.execute_command(A4Reporter.NOP, module.allReachableSigs, module.allCommands.first(), options)
+            solved.countDown()
+            // Stop interrupts this thread, so no blocking wait
+            while (!stopped.get()) Thread.onSpinWait()
+            Thread.interrupted()
+            // As the analyzer reports the solver's answer, once the stop is requested
+            reporter.resultSAT(null, 0, solution)
+            solution
+        }
+        assertTrue(solved.await(30, TimeUnit.SECONDS))
+        analysis.stop()
+        stopped.set(true)
+        assertInstanceOf(analysis.finish(), Sat::class.java)
+    }
+
     fun testStopAfterTheEndDoesNothing() {
         val analysis = execute("sig A {}\nrun {} for 1")
         val end = analysis.finish()

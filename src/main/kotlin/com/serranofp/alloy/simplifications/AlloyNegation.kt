@@ -5,7 +5,7 @@ import edu.mit.csail.sdg.ast.ExprBinary
 import edu.mit.csail.sdg.ast.ExprUnary
 
 /** Comparisons and their negations, both ways. */
-private val NEGATED_COMPARISONS = mapOf(
+internal val NEGATED_COMPARISONS = mapOf(
     ExprBinary.Op.EQUALS to AlloyOperator.NOT_EQUALS,
     ExprBinary.Op.NOT_EQUALS to AlloyOperator.EQUALS,
     ExprBinary.Op.IN to AlloyOperator.NOT_IN,

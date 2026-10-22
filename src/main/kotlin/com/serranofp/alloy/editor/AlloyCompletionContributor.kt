@@ -18,6 +18,7 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.ui.JBColor
 import com.intellij.util.ProcessingContext
+import com.serranofp.alloy.AlloyBundle
 import com.serranofp.alloy.AlloyFileType
 import com.serranofp.alloy.AlloyLanguage
 import com.serranofp.alloy.lexer.AlloyTokenSets
@@ -25,7 +26,6 @@ import com.serranofp.alloy.psi.AlloyAssertDecl
 import com.serranofp.alloy.psi.AlloyCommandDecl
 import com.serranofp.alloy.psi.AlloyFile
 import com.serranofp.alloy.psi.AlloyFunDecl
-import com.serranofp.alloy.psi.AlloyModuleDecl
 import com.serranofp.alloy.psi.AlloyNamedDeclaration
 import com.serranofp.alloy.psi.AlloyOpenDecl
 import com.serranofp.alloy.psi.AlloyPredDecl
@@ -33,6 +33,8 @@ import com.serranofp.alloy.psi.AlloyQualifiedName
 import com.serranofp.alloy.psi.AlloySigDecl
 import com.serranofp.alloy.psi.AlloySigName
 import com.serranofp.alloy.psi.AlloyTypes
+import com.serranofp.alloy.psi.impl.AlloyRefMixin
+import com.serranofp.alloy.psi.moduleName
 import com.serranofp.alloy.semantics.AlloyModelService
 import com.serranofp.alloy.semantics.AlloyPositions
 import com.serranofp.alloy.semantics.AlloyReference
@@ -44,7 +46,10 @@ sealed interface AlloyCompletionContext {
     /** A comment or a string. */
     data object None : AlloyCompletionContext
 
-    /** Anywhere else that is not a reference, such as a new declaration's name or between paragraphs. */
+    /** The name of a new declaration, such as a predicate's after `pred`: there is nothing to complete. */
+    data object DeclaredName : AlloyCompletionContext
+
+    /** Anywhere else that is not a reference, such as between paragraphs. */
     data object NotAReference : AlloyCompletionContext
 
     /** The path of an `open` declaration. */
@@ -68,9 +73,14 @@ sealed interface AlloyCompletionContext {
             if (AlloyTokenSets.COMMENTS.contains(tokenType) || AlloyTokenSets.STRINGS.contains(tokenType)) return None
             val name = position.parent
             if (name is AlloyQualifiedName && (name.parent as? AlloyOpenDecl)?.qualifiedNameList?.firstOrNull() === name) return ModulePath
-            if (PsiTreeUtil.skipWhitespacesAndCommentsBackward(position)?.node?.elementType == AlloyTypes.SLASH) {
-                val qualifier = name.text.substring(0, position.startOffsetInParent).removeSuffix("/")
-                return Qualified(qualifier)
+            // Only a name has a qualifier: a stray `/` elsewhere is an operator
+            if ((name is AlloyRefMixin || name is AlloyQualifiedName) &&
+                PsiTreeUtil.skipWhitespacesAndCommentsBackward(position)?.node?.elementType == AlloyTypes.SLASH
+            ) {
+                return Qualified(name.text.substring(0, position.startOffsetInParent).removeSuffix("/"))
+            }
+            if ((name is AlloyNamedDeclaration && name.nameIdentifier == position) || (name is AlloyQualifiedName && name.reference == null)) {
+                return DeclaredName
             }
             if (name?.reference !is AlloyReference) return NotAReference
             if (name is AlloyQualifiedName) {
@@ -104,7 +114,7 @@ class AlloyCompletionContributor : CompletionContributor() {
             val accepts: (AlloyNamedDeclaration) -> Boolean
             val qualifier: String?
             when (val completion = AlloyCompletionContext.of(position)) {
-                AlloyCompletionContext.None, AlloyCompletionContext.NotAReference -> return
+                AlloyCompletionContext.None, AlloyCompletionContext.DeclaredName, AlloyCompletionContext.NotAReference -> return
                 AlloyCompletionContext.ModulePath -> return ModulePaths.add(parameters, result)
                 is AlloyCompletionContext.Qualified -> {
                     if (position.parent?.reference !is AlloyReference) return
@@ -142,7 +152,7 @@ class AlloyCompletionContributor : CompletionContributor() {
         fun add(parameters: CompletionParameters, result: CompletionResultSet) {
             val opener = parameters.originalFile as? AlloyFile ?: return
             val openerPath = opener.virtualFile?.path ?: return
-            val moduleName = moduleDeclaration(opener).orEmpty()
+            val moduleName = opener.moduleName.orEmpty()
             // The whole path up to the caret is the prefix: completion replaces `util/` with `util/ordering`
             val path = parameters.position.parent
             val prefix = path.text.substring(0, parameters.offset - path.textRange.startOffset)
@@ -153,7 +163,7 @@ class AlloyCompletionContributor : CompletionContributor() {
             for (candidate in FileTypeIndex.getFiles(AlloyFileType, GlobalSearchScope.projectScope(opener.project))) {
                 if (candidate == opener.virtualFile) continue
                 val file = manager.findFile(candidate) as? AlloyFile ?: continue
-                val declared = moduleDeclaration(file)
+                val declared = file.moduleName
                 if (declared == null) {
                     val name = AlloyModelService.pathDerivedName(openerPath, moduleName, candidate.path) ?: continue
                     reachable += name
@@ -179,7 +189,7 @@ class AlloyCompletionContributor : CompletionContributor() {
             LookupElementBuilder.create(file, name)
                 .withIcon(AllIcons.Nodes.Module)
                 .withItemTextForeground(JBColor.GRAY)
-                .withTailText(" cannot be opened from this file", true)
+                .withTailText(" " + AlloyBundle.message("completion.module.unreachable"), true)
                 .withAutoCompletionPolicy(AutoCompletionPolicy.NEVER_AUTOCOMPLETE),
             -1.0,
         )
@@ -203,10 +213,6 @@ class AlloyCompletionContributor : CompletionContributor() {
 
         /** `util/ordering` for the bundled module, its declared name for a project module, or its file name. */
         private fun moduleName(file: AlloyFile): String =
-            moduleDeclaration(file) ?: file.virtualFile?.nameWithoutExtension ?: file.name.removeSuffix(".als")
-
-        /** The name in the `module` declaration of [file], if it has one. */
-        private fun moduleDeclaration(file: AlloyFile): String? =
-            file.children.filterIsInstance<AlloyModuleDecl>().firstOrNull()?.qualifiedName?.text
+            file.moduleName ?: file.virtualFile?.nameWithoutExtension ?: file.name.removeSuffix(".als")
     }
 }

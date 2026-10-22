@@ -10,19 +10,7 @@ import com.serranofp.alloy.run.verdict
 /** How a command's result reads in the test tree: its output, and why it failed. */
 object AlloyCommandTestResult {
     /** The analyzer output of the result, as its hint's tooltip shows it, in plain text. */
-    fun output(result: CommandResult): String {
-        val lines = mutableListOf<String>()
-        result.details.warnings.flatMapTo(lines) { it.lines() }
-        result.details.log.mapTo(lines) { it.text }
-        result.details.failure?.lines()?.let(lines::addAll)
-        result.vacuity?.let { vacuity ->
-            lines += ""
-            lines += AlloyCommandResultTooltip.VACUITY_CHECK
-            lines += AlloyCommandResultTooltip.vacuity(vacuity)
-            result.details.vacuityLog.filter { it.text.isNotBlank() }.mapTo(lines) { it.text }
-        }
-        return lines.joinToString("\n")
-    }
+    fun output(result: CommandResult): String = AlloyCommandResultTooltip.text(result)
 
     /**
      * The message and details of a failed test, or null when it passed: an execution that failed, a vacuous

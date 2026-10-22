@@ -23,11 +23,15 @@ Opening another result SHALL replace the tool window's content. The tool window 
 - **WHEN** the tool window shows the instance of `run show` and the user clicks the counterexample hint of `check noCycles`
 - **THEN** the tool window shows only the counterexample of `check noCycles`
 ### Requirement: Result origin header
-The tool window SHALL show a header naming the result's file, its command as written (for example `run show for 3`), its line, and whether it is an instance or a counterexample. Clicking the header SHALL navigate to the command in the editor.
+The tool window SHALL show a header naming the result's file, its command as written (for example `run show for 3`), its line, and whether it is an instance or a counterexample. The line SHALL be where the command is now, following edits of the file; when the command is not found in the file, the header names no line. Clicking the header SHALL navigate to the command in the editor.
 
 #### Scenario: Header contents
 - **WHEN** the tool window shows the counterexample of `check noCycles for 3` from line 12 of `graph.als`
 - **THEN** the header names `graph.als`, `check noCycles for 3`, line 12 and "Counterexample"
+
+#### Scenario: Lines inserted above the command
+- **WHEN** the user inserts a line above `check noCycles for 3`
+- **THEN** the header names line 13
 
 #### Scenario: Navigating to the origin
 - **WHEN** the user clicks the header
@@ -252,7 +256,7 @@ The strip SHALL highlight the circles of the two states the tabs show: the selec
 - **WHEN** that trace is at state 0 and the user clicks the circle of state 1
 - **THEN** the circles of states 1 and 2 are highlighted, and the circle of state 0 is dimmed
 ### Requirement: Navigating from the strip
-Clicking a state's circle SHALL select that state: every tab and the pane captions show that state and its successor. Clicking outside any circle SHALL not change the selection.
+Clicking a state's circle SHALL select that state: every tab and the pane captions show that state and its successor. Clicking outside any circle SHALL not change the selection. Clicking a circle SHALL also focus the strip, where the keyboard steps through the trace: Right selects the successor (after the last state, the loop target), Left the state before (none before state 0), and Home and End the first and last states.
 
 #### Scenario: Clicking a later state
 - **WHEN** a trace with 3 states that loops back to state 1 is shown at state 0 and the user clicks the circle of state 2
@@ -261,6 +265,10 @@ Clicking a state's circle SHALL select that state: every tab and the pane captio
 #### Scenario: Clicking between circles
 - **WHEN** the user clicks the strip between two circles
 - **THEN** the selected state does not change
+
+#### Scenario: Stepping with the keyboard
+- **WHEN** a trace with 3 states that loops back to state 1 is shown at state 2, and the user presses Right in the strip
+- **THEN** the tabs show state 1 followed by state 2
 
 #### Scenario: Projection kept
 - **WHEN** the graph is projected over `Node` showing `Node1` and the user clicks another state's circle
@@ -315,3 +323,9 @@ For results with more than one state, a result SHALL open at state 0, and every 
 #### Scenario: Static result
 - **WHEN** the shown result has a single state
 - **THEN** every tab shows that state alone
+### Requirement: Showing a solution keeps the IDE responsive
+The analyzer's work of showing a solution SHALL not run on the IDE's user interface thread: reading the solution, inferring its theme, and the text, difference and tables of each state. Opening a result from its hint MAY show a progress dialog while the solution is read. When several states are selected in quick succession, the tool window SHALL end up showing the last one selected.
+
+#### Scenario: Stepping quickly
+- **WHEN** the user selects state 2 and then state 1 of a trace before state 2 is shown
+- **THEN** the tabs show state 1
