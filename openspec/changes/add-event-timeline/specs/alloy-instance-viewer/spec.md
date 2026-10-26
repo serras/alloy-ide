@@ -10,7 +10,7 @@ For a result with more than one state, the Visualization and Table tabs SHALL ea
 - **THEN** the graph of state 0, captioned "State 0", is on the left and the graph of state 1, captioned "State 1", is on its right
 
 #### Scenario: Tall tab
-- **WHEN** the tool window is resized so that the Visualization tab is taller than it is wide
+- **WHEN** the instance preview is resized so that the Visualization tab is taller than it is wide
 - **THEN** the graph of state 0 is above the graph of state 1
 
 #### Scenario: Loop target caption
@@ -32,7 +32,7 @@ For a result with more than one state, the Visualization and Table tabs SHALL ea
 ## ADDED Requirements
 
 ### Requirement: Timeline of transitions
-For a trace whose model has event predicates, the tool window SHALL show a timeline under the toolbar with one entry per transition, including the one into the loop target. Each entry is labelled with its events. The entry of the selected state's transition is highlighted. The trace path strip, if shown, SHALL carry these labels on its transitions instead of a separate timeline.
+For a trace whose model has event predicates, the instance preview SHALL show a timeline under the toolbar with one entry per transition, including the one into the loop target. Each entry is labelled with its events. The entry of the selected state's transition is highlighted. The trace path strip, if shown, SHALL carry these labels on its transitions instead of a separate timeline.
 
 #### Scenario: Timeline of a trace
 - **WHEN** a leader election trace with 4 states that loops back to state 3 is shown
@@ -60,7 +60,7 @@ For a trace whose model has event predicates, the tool window SHALL show a timel
 
 #### Scenario: Events not yet known
 - **WHEN** the events are still being computed
-- **THEN** the timeline shows its transitions with a placeholder, and the rest of the tool window can already be used
+- **THEN** the timeline shows its transitions with a placeholder, and the rest of the instance preview can already be used
 
 #### Scenario: No timeline
 - **WHEN** the shown result has a single state, or its model has no event predicates

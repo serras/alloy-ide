@@ -24,6 +24,7 @@
 
 ### Changed
 
+- **Breaking:** instances and counterexamples are shown in an instance preview beside the text, in the editor of each Alloy file of the project, instead of the *Alloy Instance* tool window, which is removed. Each file shows its own result while it is open; a file opens as its text, and clicking a result hint shows the preview beside it. The buttons in the editor tab show the text only, both, or the preview only, side by side or stacked. The bundled `util/*` modules open as text only.
 - The plugin no longer requires the IntelliJ Platform's LSP support module (`com.intellij.modules.lsp`): it installs in any IntelliJ-based IDE from 2026.2.
 
 ### Removed

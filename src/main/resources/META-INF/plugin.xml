@@ -11,8 +11,8 @@
               view, breadcrumbs, completion, and <i>Go to Symbol</i></li>
           <li>Run <code>run</code> and <code>check</code> commands from the gutter, with their results directly
               visible as inlay hints, and the full analyzer output as a tooltip</li>
-          <li>The <em>Alloy Instance</em> tool window: instances and counterexamples as a graph, text or table,
-              with dedicated support for traces and state changes</li>
+          <li>An instance preview beside the editor of each model: instances and counterexamples as a graph,
+              text or table, with dedicated support for traces and state changes</li>
           <li>An evaluator for expressions and formulas over the shown instance, at the selected state of a trace,
               with completion of the model's names, atoms and skolems, and watches that follow the state, as in
               the debugger</li>
@@ -55,8 +55,7 @@
         <breadcrumbsInfoProvider implementation="com.serranofp.alloy.editor.AlloyBreadcrumbsProvider"/>
         <gotoSymbolContributor implementation="com.serranofp.alloy.semantics.AlloySymbolContributor"/>
         <additionalLibraryRootsProvider implementation="com.serranofp.alloy.semantics.AlloyLibraryRootsProvider"/>
-        <toolWindow id="Alloy Instance" anchor="right" icon="/icons/alloy.svg" doNotActivateOnStart="true"
-                    factoryClass="com.serranofp.alloy.viewer.AlloyInstanceToolWindowFactory"/>
+        <fileEditorProvider implementation="com.serranofp.alloy.viewer.AlloyFileEditorProvider"/>
         <externalAnnotator language="Alloy" implementationClass="com.serranofp.alloy.semantics.AlloyExternalAnnotator"/>
         <highlightErrorFilter implementation="com.serranofp.alloy.viewer.AlloyEvaluatorErrorFilter"/>
         <localInspection language="Alloy" shortName="AlloyUnscopedMutableSignature" groupName="Alloy"

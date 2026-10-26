@@ -100,21 +100,19 @@ abstract class AlloyViewerTestCase : BasePlatformTestCase() {
         )
     }
 
-    /** Opens the solution of [model] as the result of [command] in [file], and lets the tool windows show it. */
+    /** Opens the solution of [model] as the result of [command] in [file], and lets the viewers show it. */
     protected fun open(model: String, file: VirtualFile = myFixture.file.virtualFile, command: AlloyCommandRef = SHOW): ViewerSession {
         viewer.open(file, command, result(model, file))
         UIUtil.dispatchAllInvocationEvents()
-        return viewer.session!!
+        return viewer.session(file)!!
     }
 
-    /** A new tool window, until the test ends. */
-    protected fun panel(): AlloyInstancePanel = AlloyInstancePanel(project, testRootDisposable)
+    /** A new viewer of [file], until the test ends. */
+    protected fun panel(file: VirtualFile = myFixture.file.virtualFile): AlloyInstancePanel = AlloyInstancePanel(project, file, testRootDisposable)
 
-    /** A new tool window showing the solution of [model], as the result of `show` in a new [SHOW_FILE]. */
-    protected fun panelFor(model: String): AlloyInstancePanel {
-        myFixture.configureByText("m.als", SHOW_FILE)
-        return panel().also { open(model) }
-    }
+    /** A new viewer of [file] showing the solution of [model], as the result of `show` in it, by default a new [SHOW_FILE]. */
+    protected fun panelFor(model: String, file: VirtualFile = myFixture.configureByText("m.als", SHOW_FILE).virtualFile): AlloyInstancePanel =
+        panel(file).also { open(model, file) }
 }
 
 /** Presses the left button on [state]'s circle, as selecting it with the mouse starts with. */

@@ -2,7 +2,8 @@ package com.serranofp.alloy.viewer
 
 import com.intellij.codeInsight.hints.declarative.StringInlayActionPayload
 import com.intellij.openapi.fileEditor.FileEditorManager
-import com.intellij.openapi.wm.ToolWindowEP
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.ui.UIUtil
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.psi.PsiDocumentManager
@@ -31,43 +32,103 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
 
     private val file get() = myFixture.file.virtualFile
 
-    /** Records a result of [command] that found a solution, as an execution does, and returns it. */
-    private fun found(command: AlloyCommandRef, counterexample: Boolean): CommandResult {
+    /** `run enqueue` on line 3. */
+    private val enqueue = AlloyCommandRef("enqueue", 0)
+
+    private fun queue(): VirtualFile = myFixture.addFileToProject("queue.als", "sig Elem {}\npred enqueue { some Elem }\nrun enqueue for 3\n").virtualFile
+
+    /** Records a result of [command] in [file] that found a solution, as an execution does, and returns it. */
+    private fun found(command: AlloyCommandRef, counterexample: Boolean, file: VirtualFile = this.file): CommandResult {
         val model = if (counterexample) "sig Node { succ: set Node }\ncheck { no iden & ^succ } for 3" else STATIC
         val state = if (counterexample) CommandState.CounterexampleFound else CommandState.InstanceFound
-        val result = result(model, state = state)
+        val result = result(model, file, state)
         results.record(file, command, result)
         return result
     }
 
     fun testOpeningASecondResultReplacesTheFirst() {
         viewer.open(file, show, found(show, counterexample = false))
-        val first = viewer.session!!
+        val first = viewer.session(file)!!
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
-        val second = viewer.session!!
+        val second = viewer.session(file)!!
         assertNotSame(first, second)
         assertEquals(noCycles, second.origin.command)
         assertTrue(second.origin.counterexample)
     }
 
+    fun testEachFileHasItsOwnSession() {
+        val queue = queue()
+        viewer.open(file, show, found(show, counterexample = false))
+        viewer.open(queue, enqueue, found(enqueue, counterexample = false, queue))
+        assertEquals("graph.als: run show for 3 (line 11) · Instance", viewer.header(viewer.session(file)))
+        assertEquals("queue.als: run enqueue for 3 (line 3) · Instance", viewer.header(viewer.session(queue)))
+    }
+
+    fun testOpeningReplacesOnlyThatFilesSession() {
+        val queue = queue()
+        viewer.open(file, show, found(show, counterexample = false))
+        viewer.open(queue, enqueue, found(enqueue, counterexample = false, queue))
+        val queued = viewer.session(queue)
+        viewer.open(file, noCycles, found(noCycles, counterexample = true))
+        assertEquals(noCycles, viewer.session(file)!!.origin.command)
+        assertSame(queued, viewer.session(queue))
+    }
+
+    fun testListenersHearOnlyTheirFile() {
+        val queue = queue()
+        var graphCalls = 0
+        var queueCalls = 0
+        viewer.addListener(file, testRootDisposable) { graphCalls++ }
+        viewer.addListener(queue, testRootDisposable) { queueCalls++ }
+        viewer.open(file, show, found(show, counterexample = false))
+        UIUtil.dispatchAllInvocationEvents()
+        assertTrue(graphCalls > 0)
+        assertEquals(0, queueCalls)
+    }
+
+    fun testASessionIsKeptWhileAViewerIsAttached() {
+        val first = Disposer.newDisposable(testRootDisposable, "first")
+        val second = Disposer.newDisposable(testRootDisposable, "second")
+        viewer.attach(file, first)
+        viewer.attach(file, second)
+        viewer.open(file, show, found(show, counterexample = false))
+        val anchor = viewer.session(file)!!.anchor!!
+        Disposer.dispose(first)
+        assertNotNull(viewer.session(file))
+        assertTrue(anchor.isValid)
+        Disposer.dispose(second)
+        assertNull(viewer.session(file))
+        assertFalse(anchor.isValid)
+    }
+
+    fun testASessionWithoutViewersStaysUntilCleared() {
+        viewer.open(file, show, found(show, counterexample = false))
+        val anchor = viewer.session(file)!!.anchor!!
+        UIUtil.dispatchAllInvocationEvents()
+        assertNotNull(viewer.session(file))
+        viewer.clear()
+        assertNull(viewer.session(file))
+        assertFalse(anchor.isValid)
+    }
+
     fun testHeader() {
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
-        assertEquals("graph.als: check noCycles {...} for 3 (line 12) · Counterexample", viewer.header())
+        assertEquals("graph.als: check noCycles {...} for 3 (line 12) · Counterexample", viewer.header(viewer.session(file)))
         viewer.open(file, show, found(show, counterexample = false))
-        assertEquals("graph.als: run show for 3 (line 11) · Instance", viewer.header())
+        assertEquals("graph.als: run show for 3 (line 11) · Instance", viewer.header(viewer.session(file)))
     }
 
     fun testHeaderLineFollowsEdits() {
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
         myFixture.editor.caretModel.moveToOffset(0)
         myFixture.type("// a comment\n")
-        assertTrue(viewer.header(), viewer.header().startsWith("graph.als: check noCycles {...} for 3 (line 13) · Counterexample"))
+        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("graph.als: check noCycles {...} for 3 (line 13) · Counterexample"))
     }
 
     fun testHeaderWithoutTheCommandHasNoLine() {
         val gone = AlloyCommandRef("gone", 5)
         viewer.open(file, gone, found(gone, counterexample = false))
-        assertEquals("graph.als: ${gone.displayName} · Instance", viewer.header())
+        assertEquals("graph.als: ${gone.displayName} · Instance", viewer.header(viewer.session(file)))
     }
 
     /** The command is found in the PSI, whose offsets are the document's only once it is committed. */
@@ -77,14 +138,14 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
         WriteCommandAction.runWriteCommandAction(project) { document.deleteString(0, document.getLineEndOffset(0) + 1) }
         assertFalse(PsiDocumentManager.getInstance(project).isCommitted(document))
         viewer.open(file, noCycles, result)
-        assertTrue(viewer.header(), viewer.header().startsWith("graph.als: check noCycles {...} for 3 (line 11) · Counterexample"))
-        assertEquals(document.text.indexOf("check noCycles"), viewer.session!!.commandOffset)
+        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("graph.als: check noCycles {...} for 3 (line 11) · Counterexample"))
+        assertEquals(document.text.indexOf("check noCycles"), viewer.session(file)!!.commandOffset)
     }
 
     fun testNavigatingToTheCommand() {
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
         myFixture.editor.caretModel.moveToOffset(0)
-        viewer.navigateToOrigin()
+        viewer.navigateToOrigin(file)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
         assertEquals(graph.indexOf("check noCycles"), editor.caretModel.offset)
     }
@@ -93,35 +154,35 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
         myFixture.editor.caretModel.moveToOffset(0)
         myFixture.type("// a comment\n")
-        viewer.navigateToOrigin()
+        viewer.navigateToOrigin(file)
         assertEquals(myFixture.editor.document.text.indexOf("check noCycles"), myFixture.editor.caretModel.offset)
     }
 
     fun testEditMarksTheSessionOutdated() {
         viewer.open(file, show, found(show, counterexample = false))
-        assertNull(viewer.outdated())
+        assertNull(viewer.outdated(viewer.session(file)))
         myFixture.type("x")
-        assertNotNull(viewer.outdated())
-        assertTrue(viewer.header(), viewer.header().endsWith(AlloyBundle.message("result.outdated.suffix")))
+        assertNotNull(viewer.outdated(viewer.session(file)))
+        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).endsWith(AlloyBundle.message("result.outdated.suffix")))
         // The solution stays visible
-        assertNotNull(viewer.session)
+        assertNotNull(viewer.session(file))
     }
 
     fun testHintClickOpensTheViewer() {
         found(show, counterexample = false)
         AlloyCommandResultClickHandler().click(myFixture.editor, StringInlayActionPayload(AlloyCommandResultHintsProvider.Codec.encode(show)))
-        assertEquals(show, viewer.session!!.origin.command)
+        assertEquals(show, viewer.session(file)!!.origin.command)
     }
 
     fun testUnsatisfiableResultsDoNotOpen() {
-        val before = viewer.session
+        val before = viewer.session(file)
         val result = CommandResult(CommandState.NoCounterexample, "none", documentStamp = 0, settingsGeneration = 0)
         viewer.open(file, show, result)
-        assertSame(before, viewer.session)
+        assertSame(before, viewer.session(file))
     }
 
     fun testPanelShowsTheEmptyStateThenTheSession() {
-        val panel = AlloyInstancePanel(project, testRootDisposable)
+        val panel = AlloyInstancePanel(project, file, testRootDisposable)
         assertInstanceOf(panel.layout, CardLayout::class.java)
         val empty = panel.components.single { it.isVisible }
         assertEquals(AlloyInstanceViewer.EMPTY_TEXT, (empty as JBLabel).text)
@@ -130,12 +191,7 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
         val shown = panel.components.single { it.isVisible }
         // The header, not the projection chooser's link
         val links = UIUtil.findComponentsOfType(shown as JComponent, ActionLink::class.java).filter { it !is DropDownLink<*> }
-        assertEquals(viewer.header(), links.single().text)
-    }
-
-    fun testToolWindowIsOnTheRight() {
-        val window = ToolWindowEP.EP_NAME.extensionList.single { it.id == AlloyInstanceViewer.TOOL_WINDOW_ID }
-        assertEquals("right", window.anchor)
+        assertEquals(viewer.header(viewer.session(file)), links.single().text)
     }
 
     fun testNewSolutionKindsHaveTheirOwnIcons() {

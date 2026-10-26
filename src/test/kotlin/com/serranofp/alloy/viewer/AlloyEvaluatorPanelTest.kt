@@ -97,7 +97,7 @@ class AlloyEvaluatorPanelTest : AlloyViewerTestCase() {
         open(LASSO)
         assertFalse(evaluator.isVisible)
         // As a click on state 1 in the trace path strip does
-        viewer.session!!.model.goTo(1)
+        viewer.session(myFixture.file.virtualFile)!!.model.goTo(1)
         panel.stateChanged()
         UIUtil.dispatchAllInvocationEvents()
         assertEquals(0, evaluations())
@@ -229,13 +229,13 @@ class AlloyEvaluatorPanelTest : AlloyViewerTestCase() {
         val panel = panel()
         open(RING)
         val evaluator = panel.evaluator()
-        val session = viewer.session
+        val session = viewer.session(myFixture.file.virtualFile)
         evaluator.evaluate("Undefined")
         val row = evaluator.settle().rows().single()
         assertInstanceOf(row.result, EvaluationResult.Error::class.java)
         assertTrue(evaluator.text(row), evaluator.text(row).contains("cannot be found"))
         assertTrue(SimpleTextAttributes.ERROR_ATTRIBUTES in evaluator.attributes(row))
-        assertSame(session, viewer.session)
+        assertSame(session, viewer.session(myFixture.file.virtualFile))
         assertTrue(evaluator.isVisible)
     }
 
@@ -244,7 +244,7 @@ class AlloyEvaluatorPanelTest : AlloyViewerTestCase() {
         open(LASSO)
         val evaluator = panel.evaluator()
         assertEquals("Evaluating at state 0", evaluator.caption.text)
-        viewer.session!!.model.goTo(2)
+        viewer.session(myFixture.file.virtualFile)!!.model.goTo(2)
         panel.stateChanged()
         assertEquals("Evaluating at state 2", evaluator.caption.text)
         myFixture.type("x")
@@ -255,7 +255,7 @@ class AlloyEvaluatorPanelTest : AlloyViewerTestCase() {
     fun testOutdatedNeedsNoReadAccess() {
         panel()
         open(LASSO)
-        val session = viewer.session!!
+        val session = viewer.session(myFixture.file.virtualFile)!!
         val outdated = ApplicationManager.getApplication().executeOnPooledThread<Outdated?> { viewer.outdated(session) }
         assertNull(outdated.get(30, TimeUnit.SECONDS))
         myFixture.type("x")
@@ -314,7 +314,7 @@ class AlloyEvaluatorPanelTest : AlloyViewerTestCase() {
         evaluator.settle()
         assertEquals(EvaluationResult.Tuples(listOf("V1$0")), evaluator.watch("Cur").result)
         // As a click on state 1 in the trace path strip does
-        viewer.session!!.model.goTo(1)
+        viewer.session(myFixture.file.virtualFile)!!.model.goTo(1)
         panel.stateChanged()
         evaluator.settle()
         val cur = evaluator.watch("Cur")
@@ -331,36 +331,55 @@ class AlloyEvaluatorPanelTest : AlloyViewerTestCase() {
         val evaluator = panel.evaluator()
         evaluator.addWatch("X")
         evaluator.addWatch("#A")
-        viewer.session!!.model.goTo(1)
+        viewer.session(myFixture.file.virtualFile)!!.model.goTo(1)
         panel.stateChanged()
         evaluator.settle()
-        val before = viewer.session
+        val before = viewer.session(myFixture.file.virtualFile)
         val evaluated = mutableListOf<Pair<AlloySolutionModel, String>>()
         val evaluate = evaluator.runner.evaluate
         evaluator.runner.evaluate = { model, text, state -> synchronized(evaluated) { evaluated += model to text }; evaluate(model, text, state) }
-        assertTrue(viewer.requestSolution(SolutionKind.Fork))
+        assertTrue(viewer.requestSolution(myFixture.file.virtualFile, SolutionKind.Fork))
         waitUntil("the new solution did not arrive") { !viewer.enumerating }
         UIUtil.dispatchAllInvocationEvents()
         evaluator.settle()
-        assertNotSame(before, viewer.session)
-        val model = viewer.session!!.model
+        assertNotSame(before, viewer.session(myFixture.file.virtualFile))
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         assertEquals(listOf("X", "#A"), synchronized(evaluated) { evaluated.filter { it.first === model }.map { it.second } })
         for (watch in evaluator.watchRows()) assertEquals(model.evaluate(watch.expression), watch.result)
     }
 
     fun testEachFileShowsItsWatches() {
-        val panel = panel()
         val ring = myFixture.file.virtualFile
         val graph = myFixture.addFileToProject("graph.als", "pred show {}\nrun show for 3\n").virtualFile
         stored.setWatches(graph, listOf("#Node"))
+        val ringPanel = panel(ring)
+        val graphPanel = panel(graph)
         open(RING)
-        val evaluator = panel.evaluator()
-        evaluator.addWatch("succ")
+        val ringEvaluator = ringPanel.evaluator()
+        ringEvaluator.addWatch("succ")
         open(RING, graph)
-        assertEquals(listOf("#Node"), evaluator.watchExpressions())
-        assertEquals(EvaluationResult.IntValue("2"), evaluator.settle().watch("#Node").result)
-        open(RING, ring)
-        assertEquals(listOf("succ"), evaluator.watchExpressions())
+        val graphEvaluator = graphPanel.evaluator()
+        assertEquals(listOf("#Node"), graphEvaluator.watchExpressions())
+        assertEquals(EvaluationResult.IntValue("2"), graphEvaluator.settle().watch("#Node").result)
+        assertEquals(listOf("succ"), ringEvaluator.watchExpressions())
+    }
+
+    fun testEachFileEvaluatesInItsOwnResult() {
+        val graph = myFixture.addFileToProject("graph.als", SHOW_FILE).virtualFile
+        val queue = myFixture.addFileToProject("queue.als", SHOW_FILE).virtualFile
+        val graphEvaluator = panel(graph).evaluator()
+        val queueEvaluator = panel(queue).evaluator()
+        open(RING, graph)
+        open("one sig A {}\nrun {} for 1", queue)
+        val graphValue = viewer.session(graph)!!.model.evaluate("#univ")
+        val queueValue = viewer.session(queue)!!.model.evaluate("#univ")
+        assertFalse(graphValue == queueValue)
+        graphEvaluator.evaluate("#univ")
+        assertEquals(graphValue, graphEvaluator.settle().rows().single().result)
+        queueEvaluator.evaluate("#univ")
+        assertEquals(queueValue, queueEvaluator.settle().rows().single().result)
+        // The other file's panel is unchanged
+        assertEquals(graphValue, graphEvaluator.rows().single().result)
     }
 
     fun testWatchOfARemovedFieldShowsItsError() {

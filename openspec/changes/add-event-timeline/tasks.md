@@ -51,4 +51,4 @@
 
 ## 6. Integration
 
-- [ ] 6.1 Document the timeline and the Events dropdown in the README's "Alloy Instance tool window" bullet. Run `./gradlew test`, including `PracticalAlloyModelsTest`, and verify that it passes. Verify that `openspec validate add-event-timeline --strict` passes.
+- [ ] 6.1 Document the timeline and the Events dropdown in the README's "Instance preview" bullet. Run `./gradlew test`, including `PracticalAlloyModelsTest`, and verify that it passes. Verify that `openspec validate add-event-timeline --strict` passes.

@@ -72,7 +72,7 @@ class AlloyTraceNavigationTest : AlloyViewerTestCase() {
     fun testTheStripsSuccessorIsTheModels() {
         for (fixture in listOf(LASSO, SELF_LOOP, "var sig X {}\nfact { no X and after (one X and after no X) and always (no X implies after one X) }\nrun {} for 1 but 2 steps")) {
             val panel = panelFor(fixture)
-            val model = viewer.session!!.model
+            val model = viewer.session(myFixture.file.virtualFile)!!.model
             val strip = panel.strip()
             for (state in 0 until model.traceLength) {
                 strip.pressState(state)
@@ -164,7 +164,7 @@ class AlloyTraceNavigationTest : AlloyViewerTestCase() {
         // While a new solution is searched for, none can be asked for
         var task: Task.Backgroundable? = null
         viewer.schedule = { task = it }
-        assertTrue(viewer.requestSolution(SolutionKind.Config))
+        assertTrue(viewer.requestSolution(myFixture.file.virtualFile, SolutionKind.Config))
         assertTrue(panel.newActions().values.all { it.isVisible && !it.isEnabled })
         task!!.onFinished()
         // An outdated result says to run the command again
@@ -234,7 +234,7 @@ class AlloyTraceNavigationTest : AlloyViewerTestCase() {
         val strip = panel.strip()
         strip.pressState(2)
         // The state is prepared off the EDT, then shown
-        waitUntil("state 2 was not shown") { viewer.session!!.model.state == 2 }
+        waitUntil("state 2 was not shown") { viewer.session(myFixture.file.virtualFile)!!.model.state == 2 }
         assertEquals(List(2) { listOf("State 2", "State 1 (loop)") }, panel.captions())
         assertEquals(setOf(2, 1), strip.geometry!!.highlighted)
     }
@@ -242,7 +242,7 @@ class AlloyTraceNavigationTest : AlloyViewerTestCase() {
     fun testTheKeysStepThroughTheTrace() {
         val panel = panelFor(LASSO)
         val strip = panel.strip()
-        val model = viewer.session!!.model
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         // Right goes to the successor, which after the last state is the loop target
         for (state in listOf(1, 2, 1)) {
             strip.press(KeyEvent.VK_RIGHT)
@@ -259,7 +259,7 @@ class AlloyTraceNavigationTest : AlloyViewerTestCase() {
     fun testTheLatestSelectionWins() {
         val panel = panelFor(LASSO)
         val strip = panel.strip()
-        val model = viewer.session!!.model
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         strip.press(KeyEvent.VK_END)
         strip.press(KeyEvent.VK_RIGHT)
         waitUntil("the states were not prepared") { model.isPrepared(2) && model.isPrepared(1) }

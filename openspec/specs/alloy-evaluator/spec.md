@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets the user evaluate Alloy expressions and formulas against the instance or counterexample shown in the Alloy Instance tool window, once or as a list of watches that follow the selected state of a trace, as IntelliJ's debugger evaluates expressions in the current frame.
+Lets the user evaluate Alloy expressions and formulas against the instance or counterexample shown in the instance preview of the editor, once or as a list of watches that follow the selected state of a trace, as IntelliJ's debugger evaluates expressions in the current frame.
 
 ## Requirements
 

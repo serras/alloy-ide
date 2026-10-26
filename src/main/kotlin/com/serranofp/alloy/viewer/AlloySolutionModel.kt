@@ -61,8 +61,8 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
         private set
 
     val vizState: VizState by lazy {
-        if (theme != null) return@lazy VizState(theme).also { it.loadInstance(instance(0)) }
-        VizState(instance(0)).also {
+        val viz = if (theme != null) VizState(theme).also { it.loadInstance(instance(0)) }
+        else VizState(instance(0)).also {
             try {
                 AlloyIdeMagic.magic(it)
             } catch (e: Exception) {
@@ -70,7 +70,20 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
                 thisLogger().warn("The magic layout failed", e)
             }
         }
+        viz.also { initial = it.projectedTypes.toList() }
     }
+
+    private var initial: List<AlloyType>? = null
+
+    /**
+     * The signatures [vizState] was first projected over: the magic layout's choice, or the projections of the theme
+     * it was copied from. Each viewer starts from them, as [project] then changes the theme for one viewer at a time.
+     */
+    val initialProjections: List<AlloyType>
+        get() {
+            vizState
+            return initial!!
+        }
 
     /**
      * The second state a trace shows, a copy of [vizState]'s theme with the successor's instance; null for a
@@ -182,6 +195,20 @@ class AlloySolutionModel(val solution: A4Solution, private val theme: VizState? 
     }
 
     fun clearProjections() = listOfNotNull(vizState, nextVizState).forEach { it.deprojectAll() }
+
+    /**
+     * Projects over exactly [types], the projection of the viewer about to draw: several viewers of one file share
+     * this model, each with its own projection. Projecting resets the visualizer's cache of graphs, so an unchanged
+     * projection is left alone.
+     */
+    fun project(types: Collection<AlloyType>) {
+        val wanted = types.toSet()
+        for (viz in listOfNotNull(vizState, nextVizState)) {
+            if (viz.projectedTypes.toSet() == wanted) continue
+            viz.deprojectAll()
+            wanted.forEach(viz::project)
+        }
+    }
 
     /**
      * Evaluates [text] at [state], as the desktop evaluator does: the solution's atoms and skolems become names

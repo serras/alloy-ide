@@ -4,6 +4,8 @@ import com.intellij.codeInsight.hints.declarative.InlayActionHandler
 import com.intellij.codeInsight.hints.declarative.StringInlayActionPayload
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.serranofp.alloy.settings.AlloySettings
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.serranofp.alloy.viewer.AlloyEditorWithPreview
 import com.serranofp.alloy.viewer.AlloyInstanceViewer
 import java.util.concurrent.TimeUnit
 
@@ -45,8 +47,22 @@ class AlloyCommandResultClickHandlerTest : AlloyRunTestCase() {
             val before = results.get(file, show)
             click(show)
             assertSame(before, results.get(file, show))
-            assertEquals(file, viewer.session!!.origin.file)
-            assertEquals(show, viewer.session!!.origin.command)
+            assertEquals(file, viewer.session(file)!!.origin.file)
+            assertEquals(show, viewer.session(file)!!.origin.command)
+        } finally {
+            viewer.clear()
+        }
+    }
+
+    /** The light fixture's editor is a plain text editor, with no preview to show: only the session changes. */
+    fun testInstanceClickInAnEditorWithoutAPreviewOnlyOpensTheSession() {
+        val viewer = AlloyInstanceViewer.getInstance(project)
+        viewer.clear()
+        try {
+            record(show, CommandState.InstanceFound, "Instance found · 4 ms", instanceLink())
+            click(show)
+            assertEquals(show, viewer.session(file)!!.origin.command)
+            assertFalse(FileEditorManager.getInstance(project).getAllEditors(file).any { it is AlloyEditorWithPreview })
         } finally {
             viewer.clear()
         }

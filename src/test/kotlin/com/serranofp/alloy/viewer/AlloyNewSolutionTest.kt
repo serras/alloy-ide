@@ -1,7 +1,9 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
@@ -11,6 +13,7 @@ import com.serranofp.alloy.run.newExecution
 import com.serranofp.alloy.run.waitUntil
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -20,13 +23,15 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
         myFixture.configureByText("m.als", SHOW_FILE)
     }
 
+    private val file get() = myFixture.file.virtualFile
+
     private fun request(kind: SolutionKind): ViewerSession {
-        assertTrue(viewer.requestSolution(kind))
+        assertTrue(viewer.requestSolution(file, kind))
         waitUntil("the new solution did not arrive") { !viewer.enumerating }
-        return viewer.session!!
+        return viewer.session(file)!!
     }
 
-    private fun enabled() = SolutionKind.entries.filter(viewer::isEnabled)
+    private fun enabled() = SolutionKind.entries.filter { viewer.isEnabled(file, it) }
 
     /** Whether the project's analysis is free: a command can run. */
     private fun analysisIsFree(): Boolean {
@@ -39,7 +44,7 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
     fun testStaticModelOnlyHasNewConfig() {
         open(STATIC)
         assertEquals(listOf(SolutionKind.Config), enabled())
-        assertFalse(viewer.requestSolution(SolutionKind.Trace))
+        assertFalse(viewer.requestSolution(file, SolutionKind.Trace))
     }
 
     fun testTemporalModelHasEveryKind() {
@@ -49,14 +54,14 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
 
     fun testNewConfig() {
         open(STATIC)
-        val before = viewer.session!!
+        val before = viewer.session(file)!!
         val after = request(SolutionKind.Config)
         assertNotSame(before, after)
         assertNotSame(before.model.solution, after.model.solution)
         assertTrue(after.model.solution.satisfiable())
         assertFalse(before.model.text == after.model.text)
         assertEquals(before.origin, after.origin)
-        assertNull(viewer.status)
+        assertNull(viewer.status(file))
     }
 
     /** Each kind asks `A4Solution.fork` for its code: a temporal model's from its selected state, state 1 here. */
@@ -78,12 +83,12 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
 
     fun testOpenedSolutionHasTheModule() {
         open(STATIC)
-        assertNotNull(viewer.session!!.model.module)
+        assertNotNull(viewer.session(file)!!.model.module)
     }
 
     fun testNewSolutionKeepsTheModule() {
         open(STATIC)
-        val before = viewer.session!!.model
+        val before = viewer.session(file)!!.model
         val after = request(SolutionKind.Config).model
         assertNotSame(before, after)
         assertSame(before.module, after.module)
@@ -91,7 +96,7 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
 
     fun testNewSolutionKeepsTheThemeAndProjections() {
         open("sig Item {}\nsig State { holds: set Item }\nrun { some holds } for 3")
-        val before = viewer.session!!.model
+        val before = viewer.session(file)!!.model
         before.setProjected(before.projectableTypes.single { it.name == "State" }, true)
         before.vizState.setFontSize(17)
         val after = request(SolutionKind.Config).model
@@ -103,7 +108,7 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
 
     fun testNewForkAgreesUpToTheCurrentState() {
         open(TRACES)
-        val before = viewer.session!!.model
+        val before = viewer.session(file)!!.model
         before.goTo(1)
         val after = request(SolutionKind.Fork).model
         assertNotSame(before.solution, after.solution)
@@ -117,9 +122,9 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
 
     fun testNoMoreSolutions() {
         open("one sig A {}\nrun {} for 1")
-        val before = viewer.session!!
+        val before = viewer.session(file)!!
         assertSame(before, request(SolutionKind.Config))
-        assertEquals(AlloyInstanceViewer.NO_MORE_SOLUTIONS, viewer.status)
+        assertEquals(AlloyInstanceViewer.NO_MORE_SOLUTIONS, viewer.status(file))
     }
 
     /** `fork` gives back the same solution when there is no other one of that kind. */
@@ -127,7 +132,7 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
         val before = open(STATIC)
         viewer.fork = { solution, _ -> solution }
         assertSame(before, request(SolutionKind.Config))
-        assertEquals(AlloyInstanceViewer.NO_MORE_SOLUTIONS, viewer.status)
+        assertEquals(AlloyInstanceViewer.NO_MORE_SOLUTIONS, viewer.status(file))
     }
 
     /** Or an unsatisfiable solution. */
@@ -137,30 +142,64 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
         assertFalse(unsat.satisfiable())
         viewer.fork = { _, _ -> unsat }
         assertSame(before, request(SolutionKind.Config))
-        assertEquals(AlloyInstanceViewer.NO_MORE_SOLUTIONS, viewer.status)
+        assertEquals(AlloyInstanceViewer.NO_MORE_SOLUTIONS, viewer.status(file))
     }
 
     fun testAFailingSearchSaysWhyAndGivesTheAnalysisBack() {
         val before = open(STATIC)
         viewer.fork = { _, _ -> throw IllegalStateException("boom") }
         assertSame(before, request(SolutionKind.Config))
-        assertEquals("boom", viewer.status)
+        assertEquals("boom", viewer.status(file))
         assertFalse(viewer.enumerating)
         assertTrue(analysisIsFree())
         // And the next search runs
         viewer.fork = { solution, p -> solution.fork(p) }
         assertNotSame(before, request(SolutionKind.Config))
-        assertNull(viewer.status)
+        assertNull(viewer.status(file))
     }
 
     fun testBusyProjectRefuses() {
         open(STATIC)
         val execution = newExecution(project, myFixture.file.virtualFile, SHOW)
         AlloyRunService.getInstance(project).startRun(execution)
-        val before = viewer.session
-        assertFalse(viewer.requestSolution(SolutionKind.Config))
-        assertEquals(AlloyRunService.BUSY_MESSAGE, viewer.status)
-        assertSame(before, viewer.session)
+        val before = viewer.session(file)
+        assertFalse(viewer.requestSolution(file, SolutionKind.Config))
+        assertEquals(AlloyRunService.BUSY_MESSAGE, viewer.status(file))
+        assertSame(before, viewer.session(file))
+    }
+
+    /** While one file's search runs, another file is told the project is busy, and the search ends in its own file. */
+    fun testABusyProjectIsTheAskingFilesStatus() {
+        val graph = myFixture.addFileToProject("graph.als", SHOW_FILE).virtualFile
+        val queue = myFixture.addFileToProject("queue.als", SHOW_FILE).virtualFile
+        val traced = open(TRACES, graph)
+        val queued = open(STATIC, queue)
+        val release = CountDownLatch(1)
+        viewer.fork = { solution, p -> release.await(10, TimeUnit.SECONDS); solution.fork(p) }
+        // Off the test's thread, so that the search waits here
+        viewer.schedule = { task ->
+            AppExecutorUtil.getAppExecutorService().execute {
+                try {
+                    task.run(EmptyProgressIndicator())
+                } finally {
+                    ApplicationManager.getApplication().invokeLater(task::onFinished)
+                }
+            }
+        }
+        assertTrue(viewer.requestSolution(graph, SolutionKind.Trace))
+        // Only the searching file's buttons are disabled; the other's can be clicked, and say why nothing happens
+        assertFalse(viewer.isEnabled(graph, SolutionKind.Config))
+        assertTrue(viewer.isEnabled(queue, SolutionKind.Config))
+        assertFalse(viewer.requestSolution(queue, SolutionKind.Config))
+        assertEquals(AlloyRunService.BUSY_MESSAGE, viewer.status(queue))
+        assertNull(viewer.status(graph))
+        release.countDown()
+        waitUntil("the new trace did not arrive") { !viewer.enumerating }
+        val found = viewer.session(graph)!!
+        assertNotSame(traced, found)
+        assertEquals(traced.origin, found.origin)
+        assertSame(queued, viewer.session(queue))
+        assertEquals(AlloyRunService.BUSY_MESSAGE, viewer.status(queue))
     }
 
     /**
@@ -193,7 +232,7 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
             indicator.get()?.cancel()
             outcome
         })
-        assertTrue(viewer.requestSolution(SolutionKind.Config))
+        assertTrue(viewer.requestSolution(file, SolutionKind.Config))
         waitUntil("the search did not stop") { !viewer.enumerating }
         checked.get(10, TimeUnit.SECONDS).getOrThrow()
     }
@@ -210,21 +249,21 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
 
     fun testCancellingTheProgressKeepsThePreviousSolution() {
         open(STATIC)
-        val before = viewer.session
+        val before = viewer.session(file)
         whileSearching {}
-        assertSame(before, viewer.session)
-        assertEquals(AlloyInstanceViewer.STOPPED, viewer.status)
+        assertSame(before, viewer.session(file))
+        assertEquals(AlloyInstanceViewer.STOPPED, viewer.status(file))
         assertTrue(analysisIsFree())
     }
 
     /** The platform skips `run` of a task cancelled before it starts, such as when the project closes, but not `onFinished`. */
     fun testATaskThatNeverRunsGivesTheAnalysisBack() {
         open(STATIC)
-        val before = viewer.session
+        val before = viewer.session(file)
         viewer.schedule = { it.onFinished() }
-        assertTrue(viewer.requestSolution(SolutionKind.Config))
+        assertTrue(viewer.requestSolution(file, SolutionKind.Config))
         assertFalse(viewer.enumerating)
-        assertSame(before, viewer.session)
+        assertSame(before, viewer.session(file))
         assertTrue(analysisIsFree())
     }
 
@@ -238,21 +277,21 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
     /** A new solution shares its command's anchor, which follows the edits made after it was found. */
     fun testNavigatingFromANewSolutionFollowsEdits() {
         open(STATIC)
-        val before = viewer.session!!
+        val before = viewer.session(file)!!
         val after = request(SolutionKind.Config)
         assertNotSame(before, after)
         myFixture.editor.caretModel.moveToOffset(0)
         myFixture.type("// a comment\n")
-        viewer.navigateToOrigin()
+        viewer.navigateToOrigin(file)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
         assertEquals(editor.document.text.indexOf("run show"), editor.caretModel.offset)
-        assertTrue(viewer.header(), viewer.header().startsWith("m.als: run show for 3 (line 3)"))
+        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("m.als: run show for 3 (line 3)"))
     }
 
     fun testOutdatedResultDisablesEveryKind() {
         open(TRACES)
         myFixture.type("x")
         assertEmpty(enabled())
-        assertFalse(viewer.requestSolution(SolutionKind.Config))
+        assertFalse(viewer.requestSolution(file, SolutionKind.Config))
     }
 }

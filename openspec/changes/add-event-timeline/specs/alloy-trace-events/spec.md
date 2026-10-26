@@ -71,7 +71,7 @@ A chosen predicate whose parameters are not all single atoms of a signature (for
 - **THEN** the Events dropdown shows `move` disabled, with a tooltip saying that events can only have single-atom parameters
 
 ### Requirement: Event evaluation does not block the IDE
-The event instances SHALL be computed in the background when a trace is shown. The tool window SHALL show the trace before they are known, and SHALL fill in the events when they are. A failure to evaluate a predicate SHALL leave its events out and SHALL be shown in the tooltip, without affecting the rest of the tool window.
+The event instances SHALL be computed in the background when a trace is shown. The instance preview SHALL show the trace before they are known, and SHALL fill in the events when they are. A failure to evaluate a predicate SHALL leave its events out and SHALL be shown in the tooltip, without affecting the rest of the instance preview.
 
 #### Scenario: Large trace
 - **WHEN** a trace of 20 states with 6 event predicates is opened

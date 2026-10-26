@@ -1,6 +1,9 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
 import com.intellij.openapi.ui.ComboBox
+import com.intellij.testFramework.TestActionEvent
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.DropDownLink
 import com.intellij.ui.components.JBCheckBox
@@ -69,16 +72,18 @@ class AlloyProjectionTest : AlloyViewerTestCase() {
         assertTrue(boxes.values.none { it.isSelected })
         boxes.getValue("State").doClick()
         boxes.getValue("Item").doClick()
-        assertEquals(setOf("State", "Item"), model.projections.map { it.name }.toSet())
-        assertEquals(model.projections.joinToString(", ") { it.name }, chooser.link.text)
+        assertEquals(listOf("State", "Item"), chooser.projections.map { it.name })
+        assertEquals("State, Item", chooser.link.text)
         assertEquals(2, redrawn)
+        // The chooser's own: the model is projected by the viewer that draws it
+        assertEmpty(model.projections)
 
         boxes.getValue("Item").doClick()
         assertEquals("State", chooser.link.text)
 
         // Clear all, so that no projection is left
         UIUtil.findComponentsOfType(content, ActionLink::class.java).single { it.text == AlloyProjectionChooser.CLEAR_ALL }.doClick()
-        assertEmpty(model.projections)
+        assertEmpty(chooser.projections)
         assertEquals("None", chooser.link.text)
         assertTrue(boxes.values.none { it.isSelected })
     }
@@ -90,7 +95,7 @@ class AlloyProjectionTest : AlloyViewerTestCase() {
         assertTrue(chooser.createContent().checkBoxes().single { it.text == "State" }.isSelected)
     }
 
-    private val session get() = viewer.session!!
+    private val session get() = viewer.session(myFixture.file.virtualFile)!!
 
     private fun JComponent.graphs() = UIUtil.findComponentsOfType(this, GraphViewer::class.java)
 
@@ -113,8 +118,7 @@ class AlloyProjectionTest : AlloyViewerTestCase() {
         val panel = panelFor(TWO_NODES)
         val model = session.model
         val node = model.type("Node")
-        model.setProjected(node, true)
-        panel.stateChanged()
+        panel.setProjected(node, true)
         val selector = panel.atomSelectors().single()
         val atoms = model.vizState.originalInstance.type2atoms(node).sorted()
         assertEquals(2, atoms.size)
@@ -136,8 +140,7 @@ class AlloyProjectionTest : AlloyViewerTestCase() {
         val panel = panelFor(TWO_NODES)
         val model = session.model
         val node = model.type("Node")
-        model.setProjected(node, true)
-        panel.stateChanged()
+        panel.setProjected(node, true)
         val atoms = model.vizState.originalInstance.type2atoms(node).sorted()
         panel.atomSelectors().single().selectedItem = atoms[1]
 
@@ -155,14 +158,54 @@ class AlloyProjectionTest : AlloyViewerTestCase() {
         assertEquals(listOf("Q"), model.projectableTypes.map { it.name }.filter { it == "P" || it == "Q" })
     }
 
+    private fun JComponent.projectionLink() = UIUtil.findComponentOfType(this, DropDownLink::class.java)!!
+
+    private fun JComponent.header() = UIUtil.findComponentsOfType(this, ActionLink::class.java).single { it !is DropDownLink<*> }.text
+
+    /** Two editors of one file show its session, each with its own projection. */
+    fun testTwoViewersOfOneFileHaveTheirOwnProjection() {
+        myFixture.configureByText("m.als", SHOW_FILE)
+        val first = panel()
+        val second = panel()
+        open(states)
+        assertEquals(first.header(), second.header())
+        val model = session.model
+        first.setProjected(model.type("State"), true)
+        assertEquals("State", first.projectionLink().text)
+        assertEquals(1, first.atomSelectors().size)
+        // Drawing the other one again leaves it unprojected, and the first stays projected
+        second.stateChanged()
+        assertEquals("None", second.projectionLink().text)
+        assertEmpty(second.atomSelectors())
+        assertEquals(listOf(model.vizState.getGraph(null, AlloyProjection())), second.graphs())
+        first.stateChanged()
+        assertEquals(1, first.atomSelectors().size)
+    }
+
+    /** The new solution keeps the projection of the viewer that asked for it, and every other viewer keeps its own. */
+    fun testANewSolutionKeepsEachViewersProjection() {
+        myFixture.configureByText("m.als", SHOW_FILE)
+        val first = panel()
+        val second = panel()
+        val before = open(states)
+        first.setProjected(before.model.type("State"), true)
+        val group = UIUtil.findComponentOfType(first, ActionToolbarImpl::class.java)!!.actionGroup as DefaultActionGroup
+        val newConfig = group.childActionsOrStubs.single { it.templateText == SolutionKind.Config.label }
+        newConfig.actionPerformed(TestActionEvent.createTestEvent(newConfig))
+        waitUntil("the new solution did not arrive") { !viewer.enumerating && session !== before }
+        UIUtil.dispatchAllInvocationEvents()
+        assertEquals(listOf("State"), session.model.initialProjections.map { it.name })
+        assertEquals("State", first.projectionLink().text)
+        assertEquals("None", second.projectionLink().text)
+    }
+
     /** A projected signature without atoms has nothing to choose: its selector is disabled, and the graph shows. */
     fun testASignatureWithoutAtomsHasADisabledSelector() {
         val panel = panelFor("sig Item {}\nsig State { holds: set Item }\nrun { no Item and some State } for 3")
         val model = session.model
         val item = model.type("Item")
         assertEmpty(model.vizState.originalInstance.type2atoms(item))
-        model.setProjected(item, true)
-        panel.stateChanged()
+        panel.setProjected(item, true)
         val selector = panel.atomSelectors().single()
         assertFalse(selector.isEnabled)
         assertNull(selector.selectedItem)

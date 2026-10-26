@@ -2,14 +2,14 @@
 
 ## Why
 
-A trace in the Alloy Instance tool window shows states, but not which event led from one to the next. To see events, Practical Alloy teaches the "event depiction" idiom. You add an `enum Event`, one `_happens` function per event and an `events` function to the model, purely so that the visualizer shows the event as a skolem. That boilerplate grows with every event and parameter. The protocol design chapter, for example, steps through 8-state leader election traces and reconstructs from the inbox and outbox changes whether a node did `send` or `process`. The plugin can compute this from the model itself.
+A trace in the instance preview shows states, but not which event led from one to the next. To see events, Practical Alloy teaches the "event depiction" idiom. You add an `enum Event`, one `_happens` function per event and an `events` function to the model, purely so that the visualizer shows the event as a skolem. That boilerplate grows with every event and parameter. The protocol design chapter, for example, steps through 8-state leader election traces and reconstructs from the inbox and outbox changes whether a node did `send` or `process`. The plugin can compute this from the model itself.
 
 ## What Changes
 
 - **Event predicates.** For a trace result, the plugin determines the model's event predicates.
   - By default they are found in the facts shaped like the book's trace fact, for example `always (stutter or some n : Node | node_acts[n])`.
   - A grouping predicate whose body is itself a disjunction of calls, such as `node_acts`, is expanded into the events it groups (`initiate`, `send`, `process`).
-- **Choosing the events.** An "Events" dropdown in the tool window toolbar shows the detected predicates checked, and lets the user check or uncheck any predicate of the model.
+- **Choosing the events.** An "Events" dropdown in the instance preview's toolbar shows the detected predicates checked, and lets the user check or uncheck any predicate of the model.
   - The choice is remembered per file and survives IDE restarts.
   - "Reset to detected" goes back to the automatic choice.
 - **Events of each transition.** For each transition from state *i* to its successor, the plugin computes the event instances that hold at state *i*: every checked predicate, with every tuple of arguments that makes it true, such as `initiate[Node$2]`, `process[Node$0, Id$1]` or `stutter`.

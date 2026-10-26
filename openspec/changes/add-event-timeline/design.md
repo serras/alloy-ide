@@ -70,6 +70,6 @@ Labels use the analyzer's atom names (`Node$1`), as the Text and Table tabs do, 
 
 - **[Detection misses an unusual shape** (for example `always (some e : Event | happens[e])`)**]** → The dropdown makes the choice explicit, and "no event" labels flag the gap.
 - **[A grouping predicate that is a disjunction but meant as one event]** → The user can check the grouping predicate and uncheck its parts. This is documented in the dropdown's tooltip.
-- **[`eval` of a comprehension over a large signature is slow]** → It runs in the background, does not block the tool window, and is cancelled when the session changes.
+- **[`eval` of a comprehension over a large signature is slow]** → It runs in the background, does not block the instance preview, and is cancelled when the session changes.
 - **[Keeping `CompModule` in memory longer]** → It lives only as long as the command result and viewer session that already hold the solution, which references the same sigs.
 - **[Overlap with the sibling change]** → Decision 6 fixes a single strip owner. Tasks 4.x check which change landed and adapt.

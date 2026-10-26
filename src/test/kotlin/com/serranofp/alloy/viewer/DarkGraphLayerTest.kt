@@ -39,7 +39,7 @@ class DarkGraphLayerTest : AlloyViewerTestCase() {
     fun testThePanelKeepsNoRemovedGraph() {
         val panel = panelFor(LASSO)
         val strip = UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!
-        val model = viewer.session!!.model
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         // Right ten times: states 1, 2, then the loop, each shown with new graphs
         repeat(10) { step ->
             strip.press(KeyEvent.VK_RIGHT)

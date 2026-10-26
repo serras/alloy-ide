@@ -18,8 +18,7 @@ import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Splitter
 import com.intellij.openapi.wm.WindowManager
@@ -30,7 +29,6 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
-import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -59,26 +57,20 @@ import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 import kotlin.math.max
 
-class AlloyInstanceToolWindowFactory : ToolWindowFactory, DumbAware {
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = AlloyInstancePanel(project, toolWindow.disposable)
-        toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, null, false))
-    }
-}
-
 /**
- * The tool window: the empty state, or the session's header (which navigates to its command), toolbar and
+ * The viewer of [file]: the empty state, or the session's header (which navigates to its command), toolbar and
  * status line, over the Visualization, Text and Table tabs. Rebuilt when the session changes; stepping
- * through a trace and projecting update it in place. A trace shows the selected state and its successor, side by
+ * through a trace and projecting update it in place; the projection is this viewer's own, also when another viewer
+ * shows the same session. A trace shows the selected state and its successor, side by
  * side or stacked, and the trace path strip, after the toolbar, which highlights both and selects the state
  * clicked, or stepped to with its keys; under a projection, one atom selector per projected signature applies to both graphs. The Evaluator
  * panel, which a toolbar toggle shows, sits under the tabs and follows the session and its selected state.
  * Selecting a state does the analyzer's work for it off the EDT, the first time; only the graphs are made on it.
  */
-class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPanel(CardLayout()) {
+class AlloyInstancePanel(private val project: Project, private val file: VirtualFile, parent: Disposable) : JPanel(CardLayout()) {
     private val viewer = AlloyInstanceViewer.getInstance(project)
 
-    private val header = ActionLink("") { viewer.navigateToOrigin() }
+    private val header = ActionLink("") { viewer.navigateToOrigin(file) }
     private val status = JBLabel().apply { foreground = UIUtil.getContextHelpForeground() }
     private val projection = AlloyProjectionChooser { redrawGraph() }
     private val tabs = JBTabbedPane()
@@ -142,11 +134,10 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         splitter.addPropertyChangeListener(Splitter.PROP_PROPORTION) { viewer.evaluatorProportion = splitter.proportion }
         add(JPanel(BorderLayout()).apply { add(north, BorderLayout.NORTH); add(splitter, BorderLayout.CENTER) }, SESSION)
 
-        viewer.addListener(parent, ::rebuild)
+        viewer.addListener(file, parent, ::rebuild)
         // Only an edit of the session's file outdates it, or moves its command
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
-                val file = viewer.session?.origin?.file ?: return
                 if (FileDocumentManager.getInstance().getFile(event.document) == file) updateHeader()
             }
         }, parent)
@@ -165,37 +156,46 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
 
     /** The analyzer's text of a single state, or the difference from a trace state to its successor. */
     private fun showText() {
-        val model = viewer.session?.model ?: return
+        val model = session?.model ?: return
         model.diff?.let(text::showDiff) ?: text.showText(model.text)
     }
 
     private fun tablePane(table: String) = JBScrollPane(textArea().apply { text = table; caretPosition = 0 })
 
+    /** The session of this panel's file. */
+    private val session: ViewerSession? get() = viewer.session(file)
+
     private var shown: ViewerSession? = null
 
     /** Shows the current session; a new session gets a new graph, with the tab the user last chose. */
     fun rebuild() {
-        val session = viewer.session
+        val session = this.session
         (layout as CardLayout).show(this, if (session == null) EMPTY else SESSION)
-        status.text = viewer.status.orEmpty()
-        status.isVisible = viewer.status != null
+        val message = viewer.status(file)
+        status.text = message.orEmpty()
+        status.isVisible = message != null
         toolbar.updateActionsAsync()
         if (session == null || session === shown) return updateHeader()
+        // A new solution of the same command keeps this viewer's projection; another result starts from its own
+        val sameCommand = shown?.origin == session.origin
         shown = session
         val model = session.model
         chosenAtoms.clear()
-        projection.show(model)
+        projection.show(model, keep = sameCommand)
         tabs.selectedIndex = TAB_IDS.indexOf(viewer.selectedTab).coerceAtLeast(0)
         stateChanged()
         updateHeader()
     }
 
     private fun updateHeader() {
-        val session = viewer.session ?: return
+        val session = this.session ?: return
         header.text = viewer.header(session)
         header.foreground = if (viewer.outdated(session) != null) UIUtil.getInactiveTextColor() else null
         evaluator.updateCaption()
     }
+
+    /** Projects this viewer's graphs over [type] too, or no longer over it, as its projection chooser does. */
+    fun setProjected(type: AlloyType, projected: Boolean) = projection.setProjected(type, projected)
 
     /** Shows or hides the Evaluator panel, for this and the next results. */
     fun setEvaluatorVisible(visible: Boolean) {
@@ -207,7 +207,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
 
     /** Shows the selected state in every tab and in the trace path strip, after it changed. */
     fun stateChanged() {
-        val model = viewer.session?.model ?: return
+        val model = session?.model ?: return
         strip.scrollPane.isVisible = model.hasStates
         if (model.hasStates) {
             strip.show(model.traceLength, model.loopState, model.state, model.successor())
@@ -216,11 +216,11 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         showText()
         showTables()
         redrawGraph()
-        evaluator.refresh(viewer.session)
+        evaluator.refresh(session)
     }
 
     private fun showTables() {
-        val model = viewer.session?.model ?: return
+        val model = session?.model ?: return
         val next = model.nextTable
         tables.show(
             if (next == null) listOf(null to tablePane(model.table))
@@ -233,7 +233,7 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
      * first time; if another state is selected meanwhile, or another session shown, this one is not shown.
      */
     private fun goTo(state: Int) {
-        val session = viewer.session ?: return
+        val session = this.session ?: return
         val selection = ++selections
         if (session.model.isPrepared(state)) return select(session, state)
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -244,14 +244,16 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
     }
 
     private fun select(session: ViewerSession, state: Int) {
-        if (viewer.session !== session) return
+        if (this.session !== session) return
         session.model.goTo(state)
         stateChanged()
     }
 
     /** Rebuilds the atom selectors and the graphs, of one state or of a trace state and its successor. */
     private fun redrawGraph() {
-        val model = viewer.session?.model ?: return
+        val model = session?.model ?: return
+        // The model is shared with the other viewers of the file, which may have projected it otherwise
+        model.project(projection.projections)
         val theme = model.vizState
         val shown = linkedMapOf<AlloyType, AlloyAtom>()
         selectors.removeAll()
@@ -320,14 +322,16 @@ class AlloyInstancePanel(private val project: Project, parent: Disposable) : JPa
         override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
         override fun update(e: AnActionEvent) {
-            val session = viewer.session
+            val session = this@AlloyInstancePanel.session
             e.presentation.isVisible = session != null
-            e.presentation.isEnabled = viewer.isEnabled(kind)
+            e.presentation.isEnabled = viewer.isEnabled(file, kind)
             e.presentation.description = if (session != null && viewer.outdated(session) != null) AlloyInstanceViewer.RUN_AGAIN else kind.description
         }
 
         override fun actionPerformed(e: AnActionEvent) {
-            viewer.requestSolution(kind)
+            // The new solution copies the theme, with this viewer's projection
+            session?.model?.project(projection.projections)
+            viewer.requestSolution(file, kind)
         }
     }
 

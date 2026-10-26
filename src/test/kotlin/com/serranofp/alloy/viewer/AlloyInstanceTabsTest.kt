@@ -28,7 +28,7 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
     fun testTextAndTableAreTheAnalyzersOutput() {
         val panel = panel()
         open(STATIC)
-        val model = viewer.session!!.model
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         val text = panel.textPane()
         val table = panel.textAreas().single()
         assertEquals(model.solution.toString(0), text.text)
@@ -51,7 +51,7 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
     fun testTextOfATraceIsTheDiffToTheNextState() {
         val panel = panel()
         open(LASSO)
-        val model = viewer.session!!.model
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         val text = panel.textPane()
         // State 0 to state 1: Cur goes from V1 to V2
         val diff = model.diff!!
@@ -81,7 +81,7 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
     fun testTableOfATraceShowsBothStates() {
         val panel = panel()
         open(LASSO)
-        val model = viewer.session!!.model
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         model.goTo(2)
         panel.stateChanged()
         val tables = panel.tablePanes()
@@ -93,14 +93,14 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
         val panel = panel()
         open(STATIC)
         val tables = panel.tablePanes()
-        assertEquals(listOf(viewer.session!!.model.solution.format(0)), tables.tables())
+        assertEquals(listOf(viewer.session(myFixture.file.virtualFile)!!.model.solution.format(0)), tables.tables())
         assertEquals(listOf(null), tables.shownCaptions)
     }
 
     fun testTabsFollowTheState() {
         val panel = panel()
         open(LASSO)
-        val model = viewer.session!!.model
+        val model = viewer.session(myFixture.file.virtualFile)!!.model
         // Right in the trace path strip selects the successor
         UIUtil.findComponentOfType(panel, AlloyTraceStrip::class.java)!!.press(KeyEvent.VK_RIGHT)
         waitUntil("state 1 was not shown") { model.state == 1 }
@@ -148,7 +148,7 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
         open(ORDERING)
         panel.tabs().selectedIndex = 1
         panel.tabs().selectedIndex = 2
-        viewer.session!!.model.clearProjections()
+        viewer.session(myFixture.file.virtualFile)!!.model.clearProjections()
         panel.rebuild()
         assertEquals(before, snapshot())
     }

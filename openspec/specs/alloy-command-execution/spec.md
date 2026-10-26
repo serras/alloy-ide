@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets users execute Alloy `run` and `check` commands from the editor gutter, with the bundled analyzer running inside the IDE. Each command's result appears as an inline hint with the analyzer output in its tooltip. Users can follow progress in the status bar, stop analyses, and open the resulting instances and counterexamples in the Alloy Instance tool window.
+Lets users execute Alloy `run` and `check` commands from the editor gutter, with the bundled analyzer running inside the IDE. Each command's result appears as an inline hint with the analyzer output in its tooltip. Users can follow progress in the status bar, stop analyses, and open the resulting instances and counterexamples in the instance preview of the editor.
 
 ## Requirements
 

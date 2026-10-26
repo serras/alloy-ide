@@ -9,8 +9,8 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.serranofp.alloy.viewer.AlloyInstanceViewer
 
 /**
- * A click on a result hint: stops a running analysis, or shows an instance or counterexample in the Alloy
- * Instance tool window, even when the result is outdated.
+ * A click on a result hint: stops a running analysis, or shows an instance or counterexample in the instance
+ * preview of the editor clicked, even when the result is outdated.
  */
 class AlloyCommandResultClickHandler : InlayActionHandler {
     override fun handleClick(e: EditorMouseEvent, payload: InlayActionPayload) = click(e.editor, payload)
@@ -26,7 +26,7 @@ class AlloyCommandResultClickHandler : InlayActionHandler {
                 ?.stop()
             return
         }
-        if (result.link is CommandLink.Solution) AlloyInstanceViewer.getInstance(project).open(file, ref, result)
+        if (result.link is CommandLink.Solution) AlloyInstanceViewer.getInstance(project).open(file, ref, result, editor)
     }
 
     companion object {
