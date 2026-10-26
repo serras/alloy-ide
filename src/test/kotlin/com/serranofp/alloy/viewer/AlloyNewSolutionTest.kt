@@ -285,7 +285,7 @@ class AlloyNewSolutionTest : AlloyViewerTestCase() {
         viewer.navigateToOrigin(file)
         val editor = FileEditorManager.getInstance(project).selectedTextEditor!!
         assertEquals(editor.document.text.indexOf("run show"), editor.caretModel.offset)
-        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("m.als: run show for 3 (line 3)"))
+        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("m.als:3: run show for 3 · "))
     }
 
     fun testOutdatedResultDisablesEveryKind() {

@@ -48,15 +48,15 @@ While a command is executing in a project, the plugin SHALL refuse to start anot
 - **THEN** the second command does not start, its hint does not change, and the editor shows a message saying that an Alloy analysis is already running
 
 ### Requirement: Opening instances and counterexamples
-When an analysis produces an instance or counterexample, its result hint SHALL be clickable, and clicking it SHALL show the instance or counterexample in the Alloy Instance tool window.
+When an analysis produces an instance or counterexample, its result hint SHALL be clickable, and clicking it SHALL show the instance or counterexample in the instance preview of the editor where the hint was clicked.
 
 #### Scenario: Opening an instance
 - **WHEN** `run show` found an instance and the user clicks its hint
-- **THEN** the Alloy Instance tool window shows that instance, and its header names `run show`
+- **THEN** the instance preview of that editor shows that instance, and its header names `run show`
 
 #### Scenario: Opening a counterexample
 - **WHEN** `check noCycles` found a counterexample and the user clicks its hint
-- **THEN** the Alloy Instance tool window shows that counterexample, and its header names `check noCycles`
+- **THEN** the instance preview of that editor shows that counterexample, and its header names `check noCycles`
 
 #### Scenario: Only recent instances are kept
 - **WHEN** more than ten commands of the project found an instance or counterexample in this session
@@ -169,7 +169,7 @@ When an Alloy file, or a project module that the analysis of one of its commands
 
 #### Scenario: Outdated instance can still be opened
 - **WHEN** the user clicks the outdated hint of a command that found an instance
-- **THEN** the Alloy Instance tool window shows the instance that was found by that earlier analysis, with its header marked as outdated
+- **THEN** the instance preview of that editor shows the instance that was found by that earlier analysis, with its header marked as outdated
 
 ### Requirement: Analysis progress
 While a command executed from its gutter icon is executing, including its vacuity check, the IDE SHALL show a cancellable background progress indicator naming the command and showing the analyzer's latest progress step. No tool window is opened. Commands executed as a test suite report their progress in the test runner instead (see `alloy-test-runner`).

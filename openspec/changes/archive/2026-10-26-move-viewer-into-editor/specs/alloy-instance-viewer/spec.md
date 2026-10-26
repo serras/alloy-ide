@@ -79,15 +79,15 @@ Each Alloy file SHALL show at most one result, of one of its own commands. Openi
 - **THEN** both instance previews show that instance, and projecting over a signature in one does not project the other
 
 ### Requirement: Result origin header
-The instance preview SHALL show a header naming the result's file, its command as written (for example `run show for 3`), its line, and whether it is an instance or a counterexample. The line SHALL be where the command is now, following edits of the file; when the command is not found in the file, the header names no line. Clicking the header SHALL move the caret of the editor next to the preview to the command.
+The instance preview SHALL show a header naming the result's file and its command's line, as `graph.als:12`, then the command as written (for example `run show for 3`), then the text that the command's result hint showed when the result was opened, such as "Counterexample found · 9 ms" or "Instance found, as expected · 4 ms". The line SHALL be where the command is now, following edits of the file; when the command is not found in the file, the header names no line. Clicking the header SHALL move the caret of the editor next to the preview to the command.
 
 #### Scenario: Header contents
 - **WHEN** the instance preview shows the counterexample of `check noCycles for 3` from line 12 of `graph.als`
-- **THEN** the header names `graph.als`, `check noCycles for 3`, line 12 and "Counterexample"
+- **THEN** the header reads `graph.als:12: check noCycles for 3 · Counterexample found · 9 ms`, the last part as the hint read when it was clicked
 
 #### Scenario: Lines inserted above the command
 - **WHEN** the user inserts a line above `check noCycles for 3`
-- **THEN** the header names line 13
+- **THEN** the header starts with `graph.als:13:`
 
 #### Scenario: Navigating to the origin
 - **WHEN** the user clicks the header

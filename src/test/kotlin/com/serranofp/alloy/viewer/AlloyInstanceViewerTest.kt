@@ -41,7 +41,7 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
     private fun found(command: AlloyCommandRef, counterexample: Boolean, file: VirtualFile = this.file): CommandResult {
         val model = if (counterexample) "sig Node { succ: set Node }\ncheck { no iden & ^succ } for 3" else STATIC
         val state = if (counterexample) CommandState.CounterexampleFound else CommandState.InstanceFound
-        val result = result(model, file, state)
+        val result = result(model, file, state, if (counterexample) COUNTEREXAMPLE_HINT else INSTANCE_HINT)
         results.record(file, command, result)
         return result
     }
@@ -60,8 +60,8 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
         val queue = queue()
         viewer.open(file, show, found(show, counterexample = false))
         viewer.open(queue, enqueue, found(enqueue, counterexample = false, queue))
-        assertEquals("graph.als: run show for 3 (line 11) · Instance", viewer.header(viewer.session(file)))
-        assertEquals("queue.als: run enqueue for 3 (line 3) · Instance", viewer.header(viewer.session(queue)))
+        assertEquals("graph.als:11: run show for 3 · $INSTANCE_HINT", viewer.header(viewer.session(file)))
+        assertEquals("queue.als:3: run enqueue for 3 · $INSTANCE_HINT", viewer.header(viewer.session(queue)))
     }
 
     fun testOpeningReplacesOnlyThatFilesSession() {
@@ -113,22 +113,22 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
 
     fun testHeader() {
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
-        assertEquals("graph.als: check noCycles {...} for 3 (line 12) · Counterexample", viewer.header(viewer.session(file)))
+        assertEquals("graph.als:12: check noCycles {...} for 3 · $COUNTEREXAMPLE_HINT", viewer.header(viewer.session(file)))
         viewer.open(file, show, found(show, counterexample = false))
-        assertEquals("graph.als: run show for 3 (line 11) · Instance", viewer.header(viewer.session(file)))
+        assertEquals("graph.als:11: run show for 3 · $INSTANCE_HINT", viewer.header(viewer.session(file)))
     }
 
     fun testHeaderLineFollowsEdits() {
         viewer.open(file, noCycles, found(noCycles, counterexample = true))
         myFixture.editor.caretModel.moveToOffset(0)
         myFixture.type("// a comment\n")
-        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("graph.als: check noCycles {...} for 3 (line 13) · Counterexample"))
+        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("graph.als:13: check noCycles {...} for 3 · $COUNTEREXAMPLE_HINT"))
     }
 
     fun testHeaderWithoutTheCommandHasNoLine() {
         val gone = AlloyCommandRef("gone", 5)
         viewer.open(file, gone, found(gone, counterexample = false))
-        assertEquals("graph.als: ${gone.displayName} · Instance", viewer.header(viewer.session(file)))
+        assertEquals("graph.als: ${gone.displayName} · $INSTANCE_HINT", viewer.header(viewer.session(file)))
     }
 
     /** The command is found in the PSI, whose offsets are the document's only once it is committed. */
@@ -138,7 +138,7 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
         WriteCommandAction.runWriteCommandAction(project) { document.deleteString(0, document.getLineEndOffset(0) + 1) }
         assertFalse(PsiDocumentManager.getInstance(project).isCommitted(document))
         viewer.open(file, noCycles, result)
-        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("graph.als: check noCycles {...} for 3 (line 11) · Counterexample"))
+        assertTrue(viewer.header(viewer.session(file)), viewer.header(viewer.session(file)).startsWith("graph.als:11: check noCycles {...} for 3 · $COUNTEREXAMPLE_HINT"))
         assertEquals(document.text.indexOf("check noCycles"), viewer.session(file)!!.commandOffset)
     }
 
@@ -194,7 +194,20 @@ class AlloyInstanceViewerTest : AlloyViewerTestCase() {
         assertEquals(viewer.header(viewer.session(file)), links.single().text)
     }
 
+    /** The header ends as the hint reads, also when it is outdated. */
+    fun testHeaderEndsWithTheHintsText() {
+        viewer.open(file, show, found(show, counterexample = false))
+        myFixture.type("x")
+        assertEquals("graph.als:11: run show for 3 · $INSTANCE_HINT" + AlloyBundle.message("result.outdated.suffix"), viewer.header(viewer.session(file)))
+    }
+
     fun testNewSolutionKindsHaveTheirOwnIcons() {
         assertEquals(SolutionKind.entries.size, SolutionKind.entries.map { it.icon }.toSet().size)
+    }
+
+    private companion object {
+        /** The texts of the hints of the results here, as an execution writes them. */
+        const val INSTANCE_HINT = "Instance found, as expected · 4 ms"
+        const val COUNTEREXAMPLE_HINT = "Counterexample found · 9 ms"
     }
 }

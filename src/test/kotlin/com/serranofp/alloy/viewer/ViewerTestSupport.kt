@@ -92,10 +92,12 @@ abstract class AlloyViewerTestCase : BasePlatformTestCase() {
     }
 
     /** A result that found the solution of [model]'s first command, current for [file]'s text and the settings. */
-    protected fun result(model: String, file: VirtualFile = myFixture.file.virtualFile, state: CommandState = CommandState.InstanceFound): CommandResult {
+    protected fun result(
+        model: String, file: VirtualFile = myFixture.file.virtualFile, state: CommandState = CommandState.InstanceFound, summary: String = "found",
+    ): CommandResult {
         val document = FileDocumentManager.getInstance().getDocument(file)!!
         return CommandResult(
-            state, "found", link = link(model),
+            state, summary, link = link(model),
             documentStamp = results.stamp(document), settingsGeneration = AlloySettings.getInstance().generation,
         )
     }

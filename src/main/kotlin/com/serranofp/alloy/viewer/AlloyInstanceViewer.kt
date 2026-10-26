@@ -254,18 +254,20 @@ class AlloyInstanceViewer(private val project: Project) :
     }
 
     /**
-     * `graph.als: check noCycles for 3 (line 12) · Counterexample`, with an outdated mark when it is. The line is
-     * where the command is now, as the header navigates there; without the command, there is none.
+     * `graph.als:12: check noCycles for 3 · Counterexample found · 9 ms`: the file, the line, the command and the text
+     * of its result's hint, with an outdated mark when it is. The line is where the command is now, as the header
+     * navigates there; without the command, there is none: `graph.als: check noCycles for 3 · …`.
      */
     fun header(session: ViewerSession?): String {
         if (session == null) return ""
         val origin = session.origin
-        val kind = AlloyBundle.message(if (origin.counterexample) "viewer.counterexample" else "viewer.instance")
+        // The text of the command's hint when the result was opened, outdated as the hint is
+        val summary = session.result.summary
         val outdated = if (outdated(session) != null) AlloyBundle.message("result.outdated.suffix") else ""
         val offset = session.commandOffset
         val document = document(session)
-        return if (offset == null || document == null) AlloyBundle.message("viewer.header.no.line", origin.file.name, origin.commandText, kind) + outdated
-        else AlloyBundle.message("viewer.header", origin.file.name, origin.commandText, (document.getLineNumber(offset) + 1).toString(), kind) + outdated
+        return if (offset == null || document == null) AlloyBundle.message("viewer.header.no.line", origin.file.name, origin.commandText, summary) + outdated
+        else AlloyBundle.message("viewer.header", origin.file.name, (document.getLineNumber(offset) + 1).toString(), origin.commandText, summary) + outdated
     }
 
     /** Opens [file] with the caret on the command of its session, showing the text of its editor if only its preview shows. */

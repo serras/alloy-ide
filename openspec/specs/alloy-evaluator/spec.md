@@ -7,7 +7,7 @@ Lets the user evaluate Alloy expressions and formulas against the instance or co
 ## Requirements
 
 ### Requirement: Evaluator panel
-The Alloy Instance tool window SHALL offer an Evaluator panel below its tabs, which a toolbar toggle shows and hides. The panel SHALL remember whether it was shown across results and IDE sessions. While no result is shown, there is no panel. The panel SHALL say which state it evaluates at.
+The instance preview SHALL offer an Evaluator panel below its tabs, which a toolbar toggle shows and hides. The panel SHALL remember whether it was shown across results and IDE sessions. While no result is shown, there is no panel. The panel SHALL say which state it evaluates at. The panel of each file's instance preview SHALL evaluate in that file's result.
 
 #### Scenario: Showing the panel
 - **WHEN** an instance is shown and the user turns on the Evaluator toggle in the toolbar
@@ -20,6 +20,10 @@ The Alloy Instance tool window SHALL offer an Evaluator panel below its tabs, wh
 #### Scenario: State named
 - **WHEN** a trace is shown at state 2
 - **THEN** the panel says that it evaluates at state 2
+
+#### Scenario: Two files with a result
+- **WHEN** `graph.als` and `queue.als` each show a result, and the user evaluates `#univ` in the Evaluator panel of `queue.als`
+- **THEN** the value is computed in the result of `queue.als`, and the panel of `graph.als` is unchanged
 
 ### Requirement: Evaluating one expression
 When the user types an Alloy expression or formula in the evaluator field and presses Enter, the panel SHALL show its value in the shown solution, under the field. A later evaluation replaces it. An empty field evaluates nothing.
