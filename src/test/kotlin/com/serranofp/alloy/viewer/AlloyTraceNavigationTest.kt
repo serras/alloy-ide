@@ -10,6 +10,7 @@ import com.intellij.testFramework.TestActionEvent
 import com.intellij.ui.components.DropDownLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.UIUtil
+import com.serranofp.alloy.AlloyIcons
 import com.serranofp.alloy.run.waitUntil
 import java.awt.event.KeyEvent
 import javax.swing.JComponent
@@ -177,8 +178,25 @@ class AlloyTraceNavigationTest : AlloyViewerTestCase() {
 
     fun testOnlyNewConfigForAStaticResult() {
         val actions = panelFor(STATIC).newActions()
-        assertEquals(listOf(SolutionKind.Config), actions.filterValues { it.isEnabled }.keys.toList())
-        assertTrue(actions.values.all { it.isVisible })
+        // Without a trace path strip, the kinds of a trace are not shown at all
+        assertEquals(listOf(SolutionKind.Config), actions.filterValues { it.isVisible }.keys.toList())
+        assertTrue(actions.getValue(SolutionKind.Config).isEnabled)
+    }
+
+    fun testATraceShowsEveryNewAction() {
+        val actions = panelFor(LASSO).newActions()
+        assertTrue(actions.values.all { it.isVisible && it.isEnabled })
+    }
+
+    fun testTheNewActionsHaveTheirOwnIcons() {
+        val icons = mapOf(
+            SolutionKind.Config to AlloyIcons.NEW_CONFIG, SolutionKind.Trace to AlloyIcons.NEW_TRACE,
+            SolutionKind.Init to AlloyIcons.NEW_INIT, SolutionKind.Fork to AlloyIcons.NEW_FORK,
+        )
+        for ((kind, presentation) in panelFor(LASSO).newActions()) {
+            assertSame(icons.getValue(kind), kind.icon)
+            assertSame(kind.icon, presentation.icon)
+        }
     }
 
     fun testPanelShowsTheStripOnlyForTraces() {
@@ -188,45 +206,73 @@ class AlloyTraceNavigationTest : AlloyViewerTestCase() {
         assertFalse(panelFor(STATIC).strip().scrollPane.isVisible)
     }
 
-    fun testTheStripIsBesideTheToolbarWhenItFits() {
-        val strip = panelFor(LASSO).strip().scrollPane
+    /** The toolbar line of [panel], laid out at a width, after its toolbars have their actions. */
+    private inner class ToolbarLine(panel: AlloyInstancePanel) {
+        val strip = panel.strip().scrollPane
         val line = strip.parent
-        val controls = line.components.single { it !== strip }
-        val projection = UIUtil.findComponentOfType(controls as JComponent, DropDownLink::class.java)!!
-        val toolbar = UIUtil.findComponentOfType(controls, ActionToolbarImpl::class.java)!!
+        private val toolbars = UIUtil.findComponentsOfType(panel, ActionToolbarImpl::class.java)
+        val tabs = toolbars.single { it.place == "AlloyInstanceTabs" }
+        val controls = line.components.single { it !== strip && it !== tabs }
+
+        init {
+            for (toolbar in toolbars) toolbar.updateActionsAsync()
+            waitUntil("the toolbars did not update") { toolbars.all { it.componentCount > 0 } }
+        }
 
         fun layOut(width: Int) {
             line.setSize(width, 0)
             line.setSize(width, line.preferredSize.height)
             line.doLayout()
-            controls.doLayout()
+            (controls as JComponent).doLayout()
             // A layout that moves the strip asks for another one, for the line's new height
             UIUtil.dispatchAllInvocationEvents()
         }
 
-        fun assertBeside() {
-            assertTrue(strip.x >= controls.x + controls.width)
-            assertTrue(strip.y < controls.y + controls.height && controls.y < strip.y + strip.height)
-            assertEquals(strip.preferredSize.width, strip.width)
-            assertEquals(maxOf(controls.preferredSize.height, strip.preferredSize.height), line.preferredSize.height)
+        fun assertTabsAtTheRight(width: Int) {
+            assertTrue(tabs.width > 0)
+            assertEquals(width, tabs.x + tabs.width)
+            assertTrue(tabs.y < controls.y + controls.height && controls.y < tabs.y + tabs.height)
         }
 
-        layOut(2000)
-        // The New actions, then the projection chooser, then the strip
+        fun assertCentered(width: Int) {
+            assertTrue(strip.y < controls.y + controls.height && controls.y < strip.y + strip.height)
+            assertEquals(strip.preferredSize.width, strip.width)
+            assertEquals((width - strip.width) / 2, strip.x)
+            assertTrue(strip.x >= controls.x + controls.width && strip.x + strip.width <= tabs.x)
+        }
+    }
+
+    fun testTheStripIsCenteredOnTheToolbarLineWhenItFits() {
+        val line = ToolbarLine(panelFor(LASSO))
+        val projection = UIUtil.findComponentOfType(line.controls as JComponent, DropDownLink::class.java)!!
+        val toolbar = UIUtil.findComponentOfType(line.controls, ActionToolbarImpl::class.java)!!
+
+        line.layOut(2000)
+        // The New actions, then the projection chooser; the strip in the middle; the tab buttons at the right
         assertTrue(toolbar.x < projection.x)
-        assertBeside()
+        line.assertCentered(2000)
+        line.assertTabsAtTheRight(2000)
 
-        // Too narrow for both: the strip goes below, as wide as the line
-        val narrow = controls.preferredSize.width + strip.preferredSize.width / 2
-        layOut(narrow)
-        assertEquals(0, strip.x)
-        assertTrue(strip.y >= controls.y + controls.height)
-        assertEquals(narrow, strip.width)
-        assertTrue(line.preferredSize.height >= controls.height + strip.height)
+        // Too narrow for the strip between the groups: it goes below, as wide as the line
+        val narrow = line.controls.preferredSize.width + line.tabs.preferredSize.width + line.strip.preferredSize.width / 2
+        line.layOut(narrow)
+        assertEquals(0, line.strip.x)
+        assertTrue(line.strip.y >= line.controls.y + line.controls.height)
+        assertEquals(narrow, line.strip.width)
+        assertTrue(line.line.preferredSize.height >= line.controls.height + line.strip.height)
+        line.assertTabsAtTheRight(narrow)
 
-        // Wide again: back beside it
-        layOut(2000)
-        assertBeside()
+        // Wide again: back on the line
+        line.layOut(2000)
+        line.assertCentered(2000)
+    }
+
+    fun testAStaticResultHasOnlyTheTwoGroups() {
+        val line = ToolbarLine(panelFor(STATIC))
+        line.layOut(2000)
+        assertFalse(line.strip.isVisible)
+        line.assertTabsAtTheRight(2000)
+        assertEquals(maxOf(line.controls.preferredSize.height, line.tabs.preferredSize.height), line.line.preferredSize.height)
     }
 
     fun testClickingAStateInTheStrip() {

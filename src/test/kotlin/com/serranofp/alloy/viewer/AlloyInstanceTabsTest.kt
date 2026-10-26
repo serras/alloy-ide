@@ -1,14 +1,20 @@
 package com.serranofp.alloy.viewer
 
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.ToggleAction
+import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
 import com.intellij.openapi.diff.DiffColors
-import com.intellij.ui.components.JBTabbedPane
+import com.intellij.testFramework.TestActionEvent
+import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.xmlb.XmlSerializer
+import com.serranofp.alloy.AlloyIcons
 import com.serranofp.alloy.run.waitUntil
 import edu.mit.csail.sdg.alloy4.Util
 import java.awt.event.KeyEvent
 import java.util.prefs.Preferences
+import javax.swing.SwingUtilities
 import javax.swing.text.AttributeSet
 import javax.swing.text.StyleConstants
 
@@ -17,8 +23,6 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
         super.setUp()
         myFixture.configureByText("m.als", SHOW_FILE)
     }
-
-    private fun AlloyInstancePanel.tabs() = UIUtil.findComponentOfType(this, JBTabbedPane::class.java)!!
 
     private fun AlloyInstancePanel.textAreas() = UIUtil.findComponentsOfType(this, JBTextArea::class.java)
 
@@ -74,7 +78,7 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
         assertFalse(unchanged.isDefined(StyleConstants.Background))
     }
 
-    private fun AlloyInstancePanel.tablePanes() = UIUtil.findComponentOfType(this, JBTabbedPane::class.java)!!.getComponentAt(2) as AlloyStatePanes
+    private fun AlloyInstancePanel.tablePanes() = UIUtil.findComponentsOfType(this, AlloyStatePanes::class.java).last()
 
     private fun AlloyStatePanes.tables() = UIUtil.findComponentsOfType(this, JBTextArea::class.java).map { it.text }
 
@@ -113,25 +117,128 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
     fun testVisualizationIsTheDefaultTab() {
         val panel = panel()
         open(STATIC)
-        assertEquals(AlloyInstanceViewer.VISUALIZATION, panel.tabs().getTitleAt(panel.tabs().selectedIndex))
+        assertEquals(AlloyInstanceViewer.VISUALIZATION, panel.selectedTab)
     }
 
     fun testTheChosenTabStaysForTheNextResult() {
         val panel = panel()
         open(STATIC)
-        panel.tabs().selectedIndex = 2
+        panel.selectTab(AlloyInstanceViewer.TABLE)
         assertEquals(AlloyInstanceViewer.TABLE, viewer.selectedTab)
 
         open(LASSO)
-        assertEquals(AlloyInstanceViewer.TABLE, panel.tabs().getTitleAt(panel.tabs().selectedIndex))
+        assertEquals(AlloyInstanceViewer.TABLE, panel.selectedTab)
         // A new tool window, as in a new IDE session, starts on it too
-        assertEquals(AlloyInstanceViewer.TABLE, panel().tabs().let { it.getTitleAt(it.selectedIndex) })
+        assertEquals(AlloyInstanceViewer.TABLE, panel().selectedTab)
+    }
+
+    private fun AlloyInstancePanel.tabActions(): List<ToggleAction> {
+        val toolbar = UIUtil.findComponentsOfType(this, ActionToolbarImpl::class.java).single { it.place == "AlloyInstanceTabs" }
+        return (toolbar.actionGroup as DefaultActionGroup).childActionsOrStubs.map { it as ToggleAction }
+    }
+
+    private fun ToggleAction.selected() = isSelected(TestActionEvent.createTestEvent(this))
+
+    /** The view of each tab, in the order of the tab buttons. */
+    private fun AlloyInstancePanel.views() = SwingUtilities.getAncestorOfClass(JBScrollPane::class.java, textPane()).parent.components.toList()
+
+    fun testTabButtonsAreTheTabs() {
+        val actions = panel().tabActions()
+        assertEquals(listOf("Visualization", "Text", "Table"), actions.map { it.templateText })
+        for (action in actions) assertNotNull(action.templateText, action.templatePresentation.icon)
+    }
+
+    fun testPressingATabButtonShowsItsTab() {
+        val panel = panel()
+        open(STATIC)
+        val actions = panel.tabActions()
+        assertEquals(listOf(true, false, false), actions.map { it.selected() })
+        actions[1].setSelected(TestActionEvent.createTestEvent(actions[1]), true)
+        assertEquals(AlloyInstanceViewer.TEXT, panel.selectedTab)
+        assertEquals(listOf(false, true, false), panel.views().map { it.isVisible })
+        assertEquals(listOf(false, true, false), actions.map { it.selected() })
+    }
+
+    private fun ToggleAction.press() = TestActionEvent.createTestEvent(this).let { setSelected(it, !isSelected(it)) }
+
+    private fun ToggleAction.icon() = TestActionEvent.createTestEvent(this).also(::update).presentation.icon
+
+    /** The panes of the Visualization tab, then those of the Table tab. */
+    private fun AlloyInstancePanel.statePanes() = UIUtil.findComponentsOfType(this, AlloyStatePanes::class.java)
+
+    private fun AlloyInstancePanel.assertLayout(layout: PaneLayout) {
+        assertEquals(layout, viewer.paneLayout)
+        assertEquals(listOf(layout, layout), statePanes().map { it.paneLayout })
+        val (visualization, _, table) = tabActions()
+        val column = layout == PaneLayout.COLUMN
+        assertEquals(if (column) AlloyIcons.VISUALIZATION_COLUMN else AlloyIcons.VISUALIZATION_ROW, visualization.icon())
+        assertEquals(if (column) AlloyIcons.TABLE_COLUMN else AlloyIcons.TABLE_ROW, table.icon())
+    }
+
+    fun testPressingTheSelectedTabButtonSwitchesTheLayout() {
+        val panel = panel()
+        open(LASSO)
+        val table = panel.tabActions()[2]
+        table.press()
+        panel.assertLayout(PaneLayout.ROW)
+        // Pressed again, the tab stays selected, and its panes are stacked
+        table.press()
+        assertEquals(AlloyInstanceViewer.TABLE, panel.selectedTab)
+        assertTrue(table.selected())
+        assertEquals(listOf(false, false, true), panel.views().map { it.isVisible })
+        panel.assertLayout(PaneLayout.COLUMN)
+        table.press()
+        panel.assertLayout(PaneLayout.ROW)
+    }
+
+    fun testSwitchingTabsKeepsTheLayout() {
+        val panel = panel()
+        open(LASSO)
+        val (visualization, _, table) = panel.tabActions()
+        // Visualization is selected: pressing it stacks its panes; Table then shows its tables stacked too
+        visualization.press()
+        panel.assertLayout(PaneLayout.COLUMN)
+        table.press()
+        assertEquals(AlloyInstanceViewer.TABLE, panel.selectedTab)
+        assertTrue(panel.tablePanes().isColumn)
+        panel.assertLayout(PaneLayout.COLUMN)
+    }
+
+    fun testTheLayoutStaysForTheNextResult() {
+        val panel = panel()
+        open(LASSO)
+        panel.tabActions()[0].press()
+        open(STATIC)
+        open(LASSO)
+        panel.assertLayout(PaneLayout.COLUMN)
+        // A new viewer, as in a new IDE session, starts with it too
+        panel().assertLayout(PaneLayout.COLUMN)
+    }
+
+    fun testPressingTheSelectedTextButtonKeepsTheLayout() {
+        val panel = panel()
+        open(LASSO)
+        val text = panel.tabActions()[1]
+        text.press()
+        val icon = text.icon()
+        text.setSelected(TestActionEvent.createTestEvent(text), false)
+        assertEquals(AlloyInstanceViewer.TEXT, panel.selectedTab)
+        assertTrue(text.selected())
+        panel.assertLayout(PaneLayout.ROW)
+        assertEquals(icon, text.icon())
     }
 
     fun testTheChosenTabIsSaved() {
         viewer.selectedTab = AlloyInstanceViewer.TEXT
         val saved = XmlSerializer.deserialize(XmlSerializer.serialize(viewer.state), AlloyInstanceViewerState::class.java)
         assertEquals(AlloyInstanceViewer.TEXT, saved.selectedTab)
+    }
+
+    fun testThePaneLayoutIsSaved() {
+        assertEquals(PaneLayout.ROW, viewer.paneLayout)
+        viewer.paneLayout = PaneLayout.COLUMN
+        val saved = XmlSerializer.deserialize(XmlSerializer.serialize(viewer.state), AlloyInstanceViewerState::class.java)
+        assertEquals(PaneLayout.COLUMN.name, saved.paneLayout)
     }
 
     /** The desktop visualizer keeps its mode and themes in this node; the tool window leaves it alone. */
@@ -146,8 +253,8 @@ class AlloyInstanceTabsTest : AlloyViewerTestCase() {
         val before = snapshot()
         val panel = panel()
         open(ORDERING)
-        panel.tabs().selectedIndex = 1
-        panel.tabs().selectedIndex = 2
+        panel.selectTab(AlloyInstanceViewer.TEXT)
+        panel.selectTab(AlloyInstanceViewer.TABLE)
         viewer.session(myFixture.file.virtualFile)!!.model.clearProjections()
         panel.rebuild()
         assertEquals(before, snapshot())

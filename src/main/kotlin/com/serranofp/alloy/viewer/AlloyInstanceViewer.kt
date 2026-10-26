@@ -1,6 +1,5 @@
 package com.serranofp.alloy.viewer
 
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -28,6 +27,7 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
 import com.intellij.util.concurrency.annotations.RequiresEdt
 import com.serranofp.alloy.AlloyBundle
+import com.serranofp.alloy.AlloyIcons
 import com.serranofp.alloy.analysis.AlloyAnalysis
 import com.serranofp.alloy.analysis.AlloyAnalysisEngine
 import com.serranofp.alloy.analysis.AlloyAnalysisEvent
@@ -75,11 +75,14 @@ enum class SolutionKind(
     @PropertyKey(resourceBundle = BUNDLE) private val descriptionKey: String,
     val icon: Icon,
 ) {
-    // The debugger's icons, by analogy: start over, take another path, drop back to the start, diverge from here
-    Config("viewer.new.config", "viewer.new.config.description", AllIcons.Actions.Restart),
-    Trace("viewer.new.trace", "viewer.new.trace.description", AllIcons.Actions.TraceOver),
-    Init("viewer.new.init", "viewer.new.init.description", AllIcons.Actions.PopFrame),
-    Fork("viewer.new.fork", "viewer.new.fork.description", AllIcons.Actions.RunToCursor);
+    // A new configuration; then, as in the trace path strip, a new trace, a new first state, new successors of a state
+    Config("viewer.new.config", "viewer.new.config.description", AlloyIcons.NEW_CONFIG),
+    Trace("viewer.new.trace", "viewer.new.trace.description", AlloyIcons.NEW_TRACE),
+    Init("viewer.new.init", "viewer.new.init.description", AlloyIcons.NEW_INIT),
+    Fork("viewer.new.fork", "viewer.new.fork.description", AlloyIcons.NEW_FORK);
+
+    /** Whether this kind only applies to a trace, whose states the trace path strip shows. */
+    val needsTrace: Boolean get() = this != Config
 
     val label: String get() = AlloyBundle.message(labelKey)
     val description: String get() = AlloyBundle.message(descriptionKey)
@@ -87,6 +90,7 @@ enum class SolutionKind(
 
 class AlloyInstanceViewerState : BaseState() {
     var selectedTab by string(AlloyInstanceViewer.VISUALIZATION)
+    var paneLayout by string(PaneLayout.ROW.name)
     var evaluatorVisible by property(false)
     var evaluatorProportion by property(AlloyInstanceViewer.EVALUATOR_PROPORTION)
 }
@@ -131,6 +135,13 @@ class AlloyInstanceViewer(private val project: Project) :
         get() = state.selectedTab ?: VISUALIZATION
         set(value) {
             state.selectedTab = value
+        }
+
+    /** How the panes of a trace state and its successor are arranged, kept across results and IDE sessions. */
+    var paneLayout: PaneLayout
+        get() = PaneLayout.entries.find { it.name == state.paneLayout } ?: PaneLayout.ROW
+        set(value) {
+            state.paneLayout = value.name
         }
 
     /** Whether the Evaluator panel is shown, kept across results and IDE sessions. */

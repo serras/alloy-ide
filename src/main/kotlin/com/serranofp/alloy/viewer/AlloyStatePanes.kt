@@ -8,10 +8,17 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import org.jetbrains.annotations.TestOnly
 
+/** How two state panes are arranged: side by side, or stacked in a column. */
+enum class PaneLayout {
+    ROW,
+    COLUMN;
+
+    val toggled: PaneLayout get() = if (this == ROW) COLUMN else ROW
+}
+
 /**
  * One pane per shown state, each under its caption: a single state, or a trace state and its successor. Two
- * panes are stacked in a column when there is more height than width, and placed in a row otherwise; the
- * arrangement follows every resize.
+ * panes are placed in a row or stacked in a column, as [paneLayout] says, whatever the size.
  */
 class AlloyStatePanes : JPanel(null) {
     /** The panes, in order, each with its caption (if any) above its content. */
@@ -38,8 +45,17 @@ class AlloyStatePanes : JPanel(null) {
         repaint()
     }
 
-    /** Whether the panes are stacked in a column, for the current size. */
-    val isColumn: Boolean get() = height > width
+    /** How the panes are arranged; setting it lays them out again. */
+    var paneLayout: PaneLayout = PaneLayout.ROW
+        set(value) {
+            if (field == value) return
+            field = value
+            revalidate()
+            repaint()
+        }
+
+    /** Whether the panes are stacked in a column. */
+    val isColumn: Boolean get() = paneLayout == PaneLayout.COLUMN
 
     override fun doLayout() {
         if (panes.isEmpty()) return

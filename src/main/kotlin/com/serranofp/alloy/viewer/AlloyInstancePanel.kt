@@ -27,12 +27,12 @@ import com.intellij.ui.PopupHandler
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.dsl.listCellRenderer.textListCellRenderer
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.serranofp.alloy.AlloyBundle
+import com.serranofp.alloy.AlloyIcons
 import edu.mit.csail.sdg.alloy4graph.GraphViewer
 import edu.mit.csail.sdg.alloy4viz.AlloyAtom
 import edu.mit.csail.sdg.alloy4viz.AlloyProjection
@@ -48,6 +48,7 @@ import java.awt.FlowLayout
 import java.awt.LayoutManager
 import java.awt.Rectangle
 import javax.swing.BoxLayout
+import javax.swing.Icon
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JScrollPane
@@ -59,10 +60,10 @@ import kotlin.math.max
 
 /**
  * The viewer of [file]: the empty state, or the session's header (which navigates to its command), toolbar and
- * status line, over the Visualization, Text and Table tabs. Rebuilt when the session changes; stepping
+ * status line, over the Visualization, Text and Table tabs, chosen with the buttons at the toolbar's right end. Rebuilt when the session changes; stepping
  * through a trace and projecting update it in place; the projection is this viewer's own, also when another viewer
  * shows the same session. A trace shows the selected state and its successor, side by
- * side or stacked, and the trace path strip, after the toolbar, which highlights both and selects the state
+ * side or stacked, and the trace path strip, on the toolbar line or below it, which highlights both and selects the state
  * clicked, or stepped to with its keys; under a projection, one atom selector per projected signature applies to both graphs. The Evaluator
  * panel, which a toolbar toggle shows, sits under the tabs and follows the session and its selected state.
  * Selecting a state does the analyzer's work for it off the EDT, the first time; only the graphs are made on it.
@@ -73,7 +74,7 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
     private val header = ActionLink("") { viewer.navigateToOrigin(file) }
     private val status = JBLabel().apply { foreground = UIUtil.getContextHelpForeground() }
     private val projection = AlloyProjectionChooser { redrawGraph() }
-    private val tabs = JBTabbedPane()
+    private val views = JPanel(CardLayout(4, 4))
     private val graphs = AlloyStatePanes()
     private val selectors = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)))
     private val darkGraphs = DarkGraphTheme()
@@ -81,6 +82,7 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
     private val tables = AlloyStatePanes()
     private val strip = AlloyTraceStrip(parent, onSelect = ::goTo)
     private val toolbar: ActionToolbar
+    private val tabsToolbar: ActionToolbar
     private val evaluator = AlloyEvaluatorPanel(project, parent)
     private val splitter = OnePixelSplitter(true, viewer.evaluatorProportion)
 
@@ -89,6 +91,10 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
 
     /** How many states were selected, so that only the latest one is shown when their work ends out of order. */
     private var selections = 0L
+
+    /** The id of the tab shown, one of [TAB_IDS]. */
+    var selectedTab: String = AlloyInstanceViewer.VISUALIZATION
+        private set
 
     init {
         add(JBLabel(AlloyInstanceViewer.EMPTY_TEXT, SwingConstants.CENTER).apply { foreground = UIUtil.getContextHelpForeground() }, EMPTY)
@@ -100,17 +106,26 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
         }
         toolbar = ActionManager.getInstance().createActionToolbar("AlloyInstance", actions, true)
         toolbar.targetComponent = this
+        val tabActions = DefaultActionGroup().apply {
+            val visualizationIcons = mapOf(PaneLayout.ROW to AlloyIcons.VISUALIZATION_ROW, PaneLayout.COLUMN to AlloyIcons.VISUALIZATION_COLUMN)
+            add(TabAction(AlloyInstanceViewer.VISUALIZATION, AlloyBundle.message("viewer.tab.visualization"), visualizationIcons))
+            add(TabAction(AlloyInstanceViewer.TEXT, AlloyBundle.message("viewer.tab.text"), mapOf(PaneLayout.ROW to AllIcons.FileTypes.Text)))
+            add(TabAction(AlloyInstanceViewer.TABLE, AlloyBundle.message("viewer.tab.table"), mapOf(PaneLayout.ROW to AlloyIcons.TABLE_ROW, PaneLayout.COLUMN to AlloyIcons.TABLE_COLUMN)))
+        }
+        tabsToolbar = ActionManager.getInstance().createActionToolbar("AlloyInstanceTabs", tabActions, true)
+        tabsToolbar.targetComponent = this
 
-        val controls = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
+        val controls = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
             add(toolbar.component)
             add(JBLabel(AlloyBundle.message("viewer.projection")))
             add(projection.link)
         }
         val toolbarLine = JPanel().apply {
-            layout = ToolbarLineLayout(controls, strip.scrollPane)
+            layout = ToolbarLineLayout(controls, strip.scrollPane, tabsToolbar.component)
             isOpaque = false
             add(controls.apply { isOpaque = false })
             add(strip.scrollPane)
+            add(tabsToolbar.component)
         }
         val north = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -124,11 +139,11 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
             add(selectors, BorderLayout.SOUTH)
         }
         darkGraphs.followTheme(parent, visualization::repaint)
-        tabs.addTab(AlloyBundle.message("viewer.tab.visualization"), visualization)
-        tabs.addTab(AlloyBundle.message("viewer.tab.text"), JBScrollPane(text))
-        tabs.addTab(AlloyBundle.message("viewer.tab.table"), tables)
-        tabs.addChangeListener { TAB_IDS.getOrNull(tabs.selectedIndex)?.let { viewer.selectedTab = it } }
-        splitter.firstComponent = tabs
+        views.add(visualization, AlloyInstanceViewer.VISUALIZATION)
+        views.add(JBScrollPane(text), AlloyInstanceViewer.TEXT)
+        views.add(tables, AlloyInstanceViewer.TABLE)
+        showPaneLayout()
+        splitter.firstComponent = views
         splitter.secondComponent = evaluator
         evaluator.isVisible = viewer.evaluatorVisible
         splitter.addPropertyChangeListener(Splitter.PROP_PROPORTION) { viewer.evaluatorProportion = splitter.proportion }
@@ -182,9 +197,31 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
         val model = session.model
         chosenAtoms.clear()
         projection.show(model, keep = sameCommand)
-        tabs.selectedIndex = TAB_IDS.indexOf(viewer.selectedTab).coerceAtLeast(0)
+        selectTab(viewer.selectedTab.takeIf { it in TAB_IDS } ?: AlloyInstanceViewer.VISUALIZATION)
+        showPaneLayout()
         stateChanged()
         updateHeader()
+    }
+
+    /** Shows the tab [id], for this and the next results. */
+    fun selectTab(id: String) {
+        (views.layout as CardLayout).show(views, id)
+        viewer.selectedTab = id
+        selectedTab = id
+        tabsToolbar.updateActionsAsync()
+    }
+
+    /** Arranges the panes of the Visualization and Table tabs as the user last chose. */
+    private fun showPaneLayout() {
+        graphs.paneLayout = viewer.paneLayout
+        tables.paneLayout = viewer.paneLayout
+    }
+
+    /** Switches the panes of the Visualization and Table tabs between side by side and stacked. */
+    private fun togglePaneLayout() {
+        viewer.paneLayout = viewer.paneLayout.toggled
+        showPaneLayout()
+        tabsToolbar.updateActionsAsync()
     }
 
     private fun updateHeader() {
@@ -323,7 +360,8 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
 
         override fun update(e: AnActionEvent) {
             val session = this@AlloyInstancePanel.session
-            e.presentation.isVisible = session != null
+            // Without states there is no trace path strip, and no trace to take another one of
+            e.presentation.isVisible = session != null && (!kind.needsTrace || session.model.hasStates)
             e.presentation.isEnabled = viewer.isEnabled(file, kind)
             e.presentation.description = if (session != null && viewer.outdated(session) != null) AlloyInstanceViewer.RUN_AGAIN else kind.description
         }
@@ -344,6 +382,29 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
         override fun setSelected(e: AnActionEvent, state: Boolean) = setEvaluatorVisible(state)
     }
 
+    /**
+     * The button of the tab [id], whose icon is that of the current pane layout in [icons]; a tab with a single icon
+     * has no panes to arrange. Pressing the selected tab's button keeps it selected, and switches the layout of a tab
+     * with panes.
+     */
+    private inner class TabAction(private val id: String, text: String, private val icons: Map<PaneLayout, Icon>) :
+        ToggleAction(text, null, icons.getValue(PaneLayout.ROW)), DumbAware {
+        private val hasPanes get() = icons.size > 1
+
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+        override fun update(e: AnActionEvent) {
+            super.update(e)
+            if (hasPanes) e.presentation.icon = icons.getValue(viewer.paneLayout)
+        }
+
+        override fun isSelected(e: AnActionEvent) = selectedTab == id
+
+        override fun setSelected(e: AnActionEvent, state: Boolean) {
+            if (state) selectTab(id) else if (hasPanes) togglePaneLayout()
+        }
+    }
+
     companion object {
         val EVALUATOR: String get() = AlloyBundle.message("viewer.evaluator")
 
@@ -355,35 +416,81 @@ class AlloyInstancePanel(private val project: Project, private val file: Virtual
     }
 }
 
+/** Where the toolbar line puts the trace path strip; [x] is from the line's left inset. */
+internal sealed interface ToolbarLinePlacement {
+    /** There is no strip. */
+    data object None : ToolbarLinePlacement
+
+    /** On the line, centered on it. */
+    data class Centered(val x: Int) : ToolbarLinePlacement
+
+    /** On the line, centered between the left and right groups. */
+    data class Between(val x: Int) : ToolbarLinePlacement
+
+    /** On a line of its own below, as wide as the line. */
+    data object Below : ToolbarLinePlacement
+}
+
 /**
- * The toolbar line: the [controls], then the trace path [strip] beside them when it fits entirely, and otherwise
- * below them, as wide as the line, where it scrolls. The preferred height is that of the line's current width; when
- * a new width moves the strip, the line is laid out again for its new height.
+ * The placement of a [strip] wide strip, or of none, on a line [width] wide with a [left] wide group at its left end
+ * and a [right] wide group at its right end, [gap] apart from the strip: centered on the line when it then overlaps
+ * neither group, otherwise centered between them when it fits there entirely, and otherwise below. Before the first
+ * layout, there is no width yet, and the strip counts as fitting.
  */
-private class ToolbarLineLayout(private val controls: JComponent, private val strip: JScrollPane) : LayoutManager {
-    private var beside: Boolean? = null
+internal fun toolbarLinePlacement(width: Int, left: Int, strip: Int?, right: Int, gap: Int): ToolbarLinePlacement {
+    if (strip == null) return ToolbarLinePlacement.None
+    val centered = (width - strip) / 2
+    val free = width - right - left - 2 * gap
+    return when {
+        width <= 0 -> ToolbarLinePlacement.Centered(left + gap)
+        centered >= left + gap && centered + strip <= width - right - gap -> ToolbarLinePlacement.Centered(centered)
+        strip <= free -> ToolbarLinePlacement.Between(left + gap + (free - strip) / 2)
+        else -> ToolbarLinePlacement.Below
+    }
+}
+
+/**
+ * The toolbar line: the [left] controls at its left end, the [right] tab buttons at its right end, and the trace
+ * path [strip] between them as [toolbarLinePlacement] decides, or below them, as wide as the line, where it scrolls.
+ * The preferred height is that of the line's current width; when a new width moves the strip onto or off the line,
+ * the line is laid out again for its new height.
+ */
+private class ToolbarLineLayout(private val left: JComponent, private val strip: JScrollPane, private val right: JComponent) : LayoutManager {
+    private var below: Boolean? = null
 
     private fun width(parent: Container) = parent.width - parent.insets.left - parent.insets.right
 
-    /** Whether the strip goes beside the controls in [width]; before the first layout, there is no width yet. */
-    private fun fitsBeside(width: Int) = width <= 0 || controls.preferredSize.width + JBUI.scale(GAP) + strip.preferredSize.width <= width
+    private fun placement(width: Int) = toolbarLinePlacement(
+        width, left.preferredSize.width, strip.preferredSize.width.takeIf { strip.isVisible }, right.preferredSize.width, JBUI.scale(GAP),
+    )
 
-    /** The strip's height below the controls, with room for its scroll bar when the bar takes space and is needed. */
+    /** The strip's height below the line, with room for its scroll bar when the bar takes space and is needed. */
     private fun heightBelow(width: Int): Int {
         val bar = strip.horizontalScrollBar
         val scrolls = strip.preferredSize.width > width && bar.isOpaque
         return strip.preferredSize.height + if (scrolls) bar.preferredSize.height else 0
     }
 
+    /** The height of the first line, which has the strip unless it is [ToolbarLinePlacement.None] or below. */
+    private fun lineHeight(placement: ToolbarLinePlacement): Int {
+        val groups = max(left.preferredSize.height, right.preferredSize.height)
+        return when (placement) {
+            ToolbarLinePlacement.None, ToolbarLinePlacement.Below -> groups
+            else -> max(groups, strip.preferredSize.height)
+        }
+    }
+
     override fun preferredLayoutSize(parent: Container): Dimension {
         val insets = parent.insets
-        val c = controls.preferredSize
-        val size = when {
-            !strip.isVisible -> c
-            fitsBeside(width(parent)) -> Dimension(c.width + JBUI.scale(GAP) + strip.preferredSize.width, max(c.height, strip.preferredSize.height))
-            else -> Dimension(c.width, c.height + heightBelow(width(parent)))
-        }
-        return Dimension(size.width + insets.left + insets.right, size.height + insets.top + insets.bottom)
+        val width = width(parent)
+        val placement = placement(width)
+        val gap = JBUI.scale(GAP)
+        val stripWidth = if (strip.isVisible) strip.preferredSize.width + gap else 0
+        val height = lineHeight(placement) + if (placement == ToolbarLinePlacement.Below) heightBelow(width) else 0
+        return Dimension(
+            left.preferredSize.width + gap + stripWidth + right.preferredSize.width + insets.left + insets.right,
+            height + insets.top + insets.bottom,
+        )
     }
 
     override fun minimumLayoutSize(parent: Container) = Dimension(0, preferredLayoutSize(parent).height)
@@ -391,20 +498,22 @@ private class ToolbarLineLayout(private val controls: JComponent, private val st
     override fun layoutContainer(parent: Container) {
         val insets = parent.insets
         val width = width(parent)
-        val c = controls.preferredSize
-        if (!strip.isVisible) return controls.setBounds(insets.left, insets.top, c.width, c.height)
+        val placement = placement(width)
+        val height = lineHeight(placement)
+        val l = left.preferredSize
+        val r = right.preferredSize
         val s = strip.preferredSize
-        val fits = fitsBeside(width)
-        if (fits) {
-            val height = max(c.height, s.height)
-            controls.setBounds(insets.left, insets.top + (height - c.height) / 2, c.width, c.height)
-            strip.setBounds(insets.left + c.width + JBUI.scale(GAP), insets.top + (height - s.height) / 2, s.width, s.height)
-        } else {
-            controls.setBounds(insets.left, insets.top, c.width, c.height)
-            strip.setBounds(insets.left, insets.top + c.height, width, heightBelow(width))
+        left.setBounds(insets.left, insets.top + (height - l.height) / 2, l.width, l.height)
+        right.setBounds(insets.left + width - r.width, insets.top + (height - r.height) / 2, r.width, r.height)
+        when (placement) {
+            ToolbarLinePlacement.None -> {}
+            is ToolbarLinePlacement.Centered -> strip.setBounds(insets.left + placement.x, insets.top + (height - s.height) / 2, s.width, s.height)
+            is ToolbarLinePlacement.Between -> strip.setBounds(insets.left + placement.x, insets.top + (height - s.height) / 2, s.width, s.height)
+            ToolbarLinePlacement.Below -> strip.setBounds(insets.left, insets.top + height, width, heightBelow(width))
         }
-        if (beside != null && beside != fits) SwingUtilities.invokeLater(parent::revalidate)
-        beside = fits
+        val isBelow = placement == ToolbarLinePlacement.Below
+        if (below != null && below != isBelow) SwingUtilities.invokeLater(parent::revalidate)
+        below = isBelow
     }
 
     override fun addLayoutComponent(name: String?, comp: Component) {}

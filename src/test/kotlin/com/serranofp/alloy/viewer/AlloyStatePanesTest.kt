@@ -14,36 +14,52 @@ class AlloyStatePanesTest : BasePlatformTestCase() {
         doLayout()
     }
 
-    fun testWideIsARow() {
-        val panes = panes("State 0", "State 1")
-        panes.layOut(800, 400)
-        assertFalse(panes.isColumn)
-        val (first, second) = panes.panes.map { it.bounds }
+    private fun AlloyStatePanes.assertRow(width: Int, height: Int) {
+        assertFalse(isColumn)
+        val (first, second) = panes.map { it.bounds }
         assertEquals(first.y, second.y)
-        assertEquals(400, first.height)
+        assertEquals(height, first.height)
         assertTrue(first.x + first.width <= second.x)
-        assertTrue(second.x + second.width <= 800)
-        assertTrue(first.width > 380)
+        assertTrue(second.x + second.width <= width)
+        assertTrue(first.width > width / 2 - 20)
     }
 
-    fun testTallIsAColumn() {
-        val panes = panes("State 0", "State 1")
-        panes.layOut(400, 800)
-        assertTrue(panes.isColumn)
-        val (first, second) = panes.panes.map { it.bounds }
+    private fun AlloyStatePanes.assertColumn(width: Int, height: Int) {
+        assertTrue(isColumn)
+        val (first, second) = panes.map { it.bounds }
         assertEquals(first.x, second.x)
-        assertEquals(400, first.width)
+        assertEquals(width, first.width)
         assertTrue(first.y + first.height <= second.y)
-        assertTrue(second.y + second.height <= 800)
+        assertTrue(second.y + second.height <= height)
+        assertTrue(first.height > height / 2 - 20)
     }
 
-    fun testResizingRearranges() {
+    fun testARowAtEverySize() {
+        val panes = panes("State 0", "State 1")
+        assertEquals(PaneLayout.ROW, panes.paneLayout)
+        panes.layOut(800, 400)
+        panes.assertRow(800, 400)
+        panes.layOut(400, 800)
+        panes.assertRow(400, 800)
+    }
+
+    fun testAColumnAtEverySize() {
+        val panes = panes("State 0", "State 1").apply { paneLayout = PaneLayout.COLUMN }
+        panes.layOut(800, 400)
+        panes.assertColumn(800, 400)
+        panes.layOut(400, 800)
+        panes.assertColumn(400, 800)
+    }
+
+    fun testSettingTheLayoutRearranges() {
         val panes = panes("State 0", "State 1")
         panes.layOut(800, 400)
-        assertTrue(panes.panes[1].x > 0)
-        panes.layOut(400, 800)
-        assertEquals(0, panes.panes[1].x)
-        assertTrue(panes.panes[1].y > 0)
+        panes.paneLayout = PaneLayout.COLUMN
+        panes.doLayout()
+        panes.assertColumn(800, 400)
+        panes.paneLayout = PaneLayout.ROW
+        panes.doLayout()
+        panes.assertRow(800, 400)
     }
 
     fun testCaptions() {
