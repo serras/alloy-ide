@@ -8,7 +8,7 @@ import org.jetbrains.annotations.PropertyKey
 private const val BUNDLE = "messages.AlloyBundle"
 
 /** The plugin's user-visible strings, in `messages/AlloyBundle.properties`. */
-object AlloyBundle : DynamicBundle(BUNDLE) {
+object AlloyBundle : DynamicBundle(AlloyBundle::class.java,BUNDLE) {
     @Nls
     @JvmStatic
     fun message(@NonNls @PropertyKey(resourceBundle = BUNDLE) key: String, vararg params: Any): String =
