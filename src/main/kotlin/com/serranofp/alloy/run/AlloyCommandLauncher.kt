@@ -63,7 +63,7 @@ class AlloyCommandLauncher(
         solverWarning()?.let(execution::warn)
         val target = when (val found = ReadAction.nonBlocking<Found> { find(execution) }.executeSynchronously()) {
             is Target -> found
-            is NotFound -> return execution.fail(found.summary, found.details)
+            null, is NotFound -> return execution.fail(found.summary, found.details)
         }
         val warnings = target.model.warnings
         if (warnings.isNotEmpty() && !nonFatalWarnings()) {

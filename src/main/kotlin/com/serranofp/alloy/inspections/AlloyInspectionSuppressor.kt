@@ -30,7 +30,7 @@ class AlloyInspectionSuppressor : InspectionSuppressor {
     override fun isSuppressedFor(element: PsiElement, toolId: String): Boolean {
         val paragraph = Paragraph.paragraph(element) ?: return false
         return Paragraph.suppressionComments(paragraph).any { comment ->
-            val matcher = SUPPRESS_PATTERN.matcher(comment.text)
+            val matcher = Suppress.PATTERN.matcher(comment.text)
             matcher.matches() && SuppressionUtil.isInspectionToolIdMentioned(matcher.group(1), toolId)
         }
     }
@@ -60,9 +60,9 @@ class AlloyInspectionSuppressor : InspectionSuppressor {
             val file = paragraph.containingFile
             val documents = PsiDocumentManager.getInstance(project)
             val document = documents.getDocument(file) ?: return
-            val existing = Paragraph.suppressionComments(paragraph).firstOrNull { SUPPRESS_PATTERN.matcher(it.text).matches() }
+            val existing = Paragraph.suppressionComments(paragraph).firstOrNull { Suppress.PATTERN.matcher(it.text).matches() }
             if (existing != null) {
-                val matcher = SUPPRESS_PATTERN.matcher(existing.text)
+                val matcher = Suppress.PATTERN.matcher(existing.text)
                 matcher.matches()
                 document.insertString(existing.textRange.startOffset + matcher.end(1), ",$toolId")
             } else {
@@ -101,8 +101,8 @@ class AlloyInspectionSuppressor : InspectionSuppressor {
         }
     }
 
-    private companion object {
+    private object Suppress {
         /** [SuppressionUtil.SUPPRESS_IN_LINE_COMMENT_PATTERN], for both kinds of Alloy line comments. */
-        val SUPPRESS_PATTERN: Pattern = Pattern.compile("(?://|--)" + SuppressionUtil.COMMON_SUPPRESS_REGEXP + ".*")
+        val PATTERN: Pattern = Pattern.compile("(?://|--)" + SuppressionUtil.COMMON_SUPPRESS_REGEXP + ".*")
     }
 }

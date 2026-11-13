@@ -138,15 +138,15 @@ class AlloyIntLiteralRangeInspection : AlloyModelInspection() {
         return AlloyBundle.message(if (command.command.check) "inspection.int.literal.check" else "inspection.int.literal.run", line.toString())
     }
 
+    /** The integer that [n] stands for with [bitwidth] bits. */
+    private fun wrap(n: Int, bitwidth: Int): Int {
+        val min = Util.min(bitwidth).toLong()
+        val size = 1L shl bitwidth
+        return (Math.floorMod(n - min, size) + min).toInt()
+    }
+
     private companion object {
         /** How many commands a message names before it only counts the rest. */
         const val MAX_NAMED = 3
-
-        /** The integer that [n] stands for with [bitwidth] bits. */
-        fun wrap(n: Int, bitwidth: Int): Int {
-            val min = Util.min(bitwidth).toLong()
-            val size = 1L shl bitwidth
-            return (Math.floorMod(n - min, size) + min).toInt()
-        }
     }
 }

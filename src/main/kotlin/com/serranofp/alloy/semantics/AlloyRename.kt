@@ -35,7 +35,7 @@ class AlloyRenameProcessor : RenamePsiElementProcessor() {
             // The user cancelled the check of the models, and so the rename
             return null
         }
-        CommonRefactoringUtil.showErrorHint(element.project, editor, refusal, TITLE, null)
+        CommonRefactoringUtil.showErrorHint(element.project, editor, refusal, AlloyBundle.message("rename.title"), null)
         return null
     }
 
@@ -53,7 +53,7 @@ class AlloyRenameProcessor : RenamePsiElementProcessor() {
             declaration.project,
         )
         if (withErrors.isEmpty()) return null
-        return AlloyBundle.message("rename.files.with.errors", NEEDS_A_MODEL_WITHOUT_ERRORS, withErrors.joinToString(", "), withErrors.size)
+        return AlloyBundle.message("rename.files.with.errors", AlloyBundle.message("rename.needs.model.without.errors"), withErrors.joinToString(", "), withErrors.size)
     }
 
     /** The declaring file and the files with references, among those whose model does not type-check. */
@@ -64,11 +64,6 @@ class AlloyRenameProcessor : RenamePsiElementProcessor() {
         return files.filterIsInstance<AlloyFile>()
             .filter { service.model(it) !is AlloyModelResult.Model }
             .map { it.name }
-    }
-
-    companion object {
-        val TITLE: String get() = AlloyBundle.message("rename.title")
-        val NEEDS_A_MODEL_WITHOUT_ERRORS: String get() = AlloyBundle.message("rename.needs.model.without.errors")
     }
 }
 

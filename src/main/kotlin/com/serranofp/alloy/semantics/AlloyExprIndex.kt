@@ -38,7 +38,7 @@ internal class AlloyExprIndex(module: CompModule) {
         for (expr in buckets[pos.filename]?.get(line(pos.y, pos.x)).orEmpty()) {
             if (!expr.pos.contains(pos)) continue
             val exprWidth = expr.pos.width()
-            if (exprWidth <= width && (found == null || found.referenced() == null || expr.referenced() != null)) {
+            if (exprWidth <= width && (found?.referenced() == null || expr.referenced() != null)) {
                 width = exprWidth
                 found = expr
             }

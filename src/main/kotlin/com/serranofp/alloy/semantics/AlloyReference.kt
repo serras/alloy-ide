@@ -178,7 +178,8 @@ object AlloyScopes {
         return generateSequence(reference.parent) { it.parent }.takeWhile { it !is AlloyFile }.map { scope ->
             when (scope) {
                 is AlloyQuantifierExpr, is AlloyComprehension, is AlloyLetExpr ->
-                    scope.children.filter { (it is AlloyBinderDecl || it is AlloyLetDecl) && offset >= scopeStart(it as AlloyNamedDeclaration) }
+                    scope.children
+                        .filter { (it is AlloyBinderDecl || it is AlloyLetDecl) && offset >= scopeStart(it) }
                         .map { it as AlloyNamedDeclaration }
                 is AlloyPredDecl, is AlloyFunDecl, is AlloyMacroDecl -> scope.children.filterIsInstance<AlloyParamDecl>()
                 else -> emptyList()

@@ -233,7 +233,8 @@ class AlloyRewriteWalker(private val source: AlloySourceText, private val rules:
      * not end open, since a quantifier's body takes in the `;` that follows it (`BAR ExprNoSeq TRCSEQ Expr`).
      */
     internal fun listPosition(list: ExprList, from: Int, to: Int, position: AlloyPosition): AlloyPosition {
-        val level = AlloyOperator.of(list)?.level ?: return AlloyPosition(AlloyPrecedence.ATOM, false, false)
+        val level = AlloyOperator.of(list)?.level
+            ?: return AlloyPosition(AlloyPrecedence.ATOM, bindAllowed = false, rightOpen = false)
         val separators = source.operatorTokens(list)
         val first = source.source(source.strip(list.args[from]))
         val last = source.source(source.strip(list.args[to]))

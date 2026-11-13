@@ -59,11 +59,11 @@ class AlloyEvaluatorState : SimplePersistentStateComponent<AlloyEvaluatorWatches
 
     private fun fileChanged(event: VFileEvent) {
         val protocol = event.fileSystem.protocol
-        when {
-            event is VFileMoveEvent -> moved(VirtualFileManager.constructUrl(protocol, event.oldPath), event.file.url)
-            event is VFilePropertyChangeEvent && event.propertyName == VirtualFile.PROP_NAME ->
+        when (event) {
+            is VFileMoveEvent -> moved(VirtualFileManager.constructUrl(protocol, event.oldPath), event.file.url)
+            is VFilePropertyChangeEvent if event.propertyName == VirtualFile.PROP_NAME ->
                 moved(VirtualFileManager.constructUrl(protocol, event.oldPath), event.file.url)
-            event is VFileDeleteEvent -> {
+            is VFileDeleteEvent -> {
                 val url = VirtualFileManager.constructUrl(protocol, event.path)
                 if (state.files.removeIf { it.url?.isUnder(url) == true }) state.increment()
             }

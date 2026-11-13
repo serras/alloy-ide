@@ -109,16 +109,12 @@ class AlloyStructureViewFactory : PsiStructureViewFactory {
             override fun createStructureViewModel(editor: Editor?): StructureViewModel =
                 StructureViewModelBase(psiFile, editor, AlloyStructureElement(psiFile))
                     // What the tree lists: paragraphs, fields and enum members, but no parameters or binders
-                    .withSuitableClasses(*SUITABLE_CLASSES)
+                    .withSuitableClasses(
+                        AlloyModuleDecl::class.java, AlloySigDecl::class.java, AlloyFieldDecl::class.java, AlloyEnumDecl::class.java,
+                        AlloyEnumMember::class.java, AlloyFactDecl::class.java, AlloyPredDecl::class.java, AlloyFunDecl::class.java,
+                        AlloyAssertDecl::class.java, AlloyMacroDecl::class.java, AlloyCommandDecl::class.java,
+                    )
         }
-    }
-
-    private companion object {
-        val SUITABLE_CLASSES = arrayOf(
-            AlloyModuleDecl::class.java, AlloySigDecl::class.java, AlloyFieldDecl::class.java, AlloyEnumDecl::class.java,
-            AlloyEnumMember::class.java, AlloyFactDecl::class.java, AlloyPredDecl::class.java, AlloyFunDecl::class.java,
-            AlloyAssertDecl::class.java, AlloyMacroDecl::class.java, AlloyCommandDecl::class.java,
-        )
     }
 }
 

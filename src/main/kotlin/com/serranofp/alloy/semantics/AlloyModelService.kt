@@ -77,9 +77,9 @@ sealed interface AlloyModelResult {
          * computation that throws (for example, because it is cancelled) is not kept.
          */
         fun <T : Any> derived(key: Key<T>, compute: (Model) -> T): T {
-            val value = derived.computeIfAbsent(key) { lazy { compute(this) } }
+            val value by derived.computeIfAbsent(key) { lazy { compute(this) } }
             @Suppress("UNCHECKED_CAST")
-            return value.value as T
+            return value as T
         }
     }
 
